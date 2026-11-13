@@ -1151,7 +1151,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // whether it was discovered here or via `mark_room_visited`.
             {
                 let already = {
-                    let conns_guard = conns.lock().unwrap();
+                    let conns_guard = conns.lock();
                     conns_guard.get(&conn_uuid).and_then(|s| {
                         s.character
                             .as_ref()
@@ -1194,7 +1194,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 viewer_can_detect_magic,
                 viewer_is_admin,
             ) = {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 match conns_guard.get(&conn_uuid) {
                     Some(session) => {
                         let (night_vision, light_source, blindness) = if let Some(ref char) = session.character {
@@ -1866,7 +1866,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                     // Check player status tags (Disconnected, Writing, AFK, Idle)
                     let status_suffix = {
-                        let conns_guard = conns.lock().unwrap();
+                        let conns_guard = conns.lock();
                         let mut status = "";
                         for session in conns_guard.values() {
                             if let Some(ref char) = session.character {
@@ -1909,7 +1909,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // the parser stays out of the map.
             let (map_prefix, map_legend_was_shown) = {
                 let (player_name, automap_on, show_legend, want_colors, radius, ascii_only) = {
-                    let conns_guard = conns.lock().unwrap();
+                    let conns_guard = conns.lock();
                     match conns_guard.get(&conn_uuid) {
                         Some(s) => match s.character.as_ref() {
                             Some(c) => (
@@ -1961,7 +1961,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             // Send the message (with MXP prefix if enabled, and terminal title update)
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             if let Some(session) = conns_guard.get_mut(&conn_uuid) {
                 // Build terminal title with character name if logged in
                 let title = if let Some(ref char) = session.character {

@@ -31,6 +31,9 @@ edition = "2024"
 tokio = { version = "1.36", features = ["full"] }
 rhai = { version = "1.17", features = ["sync"] }
 anyhow = "1.0"
+# Non-poisoning mutexes: a panic while holding World/Connections must not
+# turn every later lock into a panic. `deadlock-detection` feature below.
+parking_lot = "0.12"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 serde = { version = "1.0", features = ["derive"] }
@@ -40,12 +43,16 @@ sled = "0.34"
 uuid = { version = "1.8", features = ["v4", "v5", "serde"] }
 notify = "6.1"
 glob = "0.3"
-matrix-sdk = { version = "0.16", default-features = false, features = ["native-tls"] }
-serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "native_tls_backend"] }
+# Chat bridges are optional (`matrix`, `discord` features, both on by
+# default). `--no-default-features` builds a server without either SDK.
+matrix-sdk = { version = "0.16", default-features = false, features = ["native-tls"], optional = true }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend"], optional = true }
 socket2 = "0.5"
 argon2 = "0.5"
 rand_core = { version = "0.6", features = ["std"] }
 rand = "0.8"
+sha2 = "0.10"
+subtle = "2.6"
 clap = { version = "4.4", features = ["derive", "env"] }
 rpassword = "7.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
@@ -53,13 +60,25 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 unicode-width = "0.2"
 mime = "0.3"
 axum = "0.7"
-tower = "0.4"
+tower = { version = "0.4", features = ["limit", "util"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 time = ">=0.3.47"
+
+[features]
+default = ["matrix", "discord"]
+matrix = ["dep:matrix-sdk"]
+discord = ["dep:serenity"]
+# Debug aid: a background thread reports lock cycles (World/Connections
+# deadlocks) with the stuck threads' backtraces. Adds overhead; not for
+# production. `cargo run --features deadlock-detection`.
+deadlock-detection = ["parking_lot/deadlock_detection"]
 
 [dev-dependencies]
 regex = "1.10"
 tempfile = "3.10"
+tokio = { version = "1.36", features = ["full", "test-util"] }
+# `metadata` exposes Engine::gen_fn_signatures for tests/engine_registration.rs.
+rhai = { version = "1.17", features = ["sync", "metadata"] }
 
 [[bin]]
 name = "ironmud-admin"
@@ -68,3 +87,9 @@ path = "src/bin/ironmud-admin.rs"
 [[bin]]
 name = "ironmud-import"
 path = "src/bin/ironmud-import.rs"
+[profile.release]
+# Integer overflow panics in release too, instead of silently wrapping (a
+# wrapped gold/HP/count is a silent exploit). Commands run under
+# catch_unwind and ticks under ticks::supervise, so a panic aborts one
+# command or restarts one tick rather than taking the server down.
+overflow-checks = true

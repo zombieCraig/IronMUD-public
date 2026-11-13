@@ -51,7 +51,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             let char_name = {
-                let conns_lock = cloned_conns.lock().unwrap();
+                let conns_lock = cloned_conns.lock();
                 match conns_lock.get(&conn_id) {
                     Some(session) => match session.character.as_ref() {
                         Some(c) => c.name.clone(),
@@ -86,7 +86,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // Sync session cache with the freshly-saved character.
             let key = char_name.to_lowercase();
             if let Ok(Some(updated)) = cloned_db.get_character_data(&key) {
-                let mut conns_lock = cloned_conns.lock().unwrap();
+                let mut conns_lock = cloned_conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     session.character = Some(updated);
                 }
@@ -157,7 +157,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         // Sync any live session for this character.
         let key = char_name.to_lowercase();
         if let Ok(Some(updated)) = cloned_db.get_character_data(&key) {
-            let mut conns_lock = cloned_conns.lock().unwrap();
+            let mut conns_lock = cloned_conns.lock();
             for session in conns_lock.values_mut() {
                 if let Some(ref ch) = session.character {
                     if ch.name.eq_ignore_ascii_case(&char_name) {

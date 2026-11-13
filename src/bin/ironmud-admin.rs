@@ -67,6 +67,28 @@ enum Commands {
         #[command(subcommand)]
         action: SiteBanAction,
     },
+    /// DG trigger prototype administration
+    DgProto {
+        #[command(subcommand)]
+        action: DgProtoAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DgProtoAction {
+    /// List protos and whether their instances run with system trust
+    List,
+    /// Give protos system trust, as if freshly imported. Only do this for
+    /// content you trust: their scripts can then act anywhere in the world.
+    Trust {
+        /// Proto vnum to trust
+        #[arg(required_unless_present = "all_unedited", conflicts_with = "all_unedited")]
+        vnum: Option<String>,
+        /// Trust every untrusted proto that no one has edited in game
+        /// (e.g. imported content downgraded by the trust migration)
+        #[arg(long)]
+        all_unedited: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -213,8 +235,9 @@ enum SettingsAction {
     Set {
         /// Setting key
         key: String,
-        /// Setting value
-        value: String,
+        /// Setting value. Omit it for a secret (e.g. smtp_pass) to be
+        /// prompted without echo, keeping it out of shell history.
+        value: Option<String>,
     },
     /// Get a server setting
     Get {
@@ -249,6 +272,9 @@ enum ApiKeyAction {
         /// Grant admin permission (bypass area checks)
         #[arg(long)]
         admin: bool,
+        /// Allow reading player activity logs (requires --admin)
+        #[arg(long)]
+        player_logs: bool,
     },
     /// List all API keys
     List,
@@ -266,6 +292,20 @@ enum ApiKeyAction {
     Delete {
         /// API key ID (UUID)
         id: String,
+    },
+    /// Issue a new secret for an existing key (same ID, name and permissions).
+    /// The old secret stops working immediately. Use this to move a legacy
+    /// key to the current `imk_` format.
+    Rotate {
+        /// API key ID (UUID)
+        id: String,
+    },
+    /// Allow or deny an admin key access to player activity logs
+    PlayerLogs {
+        /// API key ID (UUID)
+        id: String,
+        /// on or off
+        state: String,
     },
 }
 
@@ -292,7 +332,47 @@ fn main() -> Result<()> {
         Commands::Broadcast { .. } => unreachable!("handled above"),
         Commands::Account { action } => handle_account_command(&db, action),
         Commands::SiteBan { action } => handle_site_ban_command(&db, action),
+        Commands::DgProto { action } => handle_dg_proto_command(&db, action),
     }
+}
+
+fn handle_dg_proto_command(db: &Db, action: DgProtoAction) -> Result<()> {
+    match action {
+        DgProtoAction::List => {
+            let mut protos = db.list_dg_trigger_protos()?;
+            protos.sort_by(|a, b| a.vnum.cmp(&b.vnum));
+            if protos.is_empty() {
+                println!("No DG trigger prototypes.");
+            }
+            for p in protos {
+                let trust = match p.instance_author() {
+                    None => "system".to_string(),
+                    Some(a) if a.is_empty() => "UNTRUSTED (no editor)".to_string(),
+                    Some(a) => format!("runs as {a}"),
+                };
+                println!("{:<20} {:<30} {}", p.vnum, p.name, trust);
+            }
+        }
+        DgProtoAction::Trust { vnum, all_unedited } => {
+            let target = if all_unedited { None } else { vnum.as_deref() };
+            if let Some(v) = target {
+                if db.get_dg_trigger_proto(v)?.is_none() {
+                    anyhow::bail!("no DG proto with vnum '{v}'");
+                }
+            }
+            let changed = db.trust_dg_protos(target)?;
+            if changed.is_empty() {
+                println!("Nothing to change.");
+            } else {
+                println!(
+                    "Gave system trust to {} proto(s): {}",
+                    changed.len(),
+                    changed.join(", ")
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Parse a duration token (e.g. "perm", "7d", "12h", "30") into an
@@ -482,8 +562,11 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
             // Prompt for new password using rpassword
             let password = rpassword::prompt_password("Enter new password: ").context("Failed to read password")?;
 
-            if password.len() < 4 {
-                anyhow::bail!("Password must be at least 4 characters long");
+            if password.chars().count() < ironmud::MIN_PASSWORD_LEN {
+                anyhow::bail!(
+                    "Password must be at least {} characters long",
+                    ironmud::MIN_PASSWORD_LEN
+                );
             }
 
             // Confirm password
@@ -543,9 +626,34 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
     Ok(())
 }
 
+/// A setting's value for display: secrets are masked.
+fn shown_value(key: &str, value: &str) -> String {
+    if ironmud::email::is_secret_setting(key) && !value.is_empty() {
+        "********".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
 fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
     match action {
         SettingsAction::Set { key, value } => {
+            let secret = ironmud::email::is_secret_setting(&key);
+            let value = match value {
+                Some(v) => {
+                    if secret {
+                        eprintln!(
+                            "Warning: a secret on the command line is visible in shell history and `ps`. \
+                             Omit the value to be prompted instead."
+                        );
+                    }
+                    v
+                }
+                None if secret => {
+                    rpassword::prompt_password(format!("Value for {key}: ")).context("Failed to read value")?
+                }
+                None => anyhow::bail!("Missing value for '{}'", key),
+            };
             // Validate builder_mode values
             if key == "builder_mode" {
                 match value.as_str() {
@@ -559,10 +667,10 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
                 }
             }
             db.set_setting(&key, &value)?;
-            println!("Set '{}' = '{}'", key, value);
+            println!("Set '{}' = '{}'", key, shown_value(&key, &value));
         }
         SettingsAction::Get { key } => match db.get_setting(&key)? {
-            Some(value) => println!("{} = {}", key, value),
+            Some(value) => println!("{} = {}", key, shown_value(&key, &value)),
             None => {
                 let default = setting_default(&key);
                 if let Some(d) = default {
@@ -580,7 +688,7 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
 
             for &(key, default) in KNOWN_SETTINGS {
                 if let Some(value) = configured.get(key) {
-                    println!("{:<35} {:<20} configured", key, value);
+                    println!("{:<35} {:<20} configured", key, shown_value(key, value));
                 } else {
                     println!("{:<35} {:<20} default", key, default);
                 }
@@ -594,7 +702,7 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
                 .collect();
             extras.sort_by_key(|(k, _)| k.to_owned());
             for (key, value) in extras {
-                println!("{:<35} {:<20} configured", key, value);
+                println!("{:<35} {:<20} configured", key, shown_value(key, value));
             }
         }
         SettingsAction::Delete { key } => {
@@ -616,7 +724,11 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             read,
             write,
             admin,
+            player_logs,
         } => {
+            if player_logs && !admin {
+                anyhow::bail!("--player-logs needs --admin");
+            }
             if admin && !read && !write {
                 anyhow::bail!(
                     "--admin alone has no effect. It only bypasses area ownership checks for --read or --write operations. Add --read and/or --write."
@@ -628,14 +740,10 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
                 .get_character_data(&character)?
                 .context(format!("Character '{}' not found", character))?;
 
-            // Generate a random API key (32 bytes, base64 encoded)
-            use rand::RngCore;
-            let mut key_bytes = [0u8; 32];
-            rand::thread_rng().fill_bytes(&mut key_bytes);
-            let raw_key = base64_encode(&key_bytes);
-
-            // Hash the key for storage
-            let key_hash = db.hash_password(&raw_key)?;
+            // Current-format key: `imk_<id>_<secret>`, SHA-256 of the secret stored.
+            let id = Uuid::new_v4();
+            let generated = ironmud::api_key_auth::generate(id);
+            let (raw_key, key_hash) = (generated.raw, generated.key_hash);
 
             // Create the API key
             let now = std::time::SystemTime::now()
@@ -644,11 +752,16 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
                 .unwrap_or(0);
 
             let api_key = ApiKey {
-                id: Uuid::new_v4(),
+                id,
                 key_hash,
                 name: name.clone(),
                 owner_character: character.clone(),
-                permissions: ApiPermissions { read, write, admin },
+                permissions: ApiPermissions {
+                    read,
+                    write,
+                    admin,
+                    player_logs: Some(player_logs),
+                },
                 created_at: now,
                 last_used_at: None,
                 enabled: true,
@@ -711,6 +824,14 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             println!("  Read: {}", if key.permissions.read { "Yes" } else { "No" });
             println!("  Write: {}", if key.permissions.write { "Yes" } else { "No" });
             println!("  Admin: {}", if key.permissions.admin { "Yes" } else { "No" });
+            println!(
+                "  Player logs: {}",
+                match (key.permissions.can_read_player_logs(), key.permissions.player_logs) {
+                    (true, None) => "Yes (legacy admin key)",
+                    (true, _) => "Yes",
+                    (false, _) => "No",
+                }
+            );
             println!("Created: {}", format_timestamp(key.created_at));
             if let Some(last_used) = key.last_used_at {
                 println!("Last Used: {}", format_timestamp(last_used));
@@ -729,6 +850,46 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
                 db.save_api_key(&key)?;
                 println!("Revoked API key '{}'", key.name);
             }
+        }
+        ApiKeyAction::PlayerLogs { id, state } => {
+            let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
+            let mut key = db.get_api_key(&uuid)?.context(format!("API key '{}' not found", id))?;
+            let on = match state.to_ascii_lowercase().as_str() {
+                "on" | "true" | "yes" => true,
+                "off" | "false" | "no" => false,
+                _ => anyhow::bail!("State must be 'on' or 'off'"),
+            };
+            if on && !key.permissions.admin {
+                anyhow::bail!("Player-log access needs an admin key");
+            }
+            key.permissions.player_logs = Some(on);
+            db.save_api_key(&key)?;
+            println!(
+                "Player-log access for '{}' is now {}",
+                key.name,
+                if on { "on" } else { "off" }
+            );
+        }
+        ApiKeyAction::Rotate { id } => {
+            let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
+            let mut key = db.get_api_key(&uuid)?.context(format!("API key '{}' not found", id))?;
+            let was_legacy = ironmud::api_key_auth::is_legacy_hash(&key.key_hash);
+            let generated = ironmud::api_key_auth::generate(key.id);
+            key.key_hash = generated.key_hash;
+            db.save_api_key(&key)?;
+
+            println!("Rotated API key '{}'", key.name);
+            if was_legacy {
+                println!("(migrated from the deprecated legacy format)");
+            }
+            println!();
+            println!("The old key no longer works. Update every client that used it,");
+            println!("e.g. IRONMUD_API_KEY in .mcp.json, and restart the MCP server.");
+            println!();
+            println!("=== IMPORTANT: Save this key now! It cannot be recovered! ===");
+            println!();
+            println!("API Key: {}", generated.raw);
+            println!();
         }
         ApiKeyAction::Delete { id } => {
             let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
@@ -752,26 +913,6 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Base64 encode bytes (URL-safe, no padding)
-fn base64_encode(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut result = String::with_capacity((bytes.len() * 4 + 2) / 3);
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as usize;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as usize;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as usize;
-        result.push(ALPHABET[b0 >> 2] as char);
-        result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
-        if chunk.len() > 1 {
-            result.push(ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)] as char);
-        }
-        if chunk.len() > 2 {
-            result.push(ALPHABET[b2 & 0x3f] as char);
-        }
-    }
-    result
 }
 
 /// Truncate a string to max_len, adding "..." if truncated.

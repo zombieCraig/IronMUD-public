@@ -321,10 +321,7 @@ async fn list_rooms(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut rooms = state
-        .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut rooms = state.db.list_all_rooms()?;
 
     // Filter by area_id if provided
     if let Some(ref area_id_str) = query.area_id {
@@ -356,10 +353,7 @@ async fn list_rooms_summary(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut rooms = state
-        .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut rooms = state.db.list_all_rooms()?;
 
     // Filter by area_id if provided
     if let Some(ref area_id_str) = query.area_id {
@@ -401,8 +395,7 @@ async fn get_room(
 
     let room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     Ok(Json(RoomResponse {
@@ -423,8 +416,7 @@ async fn get_room_by_vnum(
 
     let room = state
         .db
-        .get_room_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Room with vnum '{}' not found", vnum)))?;
 
     Ok(Json(RoomResponse {
@@ -452,8 +444,7 @@ async fn create_room(
         // Verify area exists and user has permission
         let area = state
             .db
-            .get_area_data(&uuid)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .get_area_data(&uuid)?
             .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", area_id_str)))?;
 
         if !can_edit_area(&user, &area) {
@@ -480,12 +471,7 @@ async fn create_room(
 
     // Check vnum uniqueness if provided
     if let Some(ref vnum) = req.vnum {
-        if state
-            .db
-            .get_room_by_vnum(vnum)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-            .is_some()
-        {
+        if state.db.get_room_by_vnum(vnum)?.is_some() {
             return Err(ApiError::VnumInUse(format!("Vnum '{}' is already in use", vnum)));
         }
     }
@@ -595,17 +581,11 @@ async fn create_room(
 
     // Attribution: see src/attribution.rs.
     room.stamp_created(&user.api_key.owner_character);
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     // Register vnum in the index so it's findable by vnum lookup
     if let Some(ref vnum) = room.vnum {
-        state
-            .db
-            .set_room_vnum(&room.id, vnum)
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        state.db.set_room_vnum(&room.id, vnum)?;
     }
 
     notify_builders(
@@ -634,26 +614,11 @@ async fn update_room(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission if room belongs to an area
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Apply updates
     if let Some(title) = req.title {
@@ -665,9 +630,14 @@ async fn update_room(
         room.description = description;
     }
     if let Some(area_id_str) = req.area_id {
-        let new_area_id =
-            Uuid::parse_str(&area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
-        room.area_id = Some(new_area_id);
+        // Moving a room into an area is authoring into that area: same
+        // permission and quota rules as creating a room there. An empty
+        // string makes the room an orphan.
+        let new_area_id = super::auth::parse_and_authorize_area(&state.db, &user, Some(&area_id_str))?;
+        if new_area_id.is_some() && new_area_id != room.area_id {
+            super::quotas::check_area_quota(&state.db, new_area_id, super::quotas::QuotaKind::Rooms)?;
+        }
+        room.area_id = new_area_id;
     }
     if let Some(flags) = req.flags {
         if let Some(v) = flags.dark {
@@ -789,10 +759,7 @@ async fn update_room(
 
     // Attribution: see src/attribution.rs.
     room.stamp_edited(&user.api_key.owner_character);
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     notify_builders(
         &state.connections,
@@ -819,41 +786,20 @@ async fn delete_room(
 
     let room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to delete this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     let room_name = room.vnum.clone().unwrap_or_else(|| room.id.to_string());
 
     // Clear vnum from index before deleting
     if room.vnum.is_some() {
-        state
-            .db
-            .clear_room_vnum(&uuid)
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        state.db.clear_room_vnum(&uuid)?;
     }
 
-    state
-        .db
-        .delete_room(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_room(&uuid)?;
 
     notify_builders(
         &state.connections,
@@ -881,32 +827,16 @@ async fn set_exit(
     // Verify target room exists
     let _target = state
         .db
-        .get_room_data(&target_uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&target_uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Target room '{}' not found", req.target_room_id)))?;
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Set the exit
     match direction.to_lowercase().as_str() {
@@ -924,10 +854,7 @@ async fn set_exit(
         }
     }
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -945,26 +872,11 @@ async fn remove_exit(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Remove the exit
     match direction.to_lowercase().as_str() {
@@ -982,10 +894,7 @@ async fn remove_exit(
         }
     }
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1004,26 +913,11 @@ async fn set_door(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Validate direction
     let dir_key = match direction.to_lowercase().as_str() {
@@ -1053,10 +947,7 @@ async fn set_door(
 
     room.doors.insert(dir_key.to_string(), door);
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1074,26 +965,11 @@ async fn remove_door(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Normalize direction
     let dir_key = match direction.to_lowercase().as_str() {
@@ -1113,10 +989,7 @@ async fn remove_door(
 
     room.doors.remove(dir_key);
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1135,26 +1008,11 @@ async fn add_trigger(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Parse trigger type
     let trigger_type = match req.trigger_type.to_lowercase().as_str() {
@@ -1174,6 +1032,8 @@ async fn add_trigger(
         }
     };
 
+    super::validate::check_script_name(&req.script_name)?;
+
     let trigger = RoomTrigger {
         trigger_type,
         script_name: req.script_name,
@@ -1191,10 +1051,7 @@ async fn add_trigger(
 
     room.triggers.push(trigger);
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1212,26 +1069,11 @@ async fn remove_trigger(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     if index >= room.triggers.len() {
         return Err(ApiError::NotFound(format!("Trigger index {} not found", index)));
@@ -1239,10 +1081,7 @@ async fn remove_trigger(
 
     room.triggers.remove(index);
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1261,26 +1100,11 @@ async fn add_extra_desc(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     check_text_len("description", &req.description, DESCRIPTION_MAX)?;
 
@@ -1291,10 +1115,7 @@ async fn add_extra_desc(
 
     room.extra_descs.push(extra);
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,
@@ -1312,26 +1133,11 @@ async fn remove_extra_desc(
 
     let mut room = state
         .db
-        .get_room_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
-    if let Some(area_id) = room.area_id {
-        if let Some(area) = state
-            .db
-            .get_area_data(&area_id)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
-            if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden(
-                    "You don't have permission to edit this room".into(),
-                ));
-            }
-        }
-    } else if !can_write(&user) {
-        return Err(ApiError::Forbidden("Write permission required".into()));
-    }
+    super::auth::authorize_existing_area(&state.db, &user, room.area_id)?;
 
     let keyword_lower = keyword.to_lowercase();
     let original_len = room.extra_descs.len();
@@ -1345,10 +1151,7 @@ async fn remove_extra_desc(
         )));
     }
 
-    state
-        .db
-        .save_room_data(room.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_room_data(room.clone())?;
 
     Ok(Json(RoomResponse {
         success: true,

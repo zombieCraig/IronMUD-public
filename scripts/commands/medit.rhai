@@ -133,8 +133,7 @@ fn run_command(args, connection_id) {
             new_area_id = current_room.area_id;
         }
         if new_area_id != "" {
-            if !can_edit_area(new_area_id, char.name) {
-                send_client_message(connection_id, "You don't have permission to author mobiles for this area. Move to a room you can edit, or use a builder area.");
+            if !olc::require_area_edit(connection_id, new_area_id, char.name, "You don't have permission to author mobiles for this area. Move to a room you can edit, or use a builder area.") {
                 return;
             }
             let quota_err = area_quota_check(new_area_id, "mobiles");
@@ -214,8 +213,7 @@ fn run_command(args, connection_id) {
     // `show` above is intentionally not gated.
     let mob_area_id = mobile.area_id;
     if mob_area_id != "" {
-        if !can_edit_area(mob_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to edit mobiles in that area.");
+        if !olc::require_area_edit(connection_id, mob_area_id, char.name, "You don't have permission to edit mobiles in that area.") {
             return;
         }
     }

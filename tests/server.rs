@@ -3,9 +3,10 @@
 use anyhow::Result;
 use ironmud::db::Db;
 use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
+use parking_lot::Mutex;
 use rhai::Engine;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -166,9 +167,9 @@ async fn test_server_hot_reload() -> Result<()> {
     }));
 
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world
-            .engine
+            .engine_mut()
             .register_type_with_name::<Entity>("Entity")
             .register_get("id", |entity: &mut Entity| entity.id.to_string())
             .register_get("name", |entity: &mut Entity| entity.name.clone())
@@ -189,7 +190,7 @@ async fn test_server_hot_reload() -> Result<()> {
         description: "A vast, empty test void.".to_string(),
     };
     {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         world
             .db
             .insert(entity_id.as_bytes(), serde_json::to_vec(&entity)?)?;
@@ -268,7 +269,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         world_report: Default::default(),
         build_scores: Default::default(),
         audit_ctx: Default::default(),
-        engine,
+        engine: std::sync::Arc::new(engine),
         db,
         scripts,
         connections: connections.clone(),
@@ -297,17 +298,22 @@ async fn test_character_system_lifecycle() -> Result<()> {
 
     // Register Rhai functions for character system
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         let db_clone = world.db.clone();
         script::register_rhai_functions(
-            &mut world.engine,
+            world.engine_mut(),
             Arc::new(db_clone),
             connections.clone(),
             state.clone(),
         );
         // Register no-op chat broadcast functions for tests (chat integrations not configured in test environment)
-        world.engine.register_fn("chat_broadcast", |_message: String| {});
-        world.engine.register_fn("matrix_broadcast", |_message: String| {});
+        world.engine_mut().register_fn("chat_broadcast", |_message: String| {});
+        world
+            .engine_mut()
+            .register_fn("matrix_broadcast", |_message: String| {});
+        world
+            .engine_mut()
+            .register_fn("chat_broadcast_limited", |_k: String, _s: i64, _m: String| true);
     }
 
     load_scripts(state.clone())?;
@@ -444,7 +450,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
     client2.send(&format!("login {} {}", char_name, wrong_password)).await?;
     let response2 = client2.read_until_prompt().await?;
     assert!(
-        response2.contains("Incorrect password."),
+        response2.contains("Invalid account name or password."),
         "Login with wrong password unexpectedly succeeded or gave wrong message: {}",
         response2
     );
@@ -463,9 +469,9 @@ async fn test_character_system_lifecycle() -> Result<()> {
         .send(&format!("login {} {}", non_existent_char, password))
         .await?;
     let response3 = client3.read_until_prompt().await?;
-    let expected_not_found_msg = format!("Account '{}' not found.", non_existent_char);
+    // Same reply as a wrong password: login must not reveal which names exist.
     assert!(
-        response3.contains(&expected_not_found_msg),
+        response3.contains("Invalid account name or password."),
         "Login with non-existent character unexpectedly succeeded or gave wrong message: {}",
         response3
     );
@@ -1587,10 +1593,11 @@ mod migration_tests {
     use ironmud::{
         AreaData, AreaFlags, AreaPermission, CombatZoneType, GameTime, RoomData, RoomExits, RoomFlags, WaterType,
     };
+    use parking_lot::Mutex;
     use std::collections::HashMap;
     use std::panic::AssertUnwindSafe;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     fn data_dir() -> PathBuf {
@@ -5620,8 +5627,9 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
         ItemData, ItemType, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData,
         WearLocation,
     };
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5769,8 +5777,9 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
     use ironmud::types::{
         ItemData, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
     };
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6495,7 +6504,7 @@ fn test_courage_buff_cures_feared() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let conns: ironmud::SharedConnections =
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
 
         let char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
             "name": "fraidycat",
@@ -6657,8 +6666,9 @@ fn test_achievement_morality_delta_default_is_zero_and_round_trips() {
 
 #[test]
 fn test_achievement_unlock_applies_morality_delta_clamped() {
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -6719,8 +6729,9 @@ fn test_achievement_unlock_applies_morality_delta_clamped() {
 
 #[test]
 fn test_achievement_morality_delta_clamps_at_floor() {
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -8750,7 +8761,10 @@ fn test_tab_completion_appends_room_contextual_verbs() {
     // current room's contextual_commands.verb entries (deduped).
     use std::fs;
 
-    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs")
+        + fs::read_to_string("src/conn_input.rs")
+            .expect("read conn_input.rs")
+            .as_str();
     assert!(
         src.contains("contextual_commands"),
         "lib.rs TAB path doesn't reference contextual_commands"
@@ -8989,14 +9003,20 @@ fn test_create_command_throttles_email_sends() {
 
 #[test]
 fn test_login_uses_account_password_hash_not_character_hash() {
-    // Source-level: login.rhai must verify against account.password_hash, not
-    // existing_char.password_hash. If this drifts, the auth path is reading a
-    // stale hash and post-migration password changes silently fail to land.
+    // Source-level: login.rhai must verify against the account (via
+    // verify_account_login, which checks account.password_hash plus any
+    // pending `forgot` reset), not existing_char.password_hash. If this drifts,
+    // the auth path is reading a stale hash and post-migration password
+    // changes silently fail to land.
     use std::fs;
     let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
     assert!(
-        src.contains("verify_password(password, account.password_hash)"),
-        "login.rhai must verify against account.password_hash"
+        src.contains("verify_account_login(account.id, password)"),
+        "login.rhai must verify through verify_account_login"
+    );
+    assert!(
+        !src.contains("verify_password(password"),
+        "login.rhai must not verify a hash directly"
     );
     assert!(
         src.contains("get_account_by_name"),
@@ -9095,7 +9115,10 @@ fn test_select_character_mode_routes_to_login_rhai() {
     // `select_character`, otherwise typing a number at the roster prompt
     // falls through to "Unknown command".
     use std::fs;
-    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs")
+        + fs::read_to_string("src/conn_input.rs")
+            .expect("read conn_input.rs")
+            .as_str();
     assert!(
         src.contains("mode == \"select_character\""),
         "lib.rs OLC dispatch must route select_character to login.rhai"
@@ -9345,7 +9368,10 @@ fn test_email_verify_prompt_mode_routes_to_create_rhai() {
     // mode to create.rhai (which owns both the create-time and login-time
     // verification UX).
     use std::fs;
-    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs")
+        + fs::read_to_string("src/conn_input.rs")
+            .expect("read conn_input.rs")
+            .as_str();
     assert!(
         src.contains("mode == \"email_verify_prompt\""),
         "lib.rs OLC dispatch must include email_verify_prompt"
@@ -9931,7 +9957,7 @@ fn test_account_prefs_module_is_registered() {
 fn test_apply_world_preset_switches_settings_and_reloads() {
     // Drives `apply_world_preset` through a free-standing engine so eval()
     // doesn't run while we hold the World lock — the binding itself locks
-    // state and would deadlock otherwise (std::sync::Mutex isn't reentrant).
+    // state and would deadlock otherwise (parking_lot::Mutex isn't reentrant).
     let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -9946,7 +9972,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
             world_report: Default::default(),
             build_scores: Default::default(),
             audit_ctx: Default::default(),
-            engine: Engine::new(),
+            engine: std::sync::Arc::new(Engine::new()),
             db,
             scripts: HashMap::new(),
             connections: connections.clone(),
@@ -9975,7 +10001,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
 
         let mut driver = Engine::new();
         driver.set_max_expr_depths(128, 128);
-        let db_for_register = state.lock().unwrap().db.clone();
+        let db_for_register = state.lock().db.clone();
         script::register_rhai_functions(
             &mut driver,
             Arc::new(db_for_register),
@@ -9984,9 +10010,10 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         );
         driver.register_fn("chat_broadcast", |_m: String| {});
         driver.register_fn("matrix_broadcast", |_m: String| {});
+        driver.register_fn("chat_broadcast_limited", |_k: String, _s: i64, _m: String| true);
 
         load_game_data(state.clone()).expect("initial load");
-        let fantasy_classes = state.lock().unwrap().class_definitions.len();
+        let fantasy_classes = state.lock().class_definitions.len();
         assert!(
             fantasy_classes > 1,
             "fantasy preset should expose >1 class, got {}",
@@ -10004,7 +10031,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         assert!(ok, "modern preset switch should succeed: {:?}", res);
 
         {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             for key in ["class_preset", "race_preset", "spell_preset", "language_preset"] {
                 let val = world.db.get_setting(key).unwrap().unwrap_or_default();
                 assert_eq!(val, "modern", "{} not switched", key);
@@ -10012,20 +10039,14 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         }
 
         let (classes_n, races_n) = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             (world.class_definitions.len(), world.race_definitions.len())
         };
         assert!(classes_n >= 1, "modern preset loaded {} classes", classes_n);
         assert!(races_n >= 1, "modern preset loaded {} races", races_n);
 
         let _back: rhai::Map = driver.eval(r#"apply_world_preset("fantasy")"#).expect("eval fantasy");
-        let val = state
-            .lock()
-            .unwrap()
-            .db
-            .get_setting("class_preset")
-            .unwrap()
-            .unwrap_or_default();
+        let val = state.lock().db.get_setting("class_preset").unwrap().unwrap_or_default();
         assert_eq!(val, "fantasy");
     }));
 
@@ -10143,8 +10164,9 @@ fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
 
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10202,8 +10224,9 @@ fn test_sun_tick_skips_indoor_vampire() {
 
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10246,8 +10269,9 @@ fn test_sun_tick_skips_at_night() {
 
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10597,8 +10621,9 @@ fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
 
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10652,8 +10677,9 @@ fn test_sun_tick_clears_burning_when_moved_indoors() {
 
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10753,8 +10779,9 @@ fn test_blood_tick_decays_vampire_mob_pool() {
 
     use ironmud::types::VampireState;
     use ironmud::vampire::process_blood_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10846,8 +10873,9 @@ fn test_blood_tick_hunger_frenzy_on_starving_mob() {
     use ironmud::MobileData;
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_blood_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -11500,8 +11528,9 @@ fn test_thinblood_takes_half_sun_damage_via_mob() {
 
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -13275,8 +13304,9 @@ fn test_cyberware_uninstall_round_trip_rebuilds_item() {
 
 #[test]
 fn test_cyberware_survives_player_death() {
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
     let db = Arc::new(ironmud::db::Db::open(temp.path()).expect("open DB"));
@@ -14529,16 +14559,16 @@ fn test_leaderboard_tick_fills_the_world_cache() {
     }
 
     let connections: ironmud::SharedConnections =
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
     let state = ironmud::World::minimal_shared(db.clone(), connections);
 
     // Before the scan the cache is empty, and a reader has to cope with that.
-    assert_eq!(state.lock().unwrap().leaderboards.generated_at, 0);
-    assert!(state.lock().unwrap().leaderboards.is_empty());
+    assert_eq!(state.lock().leaderboards.generated_at, 0);
+    assert!(state.lock().leaderboards.is_empty());
 
     ironmud::leaderboard::process_leaderboard_tick(&db, &state).expect("leaderboard tick");
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let boards = &world.leaderboards;
     assert!(boards.generated_at > 0, "the scan stamps its own time");
     assert_eq!(boards.characters_scanned, 2, "the admin is not a competitor");
@@ -14739,4 +14769,38 @@ fn test_group_panel_rows_render() {
     assert_eq!(plain, "", "a present grouped member needs no tag at all");
     let tagalong = render("render_member_tags", row("Pup", true, 90, "following", false));
     assert_eq!(tagalong, " (Following)");
+}
+
+/// Regression: two alts on one account withdrawing from the shared bank at the
+/// same moment both passed the balance check against one snapshot, so the
+/// account was debited once but both pockets were credited. The shared pile is
+/// now updated with a CAS, so concurrent withdrawals can never exceed it.
+#[test]
+fn test_concurrent_shared_bank_withdrawals_cannot_overdraw() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+    use std::sync::{Arc, Barrier};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = Db::open(temp.path()).expect("open DB");
+    let mut a = AccountData::new("Hoard".into(), "h".into());
+    a.shared_bank_gold = 100;
+    let id = a.id;
+    db.save_account(a).unwrap();
+
+    const THREADS: usize = 8;
+    let barrier = Arc::new(Barrier::new(THREADS));
+    let handles: Vec<_> = (0..THREADS)
+        .map(|_| {
+            let (db, barrier) = (db.clone(), barrier.clone());
+            std::thread::spawn(move || {
+                barrier.wait();
+                db.add_shared_bank_gold(&id, -60).unwrap().is_some()
+            })
+        })
+        .collect();
+    let wins = handles.into_iter().map(|h| h.join().unwrap()).filter(|ok| *ok).count();
+    assert_eq!(wins, 1, "only one 60-gold withdrawal fits in 100");
+    let after = db.get_account_by_id(&id).unwrap().expect("account");
+    assert_eq!(after.shared_bank_gold, 40);
 }

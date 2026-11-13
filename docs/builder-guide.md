@@ -12,7 +12,7 @@ Online Creation lets you create and modify game content while connected to the M
 
 ## Getting Builder Access
 
-The first character created on a fresh database automatically becomes an admin with builder permissions.
+The first character created on a fresh database automatically becomes an admin with builder permissions when it's created from the server itself (a loopback connection, e.g. `telnet localhost 4000`). From anywhere else, set `IRONMUD_FIRST_USER_ADMIN=true` before creating it, or grant it afterwards with `ironmud-admin user grant-admin <name>`.
 
 For other characters, access depends on the server's `builder_mode` setting:
 

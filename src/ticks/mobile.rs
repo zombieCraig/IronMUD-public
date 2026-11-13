@@ -14,8 +14,8 @@ use ironmud::{
 };
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, send_message_to_character,
-    sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, live_character,
+    send_message_to_character,
 };
 
 /// Mobile wandering tick interval in seconds
@@ -710,15 +710,17 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                     m.combat.distances.insert(player_target_id, CombatDistance::Ranged);
                                 });
 
-                                // Put the player in combat with this mobile
-                                char.combat.in_combat = true;
-                                if !char.combat.targets.iter().any(|t| t.target_id == current_mobile.id) {
-                                    char.combat.targets.push(CombatTarget::mobile(current_mobile.id));
-                                }
-                                // Player also at ranged distance from mob
-                                char.combat.distances.insert(current_mobile.id, CombatDistance::Ranged);
-                                let _ = db.save_character_data(char.clone());
-                                sync_character_to_session(connections, &char, state);
+                                // Put the player in combat with this mobile. Applied to
+                                // the live session copy (not the DB snapshot read above),
+                                // so nothing the player did since the last flush is lost.
+                                engage_player(
+                                    db,
+                                    connections,
+                                    &player_name,
+                                    current_mobile.id,
+                                    CombatDistance::Ranged,
+                                    was_sleeping,
+                                );
 
                                 // Notify the room (sleeping players don't see this).
                                 // Memory-driven attacks get a recognition emote.
@@ -747,8 +749,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                 if let Ok(items) = db.get_items_in_room(&room_id) {
                     let pickable: Vec<&ItemData> =
                         items.iter().filter(|i| !i.is_prototype && !i.flags.no_get).collect();
-                    if !pickable.is_empty() {
-                        let item = pickable[rng.gen_range(0..pickable.len())];
+                    if let Some(&item) = pickable.choose(&mut rng) {
                         let item_name = item.name.clone();
                         let item_id = item.id;
                         if db
@@ -780,7 +781,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                             let eligible: Vec<String> = players
                                 .into_iter()
                                 .filter(|name| {
-                                    if let Ok(Some(c)) = db.get_character_data(name) {
+                                    if let Ok(Some(c)) = live_character(connections, db, name) {
                                         !c.god_mode
                                             && !ironmud::check_build_mode(&db, name, &room_id)
                                             && c.position != CharacterPosition::Sleeping
@@ -792,7 +793,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                 .collect();
 
                             if let Some(target_name) = eligible.choose(&mut rng) {
-                                if let Ok(Some(mut char)) = db.get_character_data(target_name) {
+                                if let Ok(Some(char)) = live_character(connections, db, target_name) {
                                     let mob_level = current_mobile.level;
                                     let player_level = char.level;
                                     let thievery_skill = char.skills.get("thievery").map(|s| s.level).unwrap_or(0);
@@ -806,14 +807,20 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                         // Steal succeeded
                                         let max_steal = (char.gold / 4).max(1);
                                         let stolen = rng.gen_range(1..=max_steal);
-                                        char.gold -= stolen;
-                                        let _ = db.save_character_data(char.clone());
-                                        sync_character_to_session(connections, &char, state);
-
-                                        current_mobile.gold += stolen;
-                                        let _ = db.update_mobile(&current_mobile.id, |m| {
-                                            m.gold += stolen;
-                                        });
+                                        // Debit through the purse (session-first, refuses
+                                        // overdraw); only pay the mobile if that happened.
+                                        if ironmud::purse::add_gold(
+                                            db,
+                                            connections,
+                                            state,
+                                            target_name,
+                                            -(stolen as i64),
+                                        ) {
+                                            current_mobile.gold = current_mobile.gold.saturating_add(stolen);
+                                            let _ = db.update_mobile(&current_mobile.id, |m| {
+                                                m.gold = m.gold.saturating_add(stolen);
+                                            });
+                                        }
 
                                         send_message_to_character(
                                             connections,
@@ -868,13 +875,14 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                                 m.combat.distances.insert(player_target_id, CombatDistance::Melee);
                                             });
 
-                                            char.combat.in_combat = true;
-                                            if !char.combat.targets.iter().any(|t| t.target_id == current_mobile.id) {
-                                                char.combat.targets.push(CombatTarget::mobile(current_mobile.id));
-                                            }
-                                            char.combat.distances.insert(current_mobile.id, CombatDistance::Melee);
-                                            let _ = db.save_character_data(char.clone());
-                                            sync_character_to_session(connections, &char, state);
+                                            engage_player(
+                                                db,
+                                                connections,
+                                                target_name,
+                                                current_mobile.id,
+                                                CombatDistance::Melee,
+                                                false,
+                                            );
 
                                             broadcast_to_room_awake(
                                                 connections,
@@ -1102,7 +1110,8 @@ pub fn get_opposite_direction_rust(direction: &str) -> &'static str {
 /// Find the first player in a room
 pub fn find_player_name_in_room(connections: &SharedConnections, room_id: &uuid::Uuid) -> Option<String> {
     debug!("find_player_name_in_room: acquiring connections lock");
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         debug!("find_player_name_in_room: lock acquired");
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
@@ -1113,8 +1122,6 @@ pub fn find_player_name_in_room(connections: &SharedConnections, room_id: &uuid:
             }
         }
         debug!("find_player_name_in_room: no player found in room");
-    } else {
-        debug!("find_player_name_in_room: failed to acquire lock");
     }
     None
 }
@@ -1194,9 +1201,7 @@ pub fn propagate_mobile_followers(
     source_room: &uuid::Uuid,
     direction: &str,
 ) {
-    let Ok(conns) = connections.lock() else {
-        return;
-    };
+    let conns = connections.lock();
     for session in conns.values() {
         let Some(ref char) = session.character else {
             continue;
@@ -1217,7 +1222,8 @@ pub fn propagate_mobile_followers(
 /// Find all player names in a room
 pub fn find_players_in_room(connections: &SharedConnections, room_id: &uuid::Uuid) -> Vec<String> {
     let mut players = Vec::new();
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id {
@@ -1243,7 +1249,8 @@ pub fn find_players_in_room_with_data(
     room_id: &uuid::Uuid,
 ) -> Vec<ironmud::CharacterData> {
     let mut players = Vec::new();
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id {
@@ -1455,6 +1462,40 @@ fn process_mobile_effects(db: &db::Db, connections: &SharedConnections, _state: 
     Ok(())
 }
 
+/// Put an online-or-offline player into combat with `mob_id`, writing the
+/// session copy when they're online (see `apply_to_character`). `wake`
+/// stands a sleeping player up.
+fn engage_player(
+    db: &db::Db,
+    connections: &SharedConnections,
+    player_name: &str,
+    mob_id: uuid::Uuid,
+    distance: CombatDistance,
+    wake: bool,
+) {
+    ironmud::script::achievements::apply_to_character(db, connections, player_name, |c| {
+        if wake && c.position == CharacterPosition::Sleeping {
+            c.position = CharacterPosition::Standing;
+        }
+        c.combat.in_combat = true;
+        if !c.combat.targets.iter().any(|t| t.target_id == mob_id) {
+            c.combat.targets.push(CombatTarget::mobile(mob_id));
+        }
+        c.combat.distances.insert(mob_id, distance);
+        true
+    });
+    {
+        let mut conns = connections.lock();
+        if let Some(session) = conns.values_mut().find(|s| {
+            s.character
+                .as_ref()
+                .is_some_and(|c| c.name.eq_ignore_ascii_case(player_name))
+        }) {
+            session.sync_msdp_vitals(db);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1489,15 +1530,15 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<InputEvent>(1);
         let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch);
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         conns
     }
 
     fn state_with(db: &db::Db, conns: &SharedConnections, defs: Vec<reputation::FactionDefinition>) -> SharedState {
         let state = ironmud::World::minimal_shared(db.clone(), conns.clone());
         {
-            let mut w = state.lock().unwrap();
+            let mut w = state.lock();
             for d in defs {
                 w.faction_definitions.insert(d.key.clone(), d);
             }
@@ -1582,6 +1623,31 @@ mod tests {
         );
     }
 
+    /// An aggro/thief engagement writes onto the live session copy. It used
+    /// to load the DB copy, mark it in combat and push that whole copy into
+    /// the session, reverting anything newer the session held.
+    #[test]
+    fn engaging_a_player_keeps_newer_session_state() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+        let conns = player_in(&db, room, "wren", None);
+        // The session moves ahead of the DB (the regen tick hasn't flushed).
+        for s in conns.lock().values_mut() {
+            s.character.as_mut().unwrap().gold = 77;
+        }
+        let mob = uuid::Uuid::new_v4();
+        engage_player(&db, &conns, "wren", mob, CombatDistance::Melee, false);
+
+        let live = super::super::broadcast::live_character(&conns, &db, "wren")
+            .unwrap()
+            .unwrap();
+        assert_eq!(live.gold, 77, "session gold must survive the engagement");
+        assert!(live.combat.in_combat);
+        assert!(live.combat.targets.iter().any(|t| t.target_id == mob));
+        let stored = db.get_character_data("wren").unwrap().unwrap();
+        assert_eq!(stored.gold, 77, "and the save carries the session copy");
+    }
+
     /// The scan reads the session, not the database.
     ///
     /// Two reasons, and the test pins both at once by making the two copies
@@ -1611,8 +1677,8 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<InputEvent>(1);
         let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(stored);
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
 
         let state = state_with(
             &db,

@@ -149,6 +149,19 @@ pub struct AccountData {
     /// Unix seconds anchoring the rolling-day window for the password-reset cap.
     #[serde(default)]
     pub password_reset_day_started_at: i64,
+    /// Argon2 hash of the outstanding `forgot` temp password. Login accepts it
+    /// (until `pending_reset_expires_at`) alongside the real password and only
+    /// then promotes it, so requesting a reset for someone else's email can't
+    /// lock them out of their account.
+    #[serde(default)]
+    pub pending_reset_hash: Option<String>,
+    /// Unix seconds after which `pending_reset_hash` stops working.
+    #[serde(default)]
+    pub pending_reset_expires_at: i64,
+    /// Wrong guesses against the current email verification code. The code is
+    /// invalidated at `MAX_CODE_ATTEMPTS`, so 6 digits can't be brute-forced.
+    #[serde(default)]
+    pub email_verification_attempts: i32,
     /// Fast-check flag mirrored from `ban_record.is_some()`. Kept for legacy
     /// boolean bans saved before the metadata slice — those rows are honored
     /// without a structured record (login shows the generic suspended message).
@@ -223,6 +236,9 @@ impl AccountData {
             password_reset_count: 0,
             password_reset_day_count: 0,
             password_reset_day_started_at: 0,
+            pending_reset_hash: None,
+            pending_reset_expires_at: 0,
+            email_verification_attempts: 0,
             is_banned: false,
             ban_record: None,
             last_login_ip: String::new(),

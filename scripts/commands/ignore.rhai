@@ -1,6 +1,7 @@
 // scripts/commands/ignore.rhai
 // Block messages and notifications from specific players
 // Usage: ignore [list|remove] [name]
+//        ignore discord | matrix | discord:<name> | matrix:@user:server
 
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
@@ -56,6 +57,17 @@ fn add_ignored(char, name, connection_id) {
         }
     }
 
+    // Chat-bridge senders: `discord`/`matrix` blocks the whole platform,
+    // `discord:<name>` / `matrix:@user:server` blocks one external sender.
+    if is_bridge_ignore(lower_target) {
+        let ignored = char.ignored;
+        ignored.push(lower_target);
+        char.ignored = ignored;
+        save_character_data(char);
+        send_client_message(connection_id, "You are now ignoring " + lower_target + ".");
+        return;
+    }
+
     // Verify character exists
     let target_data = get_character_data(target_name);
     if target_data == () {
@@ -70,6 +82,13 @@ fn add_ignored(char, name, connection_id) {
     save_character_data(char);
 
     send_client_message(connection_id, "You are now ignoring " + actual_name + ".");
+}
+
+fn is_bridge_ignore(lower) {
+    if lower == "discord" || lower == "matrix" { return true; }
+    if lower.starts_with("discord:") && lower.len() > 8 { return true; }
+    if lower.starts_with("matrix:") && lower.len() > 7 { return true; }
+    return false;
 }
 
 fn remove_ignored(char, name, connection_id) {

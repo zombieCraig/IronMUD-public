@@ -7,7 +7,8 @@
 
 #![recursion_limit = "256"]
 
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 use ironmud::audit::scan::WorldSnapshot;
 use ironmud::build_tracks::{self, Predicate, TrackDef, TrackScope};
@@ -335,7 +336,7 @@ fn run_build(db: &Db, args: &str, builder: &str) -> String {
     let connections: ironmud::SharedConnections = Arc::new(Mutex::new(std::collections::HashMap::new()));
     let state = World::minimal_shared(db.clone(), connections.clone());
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world.build_tracks = shipped_tracks();
     }
 
@@ -356,7 +357,7 @@ fn run_build(db: &Db, args: &str, builder: &str) -> String {
         }))
         .unwrap(),
     );
-    connections.lock().unwrap().insert(conn_id, session);
+    connections.lock().insert(conn_id, session);
 
     // Free-standing engine: the bindings lock SharedState, and holding the
     // World lock across a script call deadlocks a non-reentrant mutex.
@@ -444,7 +445,7 @@ fn run_build_with_scan(db: &Db, args: &str, builder: &str) -> String {
     let connections: ironmud::SharedConnections = Arc::new(Mutex::new(std::collections::HashMap::new()));
     let state = World::minimal_shared(db.clone(), connections.clone());
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world.build_tracks = shipped_tracks();
     }
     ironmud::build_score::process_build_score_tick(db, &connections, &state, 100).unwrap();
@@ -466,7 +467,7 @@ fn run_build_with_scan(db: &Db, args: &str, builder: &str) -> String {
         }))
         .unwrap(),
     );
-    connections.lock().unwrap().insert(conn_id, session);
+    connections.lock().insert(conn_id, session);
 
     let mut engine = rhai::Engine::new();
     engine.set_max_expr_depths(128, 128);

@@ -2,6 +2,8 @@
 // Usage: rdelete <room_id>
 // Delete a room from the database
 
+import "olc_helpers" as olc;
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -26,8 +28,7 @@ fn run_command(args, connection_id) {
     // Check area permissions if room belongs to an area
     let room_area_id = target_room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to delete rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to delete rooms in this area.") {
             return;
         }
     }

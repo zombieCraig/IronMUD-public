@@ -96,9 +96,13 @@ fn get_from_room(char, keyword, connection_id) {
 
     // Special handling for gold - add to balance directly (gold is weightless)
     if is_gold_item(item.id) {
-        let amount = item.value;
+        // Claim first: credit only what we actually removed.
+        let amount = claim_gold_item(item.id);
+        if amount <= 0 {
+            send_client_message(connection_id, "Someone else got to that gold first.");
+            return;
+        }
         add_character_gold(char.name, amount);
-        delete_item(item.id);
         sync_char_to_session(char.name, connection_id);
         send_client_message(connection_id, "You pick up " + amount + " gold coins.");
         broadcast_to_room(char.current_room_id, char.name + " picks up some gold.", char.name);
@@ -160,9 +164,11 @@ fn get_all_from_room(char, filter_keyword, room_items, connection_id) {
 
         // Special handling for gold (weightless)
         if is_gold_item(item.id) {
-            gold_total += item.value;
-            add_character_gold(char.name, item.value);
-            delete_item(item.id);
+            let claimed = claim_gold_item(item.id);
+            if claimed > 0 {
+                gold_total += claimed;
+                add_character_gold(char.name, claimed);
+            }
         } else {
             move_item_to_inventory(item.id, char.name);
             clear_item_donation_timer(item.id);
@@ -278,10 +284,13 @@ fn get_from_container(char, item_keyword, container_keyword, connection_id) {
 
     // Special handling for gold - add to balance directly
     if is_gold_item(item.id) {
-        let amount = item.value;
         remove_item_from_container(item.id);
+        let amount = claim_gold_item(item.id);
+        if amount <= 0 {
+            send_client_message(connection_id, "Someone else got to that gold first.");
+            return;
+        }
         add_character_gold(char.name, amount);
-        delete_item(item.id);
         sync_char_to_session(char.name, connection_id);
         send_client_message(connection_id, "You get " + amount + " gold coins from " + container.name + ".");
         let msg = char.name + " gets some gold from " + container.name + ".";
@@ -353,10 +362,12 @@ fn get_all_from_container(char, filter_keyword, container, connection_id) {
 
         // Special handling for gold
         if is_gold_item(item.id) {
-            gold_total += item.value;
             remove_item_from_container(item.id);
-            add_character_gold(char.name, item.value);
-            delete_item(item.id);
+            let claimed = claim_gold_item(item.id);
+            if claimed > 0 {
+                gold_total += claimed;
+                add_character_gold(char.name, claimed);
+            }
         } else {
             remove_item_from_container(item.id);
             move_item_to_inventory(item.id, char.name);
@@ -649,10 +660,13 @@ fn get_single_from_specific_container(char, item_keyword, container, connection_
 
     // Gold handling
     if is_gold_item(item.id) {
-        let amount = item.value;
         remove_item_from_container(item.id);
+        let amount = claim_gold_item(item.id);
+        if amount <= 0 {
+            send_client_message(connection_id, "Someone else got to that gold first.");
+            return;
+        }
         add_character_gold(char.name, amount);
-        delete_item(item.id);
         sync_char_to_session(char.name, connection_id);
         send_client_message(connection_id, "You get " + amount + " gold coins from " + container.name + ".");
         broadcast_to_room(char.current_room_id, char.name + " gets some gold from " + container.name + ".", char.name);

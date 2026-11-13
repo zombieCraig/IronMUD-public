@@ -1367,6 +1367,13 @@ Account email: me@example.com  (verified)
 > email resend                  # send a fresh code (limited to once a minute)
 ```
 
+A code stops working after 5 wrong guesses; use `email resend` for a new one.
+
+`forgot <email>` mails a temporary password that works for one hour. Your
+current password keeps working meanwhile, so a reset someone else requests for
+your address can't lock you out. Logging in with the temporary password makes
+it your password and asks you to pick a new one with `password`.
+
 ### Creating Aliases
 
 ```

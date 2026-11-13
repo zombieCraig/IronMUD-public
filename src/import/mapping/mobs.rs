@@ -321,7 +321,9 @@ pub(super) fn dice_max(expr: &str) -> Option<i32> {
     let (n, sides) = dice_part.split_once('d')?;
     let n: i32 = n.parse().ok()?;
     let sides: i32 = sides.parse().ok()?;
-    Some(n * sides + bonus)
+    // Imported files are untrusted: a huge dice expression yields None
+    // (the caller warns) instead of overflowing.
+    n.checked_mul(sides)?.checked_add(bonus)
 }
 
 /// Slug a zone name into an IronMUD area prefix (alphanumeric + underscore,

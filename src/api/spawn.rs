@@ -1,5 +1,6 @@
 //! Spawn point CRUD endpoints
 
+use crate::api::validate::{VNUM_MAX, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
@@ -127,10 +128,7 @@ async fn list_spawn_points(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut spawn_points = state
-        .db
-        .list_all_spawn_points()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut spawn_points = state.db.list_all_spawn_points()?;
 
     // Filter by area_id if provided
     if let Some(ref area_id_str) = query.area_id {
@@ -159,8 +157,7 @@ async fn get_spawn_point(
 
     let spawn_point = state
         .db
-        .get_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_spawn_point(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Spawn point '{}' not found", id)))?;
 
     Ok(Json(SpawnPointResponse {
@@ -175,14 +172,14 @@ async fn create_spawn_point(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<CreateSpawnPointRequest>,
 ) -> Result<Json<SpawnPointResponse>, ApiError> {
+    check_text_len("vnum", &req.vnum, VNUM_MAX)?;
     // Parse and validate area_id
     let area_uuid =
         Uuid::parse_str(&req.area_id).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
 
     let area = state
         .db
-        .get_area_data(&area_uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&area_uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", req.area_id)))?;
 
     if !can_edit_area(&user, &area) {
@@ -198,11 +195,10 @@ async fn create_spawn_point(
     let room_uuid =
         Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state
-        .db
-        .get_room_data(&room_uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
+    // The spawn point drops entities into this room, so the caller must be
+    // able to edit it too, not just the area the spawn point is filed under.
+    super::auth::authorize_room(&state.db, &user, &room_uuid)?;
+    check_spawn_limits(req.max_count, req.respawn_interval_secs)?;
 
     // Parse entity type
     let entity_type = parse_entity_type(&req.entity_type).ok_or_else(|| {
@@ -212,22 +208,12 @@ async fn create_spawn_point(
     // Verify vnum exists based on entity type
     match entity_type {
         SpawnEntityType::Mobile => {
-            if state
-                .db
-                .get_mobile_by_vnum(&req.vnum)
-                .map_err(|e| ApiError::Internal(e.to_string()))?
-                .is_none()
-            {
+            if state.db.get_mobile_by_vnum(&req.vnum)?.is_none() {
                 return Err(ApiError::NotFound(format!("Mobile prototype '{}' not found", req.vnum)));
             }
         }
         SpawnEntityType::Item => {
-            if state
-                .db
-                .get_item_by_vnum(&req.vnum)
-                .map_err(|e| ApiError::Internal(e.to_string()))?
-                .is_none()
-            {
+            if state.db.get_item_by_vnum(&req.vnum)?.is_none() {
                 return Err(ApiError::NotFound(format!("Item prototype '{}' not found", req.vnum)));
             }
         }
@@ -249,10 +235,7 @@ async fn create_spawn_point(
         replace_on_respawn: req.replace_on_respawn,
     };
 
-    state
-        .db
-        .save_spawn_point(spawn_point.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_spawn_point(spawn_point.clone())?;
 
     notify_builders(
         &state.connections,
@@ -276,15 +259,13 @@ async fn update_spawn_point(
 
     let mut spawn_point = state
         .db
-        .get_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_spawn_point(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Spawn point '{}' not found", id)))?;
 
     // Check permission via area
     let area = state
         .db
-        .get_area_data(&spawn_point.area_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&spawn_point.area_id)?
         .ok_or_else(|| ApiError::NotFound("Associated area not found".into()))?;
 
     if !can_edit_area(&user, &area) {
@@ -292,6 +273,13 @@ async fn update_spawn_point(
             "You don't have permission to edit this spawn point".into(),
         ));
     }
+
+    // Validate only what's being changed, so an existing imported spawn
+    // point outside the limits can still be toggled or edited otherwise.
+    check_spawn_limits(
+        req.max_count.unwrap_or(1),
+        req.respawn_interval_secs.unwrap_or(MIN_RESPAWN_INTERVAL_SECS),
+    )?;
 
     // Apply updates
     if let Some(max_count) = req.max_count {
@@ -310,10 +298,7 @@ async fn update_spawn_point(
         spawn_point.replace_on_respawn = replace_on_respawn;
     }
 
-    state
-        .db
-        .save_spawn_point(spawn_point.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_spawn_point(spawn_point.clone())?;
 
     notify_builders(
         &state.connections,
@@ -339,15 +324,13 @@ async fn delete_spawn_point(
 
     let spawn_point = state
         .db
-        .get_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_spawn_point(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Spawn point '{}' not found", id)))?;
 
     // Check permission via area
     let area = state
         .db
-        .get_area_data(&spawn_point.area_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&spawn_point.area_id)?
         .ok_or_else(|| ApiError::NotFound("Associated area not found".into()))?;
 
     if !can_edit_area(&user, &area) {
@@ -358,10 +341,7 @@ async fn delete_spawn_point(
 
     let vnum = spawn_point.vnum.clone();
 
-    state
-        .db
-        .delete_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_spawn_point(&uuid)?;
 
     notify_builders(
         &state.connections,
@@ -381,19 +361,18 @@ async fn add_dependency(
     Path(id): Path<String>,
     Json(req): Json<AddDependencyRequest>,
 ) -> Result<Json<SpawnPointResponse>, ApiError> {
+    check_text_len("item_vnum", &req.item_vnum, VNUM_MAX)?;
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
     let mut spawn_point = state
         .db
-        .get_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_spawn_point(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Spawn point '{}' not found", id)))?;
 
     // Check permission via area
     let area = state
         .db
-        .get_area_data(&spawn_point.area_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&spawn_point.area_id)?
         .ok_or_else(|| ApiError::NotFound("Associated area not found".into()))?;
 
     if !can_edit_area(&user, &area) {
@@ -403,12 +382,7 @@ async fn add_dependency(
     }
 
     // Verify item vnum exists
-    if state
-        .db
-        .get_item_by_vnum(&req.item_vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_none()
-    {
+    if state.db.get_item_by_vnum(&req.item_vnum)?.is_none() {
         return Err(ApiError::NotFound(format!(
             "Item prototype '{}' not found",
             req.item_vnum
@@ -432,10 +406,7 @@ async fn add_dependency(
 
     spawn_point.dependencies.push(dependency);
 
-    state
-        .db
-        .save_spawn_point(spawn_point.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_spawn_point(spawn_point.clone())?;
 
     Ok(Json(SpawnPointResponse {
         success: true,
@@ -453,15 +424,13 @@ async fn remove_dependency(
 
     let mut spawn_point = state
         .db
-        .get_spawn_point(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_spawn_point(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Spawn point '{}' not found", id)))?;
 
     // Check permission via area
     let area = state
         .db
-        .get_area_data(&spawn_point.area_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&spawn_point.area_id)?
         .ok_or_else(|| ApiError::NotFound("Associated area not found".into()))?;
 
     if !can_edit_area(&user, &area) {
@@ -476,13 +445,31 @@ async fn remove_dependency(
 
     spawn_point.dependencies.remove(index);
 
-    state
-        .db
-        .save_spawn_point(spawn_point.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_spawn_point(spawn_point.clone())?;
 
     Ok(Json(SpawnPointResponse {
         success: true,
         data: spawn_point,
     }))
+}
+
+/// Most entities one spawn point may keep alive.
+pub const MAX_SPAWN_COUNT: i32 = 50;
+/// Shortest respawn interval a spawn point may use.
+pub const MIN_RESPAWN_INTERVAL_SECS: i64 = 30;
+
+/// Keep a spawn point from flooding the world: a huge `max_count` or a
+/// near-zero interval fills rooms faster than anything can clear them.
+fn check_spawn_limits(max_count: i32, respawn_interval_secs: i64) -> Result<(), ApiError> {
+    if !(1..=MAX_SPAWN_COUNT).contains(&max_count) {
+        return Err(ApiError::InvalidInput(format!(
+            "max_count must be between 1 and {MAX_SPAWN_COUNT}"
+        )));
+    }
+    if respawn_interval_secs < MIN_RESPAWN_INTERVAL_SECS {
+        return Err(ApiError::InvalidInput(format!(
+            "respawn_interval_secs must be at least {MIN_RESPAWN_INTERVAL_SECS}"
+        )));
+    }
+    Ok(())
 }

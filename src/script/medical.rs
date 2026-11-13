@@ -133,7 +133,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_helpline_enabled", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.helpline_enabled;
@@ -150,7 +150,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_helpline_enabled",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         char.helpline_enabled = enabled;
@@ -167,7 +167,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_summonable", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.summonable;
@@ -182,7 +182,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("set_summonable", move |connection_id: String, enabled: bool| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.summonable = enabled;
@@ -198,7 +198,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_bloodfeed_willing", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.bloodfeed_willing;
@@ -215,7 +215,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_bloodfeed_willing",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         char.bloodfeed_willing = enabled;
@@ -237,7 +237,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_new_editor_enabled", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.new_editor_enabled;
@@ -254,7 +254,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_new_editor_enabled",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         char.new_editor_enabled = enabled;
@@ -303,7 +303,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return String::new();
             }
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         char.gender = cleaned.clone();
@@ -323,7 +323,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "broadcast_to_helpline",
         move |message: String, room_name: String, area_name: String| -> i64 {
             let mut count = 0i64;
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
 
             let location = if area_name.is_empty() {
                 room_name.clone()
@@ -351,7 +351,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_character_wet", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.is_wet;
@@ -365,7 +365,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_wet_level", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.wet_level as i64;
@@ -380,7 +380,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("apply_wet_status", move |connection_id: String, amount: i64| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.wet_level = (char.wet_level + amount as i32).clamp(0, 100);
@@ -397,7 +397,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("dry_character", move |connection_id: String, amount: i64| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.wet_level = (char.wet_level - amount as i32).max(0);
@@ -413,7 +413,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_cold_exposure", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.cold_exposure as i64;
@@ -427,7 +427,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_heat_exposure", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.heat_exposure as i64;
@@ -444,7 +444,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "has_condition",
         move |connection_id: String, condition: String| -> bool {
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_lock = conns.lock().unwrap();
+                let conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get(&conn_id) {
                     if let Some(ref char) = session.character {
                         return match condition.to_lowercase().as_str() {
@@ -466,7 +466,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_illness_progress", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return char.illness_progress as i64;
@@ -484,7 +484,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("get_effective_insulation", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     let mut total_insulation = 0i32;
@@ -515,7 +515,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("has_waterproof_coverage", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     // Query database for equipped items (source of truth is ItemLocation::Equipped)

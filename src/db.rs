@@ -33,6 +33,9 @@ pub struct Db {
     vnum_index: Arc<Tree>,
     areas: Arc<Tree>,
     items: Arc<Tree>,
+    // In-memory location index over `items` (see `ItemIndex`). Rebuilt at
+    // open; kept in step by the four item write primitives.
+    item_index: Arc<parking_lot::RwLock<ItemIndex>>,
     mobiles: Arc<Tree>,
     spawn_points: Arc<Tree>,
     settings: Arc<Tree>,
@@ -153,7 +156,115 @@ pub struct WorldStats {
     pub characters: usize,
 }
 
+/// Decode one stored item, or log and skip it. A single corrupt record
+/// (bad JSON, or a shape an older/newer build wrote) must not make every
+/// room, inventory and container listing fail.
+fn decode_item(key: &[u8], value: &[u8]) -> Option<ItemData> {
+    match serde_json::from_slice(value) {
+        Ok(item) => Some(item),
+        Err(e) => {
+            let id = Uuid::from_slice(key)
+                .map(|u| u.to_string())
+                .unwrap_or_else(|_| String::from_utf8_lossy(key).into_owned());
+            tracing::warn!("Skipping unreadable item record {}: {}", id, e);
+            None
+        }
+    }
+}
+
+/// Where an item is, as the location index keys it. `Nowhere` (prototypes,
+/// limbo) is not indexed. Owner names are lowercased because inventory and
+/// equipment lookups have always been case-insensitive.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum LocKey {
+    Room(Uuid),
+    Inventory(String),
+    Equipped(String),
+    Container(Uuid),
+}
+
+impl LocKey {
+    fn of(location: &ItemLocation) -> Option<Self> {
+        match location {
+            ItemLocation::Nowhere => None,
+            ItemLocation::Room(id) => Some(Self::Room(*id)),
+            ItemLocation::Inventory(owner) => Some(Self::Inventory(owner.to_lowercase())),
+            ItemLocation::Equipped(owner) => Some(Self::Equipped(owner.to_lowercase())),
+            ItemLocation::Container(id) => Some(Self::Container(*id)),
+        }
+    }
+}
+
+/// Item ids by location, so "what is in this room / inventory / container"
+/// is a lookup instead of deserializing every item in the world.
+///
+/// Writers take the write lock *around* the sled write and update the index
+/// before releasing it, so the index can never lose an item that the tree
+/// holds. Readers re-check each item's stored location, so an entry can only
+/// ever be extra (and is then skipped), never missing. Ids are kept in a
+/// `BTreeSet` so listings come out in the same uuid order a tree scan gave.
+#[derive(Default)]
+struct ItemIndex {
+    by_loc: std::collections::HashMap<LocKey, std::collections::BTreeSet<Uuid>>,
+    by_id: std::collections::HashMap<Uuid, LocKey>,
+}
+
+impl ItemIndex {
+    fn place(&mut self, id: Uuid, location: Option<&ItemLocation>) {
+        if let Some(old) = self.by_id.remove(&id) {
+            if let Some(set) = self.by_loc.get_mut(&old) {
+                set.remove(&id);
+                if set.is_empty() {
+                    self.by_loc.remove(&old);
+                }
+            }
+        }
+        if let Some(key) = location.and_then(LocKey::of) {
+            self.by_loc.entry(key.clone()).or_default().insert(id);
+            self.by_id.insert(id, key);
+        }
+    }
+
+    fn ids_at(&self, key: &LocKey) -> Vec<Uuid> {
+        self.by_loc
+            .get(key)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
+    }
+}
+
 impl Db {
+    /// Rebuild the item location index from the items tree.
+    fn rebuild_item_index(&self) -> Result<()> {
+        let mut idx = self.item_index.write();
+        *idx = ItemIndex::default();
+        for entry in self.items.iter() {
+            let (key, value) = entry?;
+            if let Some(item) = decode_item(&key, &value) {
+                idx.place(item.id, Some(&item.location));
+            }
+        }
+        Ok(())
+    }
+
+    /// Items currently at `key`, read fresh from the tree. Entries whose
+    /// stored location no longer matches are skipped.
+    fn items_at(&self, key: LocKey) -> Result<Vec<ItemData>> {
+        let ids = self.item_index.read().ids_at(&key);
+        let mut items = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(value) = self.items.get(id.as_bytes())? else {
+                continue;
+            };
+            if let Some(item) = decode_item(id.as_bytes(), &value) {
+                if LocKey::of(&item.location).as_ref() == Some(&key) {
+                    items.push(item);
+                }
+            }
+        }
+        Ok(items)
+    }
+
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db = sled::open(path)?;
         let characters = db.open_tree("characters")?;
@@ -204,6 +315,7 @@ impl Db {
             vnum_index: Arc::new(vnum_index),
             areas: Arc::new(areas),
             items: Arc::new(items),
+            item_index: Arc::new(parking_lot::RwLock::new(ItemIndex::default())),
             mobiles: Arc::new(mobiles),
             spawn_points: Arc::new(spawn_points),
             settings: Arc::new(settings),
@@ -237,6 +349,7 @@ impl Db {
             player_log: Arc::new(player_log),
             player_sessions: Arc::new(player_sessions),
         };
+        me.rebuild_item_index()?;
         // One-shot migration: synthesize a 1:1 Account for every pre-feature
         // character that doesn't already have one. Idempotent.
         me.run_account_migration_if_needed()?;
@@ -297,6 +410,70 @@ impl Db {
             }
         }
         Ok(out)
+    }
+
+    /// One-shot: protos saved before the `imported` field existed were
+    /// trusted as system content whether an importer or a builder wrote them.
+    /// They now load as untrusted (see `DgTriggerProto::imported`); this
+    /// rewrites each one with the field explicit and re-stamps its attached
+    /// instances, which still carry the old system-trust author. Returns the
+    /// downgraded vnums. Guarded by the `dg_proto_trust_migrated` setting.
+    pub fn migrate_legacy_dg_proto_trust(&self) -> Result<Vec<String>> {
+        if self.get_setting("dg_proto_trust_migrated")?.as_deref() == Some("true") {
+            return Ok(Vec::new());
+        }
+        let mut legacy = Vec::new();
+        for kv in self.dg_trigger_protos.iter() {
+            let (_, ivec) = kv?;
+            let Ok(raw) = serde_json::from_slice::<serde_json::Value>(&ivec) else {
+                continue;
+            };
+            if raw.get("imported").is_some() {
+                continue;
+            }
+            if let Ok(proto) = serde_json::from_value::<crate::types::DgTriggerProto>(raw) {
+                legacy.push(proto);
+            }
+        }
+        for proto in &legacy {
+            self.save_dg_trigger_proto(proto)?;
+            self.refresh_attached_dg_triggers(proto)?;
+        }
+        self.set_setting("dg_proto_trust_migrated", "true")?;
+        Ok(legacy.into_iter().map(|p| p.vnum).collect())
+    }
+
+    /// Test hook: store a raw proto record exactly as given, e.g. one in a
+    /// pre-migration shape.
+    #[cfg(test)]
+    pub(crate) fn insert_raw_dg_proto_for_test(&self, vnum: &str, raw: &serde_json::Value) -> Result<()> {
+        self.dg_trigger_protos
+            .insert(vnum.as_bytes(), serde_json::to_vec(raw)?)?;
+        Ok(())
+    }
+
+    /// Give DG protos system trust (as if freshly imported): clears the
+    /// last editor and re-stamps attached instances. `vnum = None` applies
+    /// to every proto that no one has edited in game. Returns the vnums
+    /// changed. Admin tooling only.
+    pub fn trust_dg_protos(&self, vnum: Option<&str>) -> Result<Vec<String>> {
+        let candidates = match vnum {
+            Some(v) => self.get_dg_trigger_proto(v)?.into_iter().collect::<Vec<_>>(),
+            None => self
+                .list_dg_trigger_protos()?
+                .into_iter()
+                .filter(|p| p.last_edited_by.is_none() && !p.imported)
+                .collect(),
+        };
+        let mut changed = Vec::new();
+        for mut proto in candidates {
+            proto.imported = true;
+            proto.last_edited_by = None;
+            self.save_dg_trigger_proto(&proto)?;
+            self.refresh_attached_dg_triggers(&proto)?;
+            changed.push(proto.vnum);
+        }
+        Ok(changed)
     }
 
     /// Delete a DG trigger prototype by vnum.
@@ -412,7 +589,7 @@ impl Db {
                                 last_fired: 0,
                                 dg_body: Some(proto.body.clone()),
                                 dg_name: Some(proto.name.clone()),
-                                authored_by: None,
+                                authored_by: proto.instance_author(),
                                 elevated: false,
                                 source_proto_vnum: Some(proto.vnum.clone()),
                             });
@@ -438,7 +615,7 @@ impl Db {
                                 args: args.clone(),
                                 dg_body: Some(proto.body.clone()),
                                 dg_name: Some(proto.name.clone()),
-                                authored_by: None,
+                                authored_by: proto.instance_author(),
                                 elevated: false,
                                 source_proto_vnum: Some(proto.vnum.clone()),
                             });
@@ -466,7 +643,7 @@ impl Db {
                                 args: args.clone(),
                                 dg_body: Some(proto.body.clone()),
                                 dg_name: Some(proto.name.clone()),
-                                authored_by: None,
+                                authored_by: proto.instance_author(),
                                 elevated: false,
                                 source_proto_vnum: Some(proto.vnum.clone()),
                             });
@@ -607,8 +784,100 @@ impl Db {
         // Remove this character's name from any owning account's roster so the
         // account's roster doesn't dangle past the character's lifetime.
         let _ = self.remove_character_name_from_any_account(name);
+        self.cascade_character_delete(name);
         self.characters.remove(key.as_bytes())?;
         Ok(())
+    }
+
+    /// Remove everything that names a character being deleted, so a new
+    /// character later created under the same name inherits none of it:
+    /// carried and worn items, consignment listings and their escrowed
+    /// items, property escrow, API keys, and area ownership / trust.
+    /// Leases are marked due so the rent tick (which can move players out of
+    /// the rooms first) tears them down. Best effort: each step logs and
+    /// carries on.
+    fn cascade_character_delete(&self, name: &str) {
+        let lower = name.to_lowercase();
+        let log = |what: &str, e: anyhow::Error| {
+            tracing::warn!("Deleting character {}: failed to clean up {}: {}", name, what, e);
+        };
+
+        let mut items = self.get_items_in_inventory(name).unwrap_or_default();
+        items.extend(self.get_equipped_items(name).unwrap_or_default());
+        for item in items {
+            if let Err(e) = self.delete_item_recursive(&item.id) {
+                log("an item", e);
+            }
+        }
+
+        match self.get_consignments_by_seller(name) {
+            Ok(listings) => {
+                for l in listings {
+                    let _ = self.delete_item_recursive(&l.item_id);
+                    if let Err(e) = self.delete_consignment(&l.id) {
+                        log("a consignment listing", e);
+                    }
+                }
+            }
+            Err(e) => log("consignment listings", e),
+        }
+
+        match self.get_escrow_by_owner(name) {
+            Ok(escrows) => {
+                for esc in escrows {
+                    for item_id in &esc.items {
+                        let _ = self.delete_item_recursive(item_id);
+                    }
+                    if let Err(e) = self.delete_escrow(&esc.id) {
+                        log("an escrow entry", e);
+                    }
+                }
+            }
+            Err(e) => log("escrow", e),
+        }
+
+        match self.list_all_api_keys() {
+            Ok(keys) => {
+                for k in keys.into_iter().filter(|k| k.owner_character.to_lowercase() == lower) {
+                    tracing::info!("Revoking API key '{}' owned by deleted character {}", k.name, name);
+                    if let Err(e) = self.delete_api_key(&k.id) {
+                        log("an API key", e);
+                    }
+                }
+            }
+            Err(e) => log("API keys", e),
+        }
+
+        match self.list_all_areas() {
+            Ok(areas) => {
+                for mut area in areas {
+                    let owned = area.owner.as_deref().is_some_and(|o| o.to_lowercase() == lower);
+                    let before = area.trusted_builders.len();
+                    area.trusted_builders.retain(|b| b.to_lowercase() != lower);
+                    if owned || area.trusted_builders.len() != before {
+                        if owned {
+                            area.owner = None;
+                        }
+                        if let Err(e) = self.save_area_data(area) {
+                            log("area ownership", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => log("areas", e),
+        }
+
+        match self.get_leases_by_owner(name) {
+            Ok(leases) => {
+                for mut lease in leases.into_iter().filter(|l| !l.is_evicted) {
+                    lease.rent_paid_until = 0;
+                    if let Err(e) = self.save_lease(&lease) {
+                        log("a lease", e);
+                    }
+                }
+            }
+            Err(e) => log("leases", e),
+        }
     }
 
     // === Accounts ===
@@ -674,17 +943,30 @@ impl Db {
     /// the balance below zero (returns `Ok(None)` in that case). Returns the
     /// new balance on success.
     pub fn add_shared_bank_gold(&self, account_id: &Uuid, delta: i64) -> Result<Option<i64>> {
-        let mut account = match self.get_account_by_id(account_id)? {
-            Some(a) => a,
-            None => return Ok(None),
-        };
-        let new_balance = account.shared_bank_gold.saturating_add(delta);
-        if new_balance < 0 {
+        // Compare-and-swap on the account record, so two alts on one account
+        // moving shared gold at the same moment cannot both pass the balance
+        // check against the same snapshot (the old read-modify-write let two
+        // simultaneous withdrawals each credit a pocket against one debit).
+        let Some(ivec) = self.account_id_index.get(account_id.to_string().as_bytes())? else {
             return Ok(None);
+        };
+        let key = ivec.to_vec();
+        loop {
+            let Some(old) = self.accounts.get(&key)? else {
+                return Ok(None);
+            };
+            let mut account: crate::types::AccountData = serde_json::from_slice(&old)?;
+            let new_balance = account.shared_bank_gold.saturating_add(delta);
+            if new_balance < 0 {
+                return Ok(None);
+            }
+            account.shared_bank_gold = new_balance;
+            let new_bytes = serde_json::to_vec(&account)?;
+            match self.accounts.compare_and_swap(&key, Some(&old), Some(new_bytes))? {
+                Ok(()) => return Ok(Some(new_balance)),
+                Err(_conflict) => continue,
+            }
         }
-        account.shared_bank_gold = new_balance;
-        self.save_account(account)?;
-        Ok(Some(new_balance))
     }
 
     /// Replace `account.character_defaults` wholesale and save. The caller is
@@ -769,8 +1051,8 @@ impl Db {
 
     /// Find an account by its **normalized** email (Gmail dot/+tag stripping
     /// applied). The ban-tooling slice's evasion-detection layer compares on
-    /// this canonical form so `agent.craig+spam@gmail.com` and
-    /// `agentcraig@gmail.com` collide. Linear scan — same cost shape as
+    /// this canonical form so `test.user+spam@gmail.com` and
+    /// `testuser@gmail.com` collide. Linear scan — same cost shape as
     /// `find_account_by_email`.
     pub fn find_account_by_normalized_email(&self, normalized: &str) -> Result<Option<crate::types::AccountData>> {
         let needle = normalized.trim().to_lowercase();
@@ -1002,35 +1284,9 @@ impl Db {
             if self.get_account(&lower_name)?.is_some() {
                 continue;
             }
-            let account = crate::types::AccountData {
-                id: Uuid::new_v4(),
-                name: character.name.clone(),
-                password_hash: character.password_hash.clone(),
-                character_names: vec![character.name.clone()],
-                email: None,
-                email_verified: true,
-                email_verification_code: None,
-                email_verification_code_expires_at: 0,
-                email_verification_last_sent_at: 0,
-                email_verification_resend_count: 0,
-                email_verification_resend_window_started_at: 0,
-                email_verification_resend_day_count: 0,
-                email_verification_resend_day_started_at: 0,
-                password_reset_last_sent_at: 0,
-                password_reset_window_started_at: 0,
-                password_reset_count: 0,
-                password_reset_day_count: 0,
-                password_reset_day_started_at: 0,
-                is_banned: false,
-                ban_record: None,
-                last_login_ip: String::new(),
-                creation_ip: String::new(),
-                normalized_email: None,
-                created_at: now,
-                last_login_at: 0,
-                shared_bank_gold: 0,
-                character_defaults: crate::types::AccountPreferences::default(),
-            };
+            let mut account = crate::types::AccountData::new(character.name.clone(), character.password_hash.clone());
+            account.character_names = vec![character.name.clone()];
+            account.created_at = now;
             self.save_account(account)?;
             migrated += 1;
         }
@@ -1457,8 +1713,10 @@ impl Db {
         let mut scanned_count = 0usize;
         for entry in self.items.iter() {
             scanned_count += 1;
-            let (_key, value) = entry?;
-            let mut item: ItemData = serde_json::from_slice(&value)?;
+            let (key, value) = entry?;
+            let Some(mut item) = decode_item(&key, &value) else {
+                continue;
+            };
             if item.normalize_legacy_bonuses() {
                 self.save_item_data(item)?;
                 migrated_count += 1;
@@ -1580,7 +1838,9 @@ impl Db {
     pub fn save_item_data(&self, item: ItemData) -> Result<()> {
         let key = item.id.as_bytes();
         let value = serde_json::to_vec(&item)?;
+        let mut idx = self.item_index.write();
         self.items.insert(key, value)?;
+        idx.place(item.id, Some(&item.location));
         Ok(())
     }
 
@@ -1589,7 +1849,44 @@ impl Db {
     where
         F: FnMut(&mut ItemData),
     {
-        update_tree(&self.items, item_id.as_bytes(), |i| f(i))
+        let mut idx = self.item_index.write();
+        let updated: Option<ItemData> = update_tree(&self.items, item_id.as_bytes(), |i| f(i))?;
+        if let Some(item) = &updated {
+            idx.place(item.id, Some(&item.location));
+        }
+        Ok(updated)
+    }
+
+    /// Atomically remove a gold pile and return its value, or `None` if the
+    /// item is gone or is not gold.
+    ///
+    /// This is the claim-first primitive for picking gold up: the value comes
+    /// from the record actually removed (compare-and-swap to `None`), so two
+    /// concurrent pickups cannot both be credited, and a pile merged into
+    /// between "read" and "delete" is credited at its merged value.
+    pub fn claim_gold_item(&self, item_id: &Uuid) -> Result<Option<i64>> {
+        let key = item_id.as_bytes();
+        loop {
+            let Some(old) = self.items.get(key)? else {
+                return Ok(None);
+            };
+            let item: ItemData = serde_json::from_slice(&old)?;
+            if item.item_type != ItemType::Gold {
+                return Ok(None);
+            }
+            let mut idx = self.item_index.write();
+            match self.items.compare_and_swap(key, Some(&old), None as Option<&[u8]>)? {
+                Ok(()) => {
+                    idx.place(*item_id, None);
+                    drop(idx);
+                    self.db.flush()?;
+                    return Ok(Some(item.value as i64));
+                }
+                // Someone changed it (merge) or removed it (other pickup);
+                // re-read and decide again.
+                Err(_conflict) => continue,
+            }
+        }
     }
 
     /// Delete an item
@@ -1600,7 +1897,12 @@ impl Db {
             let _ = self.strip_item_buffs_from_holder(&item);
         }
         let key = item_id.as_bytes();
-        let removed = self.items.remove(key)?.is_some();
+        let removed = {
+            let mut idx = self.item_index.write();
+            let removed = self.items.remove(key)?.is_some();
+            idx.place(*item_id, None);
+            removed
+        };
         if removed {
             // Flush to ensure deletion persists immediately
             self.db.flush()?;
@@ -1623,8 +1925,10 @@ impl Db {
     pub fn list_all_items(&self) -> Result<Vec<ItemData>> {
         let mut items = Vec::new();
         for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
+            let (key, value) = entry?;
+            let Some(item) = decode_item(&key, &value) else {
+                continue;
+            };
             items.push(item);
         }
         Ok(items)
@@ -1681,49 +1985,17 @@ impl Db {
 
     /// Get all items in a room
     pub fn get_items_in_room(&self, room_id: &Uuid) -> Result<Vec<ItemData>> {
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Room(rid) = &item.location {
-                if rid == room_id {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Room(*room_id))
     }
 
     /// Get all items in a character's inventory
     pub fn get_items_in_inventory(&self, char_name: &str) -> Result<Vec<ItemData>> {
-        let name_lower = char_name.to_lowercase();
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Inventory(owner) = &item.location {
-                if owner.to_lowercase() == name_lower {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Inventory(char_name.to_lowercase()))
     }
 
     /// Get all items equipped by a character
     pub fn get_equipped_items(&self, char_name: &str) -> Result<Vec<ItemData>> {
-        let name_lower = char_name.to_lowercase();
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Equipped(owner) = &item.location {
-                if owner.to_lowercase() == name_lower {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Equipped(char_name.to_lowercase()))
     }
 
     /// Move item to a room (gold items auto-merge with existing gold in the room)
@@ -2067,71 +2339,62 @@ impl Db {
 
     /// Get all items inside a container
     pub fn get_items_in_container(&self, container_id: &Uuid) -> Result<Vec<ItemData>> {
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Container(cid) = &item.location {
-                if cid == container_id {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Container(*container_id))
     }
 
-    /// Move item into a container (updates both container's contents list and item's location)
+    /// Move an item into a container: a single atomic write of the item's
+    /// location (the container keeps no list of its own). The target must be
+    /// a container, or a weapon receiving an attachment. Refuses to put an
+    /// item inside itself or inside something it (transitively) contains.
     pub fn move_item_to_container(&self, item_id: &Uuid, container_id: &Uuid) -> Result<bool> {
-        // Get the container
-        let mut container = match self.get_item_data(container_id)? {
-            Some(c) if c.item_type == ItemType::Container => c,
-            _ => return Ok(false),
+        if item_id == container_id {
+            return Ok(false);
+        }
+        let Some(container) = self.get_item_data(container_id)? else {
+            return Ok(false);
         };
-
-        // Get the item
-        let mut item = match self.get_item_data(item_id)? {
-            Some(i) => i,
-            None => return Ok(false),
+        let Some(item) = self.get_item_data(item_id)? else {
+            return Ok(false);
         };
+        let accepts = container.item_type == ItemType::Container
+            || (container.item_type == ItemType::Weapon && !item.attachment_slot.is_empty());
+        if !accepts || self.container_is_inside(container_id, item_id)? {
+            return Ok(false);
+        }
+        let moved = self.update_item(item_id, |i| {
+            i.location = ItemLocation::Container(*container_id);
+            i.currently_worn_at = None;
+        })?;
+        Ok(moved.is_some())
+    }
 
-        // Remove from old container if applicable
-        if let ItemLocation::Container(old_container_id) = &item.location {
-            if let Some(mut old_container) = self.get_item_data(old_container_id)? {
-                old_container.container_contents.retain(|id| id != item_id);
-                self.save_item_data(old_container)?;
+    /// True if `container_id` is `ancestor_id` or sits (at any depth) inside
+    /// it. Bounded, so a corrupt location loop can't hang the caller.
+    fn container_is_inside(&self, container_id: &Uuid, ancestor_id: &Uuid) -> Result<bool> {
+        let mut current = *container_id;
+        for _ in 0..64 {
+            if current == *ancestor_id {
+                return Ok(true);
+            }
+            match self.get_item_data(&current)?.map(|i| i.location) {
+                Some(ItemLocation::Container(parent)) => current = parent,
+                _ => return Ok(false),
             }
         }
-
-        // Add to new container
-        if !container.container_contents.contains(item_id) {
-            container.container_contents.push(*item_id);
-        }
-        item.location = ItemLocation::Container(*container_id);
-        item.currently_worn_at = None;
-
-        self.save_item_data(container)?;
-        self.save_item_data(item)?;
         Ok(true)
     }
 
-    /// Remove item from container (updates both container's contents and item's location)
+    /// Take an item out of whatever container holds it, leaving it nowhere
+    /// (the caller then places it). False if it was not in a container.
     pub fn remove_item_from_container(&self, item_id: &Uuid) -> Result<bool> {
-        let mut item = match self.get_item_data(item_id)? {
-            Some(i) => i,
-            None => return Ok(false),
-        };
-
-        if let ItemLocation::Container(container_id) = &item.location {
-            if let Some(mut container) = self.get_item_data(container_id)? {
-                container.container_contents.retain(|id| id != item_id);
-                self.save_item_data(container)?;
+        let mut was_inside = false;
+        self.update_item(item_id, |i| {
+            was_inside = matches!(i.location, ItemLocation::Container(_));
+            if was_inside {
+                i.location = ItemLocation::Nowhere;
             }
-            item.location = ItemLocation::Nowhere;
-            self.save_item_data(item)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        })?;
+        Ok(was_inside)
     }
 
     // ========== Mobile Inventory/Equipment Functions ==========
@@ -2188,34 +2451,12 @@ impl Db {
 
     /// Get all items in a mobile's inventory
     pub fn get_items_in_mobile_inventory(&self, mobile_id: &Uuid) -> Result<Vec<ItemData>> {
-        let mobile_id_str = mobile_id.to_string();
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Inventory(owner) = &item.location {
-                if owner == &mobile_id_str {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Inventory(mobile_id.to_string()))
     }
 
     /// Get all items equipped on a mobile
     pub fn get_items_equipped_on_mobile(&self, mobile_id: &Uuid) -> Result<Vec<ItemData>> {
-        let mobile_id_str = mobile_id.to_string();
-        let mut items = Vec::new();
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if let ItemLocation::Equipped(owner) = &item.location {
-                if owner == &mobile_id_str {
-                    items.push(item);
-                }
-            }
-        }
-        Ok(items)
+        self.items_at(LocKey::Equipped(mobile_id.to_string()))
     }
 
     /// Search items by keyword (case-insensitive search in name and keywords)
@@ -2223,8 +2464,10 @@ impl Db {
         let keyword_lower = keyword.to_lowercase();
         let mut results = Vec::new();
         for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
+            let (key, value) = entry?;
+            let Some(item) = decode_item(&key, &value) else {
+                continue;
+            };
             let name_match = item.name.to_lowercase().contains(&keyword_lower);
             let keyword_match = item.keywords.iter().any(|k| k.to_lowercase().contains(&keyword_lower));
             if name_match || keyword_match {
@@ -2238,44 +2481,34 @@ impl Db {
 
     /// Find existing gold pile in a room
     pub fn find_gold_in_room(&self, room_id: &Uuid) -> Result<Option<ItemData>> {
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if item.item_type == ItemType::Gold {
-                if let ItemLocation::Room(rid) = &item.location {
-                    if rid == room_id {
-                        return Ok(Some(item));
-                    }
-                }
-            }
-        }
-        Ok(None)
+        Ok(self
+            .items_at(LocKey::Room(*room_id))?
+            .into_iter()
+            .find(|i| i.item_type == ItemType::Gold))
     }
 
     /// Find existing gold pile in a container
     pub fn find_gold_in_container(&self, container_id: &Uuid) -> Result<Option<ItemData>> {
-        for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
-            if item.item_type == ItemType::Gold {
-                if let ItemLocation::Container(cid) = &item.location {
-                    if cid == container_id {
-                        return Ok(Some(item));
-                    }
-                }
-            }
-        }
-        Ok(None)
+        Ok(self
+            .items_at(LocKey::Container(*container_id))?
+            .into_iter()
+            .find(|i| i.item_type == ItemType::Gold))
     }
 
     /// Spawn gold in a room with auto-merge
     pub fn spawn_gold_in_room(&self, amount: i32, room_id: &Uuid) -> Result<ItemData> {
         // Check for existing gold pile to merge with
-        if let Some(mut existing) = self.find_gold_in_room(room_id)? {
-            existing.value += amount;
-            crate::update_gold_descriptions(&mut existing);
-            self.save_item_data(existing.clone())?;
-            return Ok(existing);
+        // Merge via CAS: a plain read-modify-save would resurrect a pile that
+        // was claimed in between (duplicating its old value). If the pile is
+        // gone by the time we write, fall through and create a fresh one.
+        if let Some(existing) = self.find_gold_in_room(room_id)? {
+            let merged = self.update_item(&existing.id, |pile| {
+                pile.value = pile.value.saturating_add(amount);
+                crate::update_gold_descriptions(pile);
+            })?;
+            if let Some(pile) = merged {
+                return Ok(pile);
+            }
         }
 
         // Create new gold pile
@@ -2288,28 +2521,26 @@ impl Db {
     /// Spawn gold in a container with auto-merge
     pub fn spawn_gold_in_container(&self, amount: i32, container_id: &Uuid) -> Result<Option<ItemData>> {
         // Verify container exists and is a container
-        let container = match self.get_item_data(container_id)? {
-            Some(c) if c.item_type == ItemType::Container => c,
-            _ => return Ok(None),
-        };
+        if !matches!(self.get_item_data(container_id)?, Some(c) if c.item_type == ItemType::Container) {
+            return Ok(None);
+        }
 
         // Check for existing gold pile to merge with
-        if let Some(mut existing) = self.find_gold_in_container(container_id)? {
-            existing.value += amount;
-            crate::update_gold_descriptions(&mut existing);
-            self.save_item_data(existing.clone())?;
-            return Ok(Some(existing));
+        // Merge via CAS (see spawn_gold_in_room).
+        if let Some(existing) = self.find_gold_in_container(container_id)? {
+            let merged = self.update_item(&existing.id, |pile| {
+                pile.value = pile.value.saturating_add(amount);
+                crate::update_gold_descriptions(pile);
+            })?;
+            if let Some(pile) = merged {
+                return Ok(Some(pile));
+            }
         }
 
         // Create new gold pile
         let mut gold = crate::create_gold_item(amount);
         gold.location = ItemLocation::Container(*container_id);
         self.save_item_data(gold.clone())?;
-
-        // Add to container contents
-        let mut container = container;
-        container.container_contents.push(gold.id);
-        self.save_item_data(container)?;
 
         Ok(Some(gold))
     }
@@ -2694,8 +2925,10 @@ impl Db {
         let vnum_lower = vnum.to_lowercase();
         let mut first_match: Option<ItemData> = None;
         for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
+            let (key, value) = entry?;
+            let Some(item) = decode_item(&key, &value) else {
+                continue;
+            };
             if let Some(ref item_vnum) = item.vnum {
                 if item_vnum.to_lowercase() == vnum_lower {
                     if item.is_prototype {
@@ -2729,7 +2962,6 @@ impl Db {
             spawned.id = Uuid::new_v4();
             spawned.is_prototype = false;
             spawned.location = ItemLocation::Nowhere;
-            spawned.container_contents = Vec::new();
             self.save_item_data(spawned.clone())?;
             Ok(Some(spawned))
         } else {
@@ -2742,8 +2974,10 @@ impl Db {
         let vnum_lower = vnum.to_lowercase();
         let mut results = Vec::new();
         for entry in self.items.iter() {
-            let (_key, value) = entry?;
-            let item: ItemData = serde_json::from_slice(&value)?;
+            let (key, value) = entry?;
+            let Some(item) = decode_item(&key, &value) else {
+                continue;
+            };
             if !item.is_prototype {
                 if let Some(ref item_vnum) = item.vnum {
                     if item_vnum.to_lowercase() == vnum_lower {
@@ -2756,7 +2990,7 @@ impl Db {
     }
 
     /// Refresh an item instance from its prototype
-    /// Preserves: id, location, container_contents
+    /// Preserves: id, location (and so whatever is inside it)
     pub fn refresh_item_from_prototype(&self, item_id: &Uuid) -> Result<Option<ItemData>> {
         let instance = match self.get_item_data(item_id)? {
             Some(i) => i,
@@ -2781,7 +3015,6 @@ impl Db {
         refreshed.id = instance.id;
         refreshed.is_prototype = false;
         refreshed.location = instance.location;
-        refreshed.container_contents = instance.container_contents;
         // Preserve instance-specific state (not from prototype)
         refreshed.loaded_ammo = instance.loaded_ammo;
         refreshed.loaded_ammo_bonus = instance.loaded_ammo_bonus;
@@ -3864,15 +4097,47 @@ impl Db {
         }
     }
 
-    /// Find an API key by checking against all stored hashes
-    /// This is used during authentication when we receive the raw key
-    pub fn find_api_key_by_raw_key(&self, raw_key: &str) -> Result<Option<ApiKey>> {
+    /// Resolve a bearer token to its API key.
+    ///
+    /// Current-format tokens (`imk_<id>_<secret>`) are a direct lookup by id
+    /// plus one SHA-256 and a constant-time compare. Anything else is treated
+    /// as a deprecated legacy key: a cache hit is cheap, a miss runs Argon2
+    /// against each legacy record. Callers must run this off the async
+    /// runtime and bound concurrency for legacy tokens (see `api::auth`).
+    ///
+    /// Returns the key and whether it matched through the legacy path.
+    pub fn authenticate_api_key(&self, token: &str) -> Result<Option<(ApiKey, bool)>> {
+        use crate::api_key_auth as keys;
+
+        if keys::is_current_format(token) {
+            let Some((id, secret)) = keys::parse(token) else {
+                return Ok(None);
+            };
+            return Ok(self
+                .get_api_key(&id)?
+                .filter(|k| keys::verify_current(secret, &k.key_hash))
+                .map(|k| (k, false)));
+        }
+
+        if let Some((id, matched_hash)) = keys::legacy_cache_get(token) {
+            if let Some(k) = self.get_api_key(&id)? {
+                // Same stored hash as when we verified: not rotated or replaced.
+                if k.key_hash == matched_hash {
+                    return Ok(Some((k, true)));
+                }
+            }
+        }
+
         for entry in self.api_keys.iter() {
             let (_db_key, value) = entry?;
             let api_key: ApiKey = serde_json::from_slice(&value)?;
-            // Verify the raw key against the stored hash
-            if self.verify_password(raw_key, &api_key.key_hash)? {
-                return Ok(Some(api_key));
+            if !keys::is_legacy_hash(&api_key.key_hash) {
+                continue;
+            }
+            // A corrupt hash on one record must not lock every key out.
+            if self.verify_password(token, &api_key.key_hash).unwrap_or(false) {
+                keys::legacy_cache_put(token, &api_key);
+                return Ok(Some((api_key, true)));
             }
         }
         Ok(None)
@@ -4611,7 +4876,11 @@ impl Db {
         self.rooms.clear()?;
         self.vnum_index.clear()?;
         self.areas.clear()?;
-        self.items.clear()?;
+        {
+            let mut idx = self.item_index.write();
+            self.items.clear()?;
+            *idx = ItemIndex::default();
+        }
         self.mobiles.clear()?;
         self.spawn_points.clear()?;
         self.recipes.clear()?;
@@ -4883,5 +5152,290 @@ mod tests {
         assert_eq!(t.db.verify_password(&oversized, &hash).unwrap(), false);
         // Sanity: the real password still verifies.
         assert_eq!(t.db.verify_password("hunter2", &hash).unwrap(), true);
+    }
+    fn api_key_with_hash(name: &str, key_hash: String) -> ApiKey {
+        ApiKey {
+            id: Uuid::new_v4(),
+            key_hash,
+            name: name.to_string(),
+            owner_character: "alice".to_string(),
+            permissions: Default::default(),
+            created_at: 0,
+            last_used_at: None,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn current_format_api_keys_authenticate() {
+        let t = open_temp("apikey_current");
+        let id = Uuid::new_v4();
+        let generated = crate::api_key_auth::generate(id);
+        let mut key = api_key_with_hash("mcp", generated.key_hash);
+        key.id = id;
+        t.db.save_api_key(&key).unwrap();
+
+        let (found, legacy) = t.db.authenticate_api_key(&generated.raw).unwrap().expect("valid key");
+        assert_eq!(found.id, id);
+        assert!(!legacy);
+
+        // Wrong secret for a real id, and an unknown id, both fail.
+        let wrong = format!("{}{}_{}", crate::api_key_auth::KEY_PREFIX, id.simple(), "nope");
+        assert!(t.db.authenticate_api_key(&wrong).unwrap().is_none());
+        let other = crate::api_key_auth::generate(Uuid::new_v4());
+        assert!(t.db.authenticate_api_key(&other.raw).unwrap().is_none());
+        // A malformed `imk_` token never reaches the legacy path.
+        assert!(t.db.authenticate_api_key("imk_garbage").unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_api_keys_still_work_alongside_current_ones() {
+        let t = open_temp("apikey_legacy");
+        // A current-format record must not break the legacy Argon2 scan
+        // (its hash isn't a valid Argon2 hash).
+        let current = crate::api_key_auth::generate(Uuid::new_v4());
+        t.db.save_api_key(&api_key_with_hash("new", current.key_hash)).unwrap();
+
+        let legacy_raw = "legacyRawKeyMaterial0123456789abcdef";
+        let legacy = api_key_with_hash("old", t.db.hash_password(legacy_raw).unwrap());
+        t.db.save_api_key(&legacy).unwrap();
+
+        let (found, is_legacy) = t.db.authenticate_api_key(legacy_raw).unwrap().expect("legacy key");
+        assert_eq!(found.id, legacy.id);
+        assert!(is_legacy);
+        // Second lookup is served from the cache with the same answer.
+        let (again, _) = t.db.authenticate_api_key(legacy_raw).unwrap().expect("cached");
+        assert_eq!(again.id, legacy.id);
+        assert!(t.db.authenticate_api_key("someOtherLegacyToken").unwrap().is_none());
+    }
+
+    #[test]
+    fn rotating_a_legacy_key_revokes_the_old_secret() {
+        let t = open_temp("apikey_rotate");
+        let legacy_raw = "rotateMeLegacyKey0123456789abcdefgh";
+        let mut key = api_key_with_hash("old", t.db.hash_password(legacy_raw).unwrap());
+        t.db.save_api_key(&key).unwrap();
+        // Prime the legacy cache.
+        assert!(t.db.authenticate_api_key(legacy_raw).unwrap().is_some());
+
+        let rotated = crate::api_key_auth::generate(key.id);
+        key.key_hash = rotated.key_hash;
+        t.db.save_api_key(&key).unwrap();
+
+        assert!(
+            t.db.authenticate_api_key(legacy_raw).unwrap().is_none(),
+            "old secret must stop working even though it was cached"
+        );
+        let (found, legacy) = t.db.authenticate_api_key(&rotated.raw).unwrap().expect("new secret");
+        assert_eq!(found.id, key.id);
+        assert!(!legacy);
+    }
+
+    #[test]
+    fn gold_pile_can_only_be_claimed_once() {
+        let t = open_temp("claim_once");
+        let room = Uuid::new_v4();
+        let pile = t.db.spawn_gold_in_room(50, &room).expect("spawn");
+        assert_eq!(t.db.claim_gold_item(&pile.id).unwrap(), Some(50));
+        assert_eq!(
+            t.db.claim_gold_item(&pile.id).unwrap(),
+            None,
+            "second claim gets nothing"
+        );
+        assert!(t.db.get_item_data(&pile.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn claim_gold_item_ignores_non_gold() {
+        let t = open_temp("claim_non_gold");
+        let item = ItemData::new("sword".into(), "a sword".into(), String::new());
+        t.db.save_item_data(item.clone()).unwrap();
+        assert_eq!(t.db.claim_gold_item(&item.id).unwrap(), None);
+        assert!(
+            t.db.get_item_data(&item.id).unwrap().is_some(),
+            "non-gold item untouched"
+        );
+    }
+
+    #[test]
+    fn merging_into_a_claimed_pile_does_not_resurrect_it() {
+        let t = open_temp("merge_after_claim");
+        let room = Uuid::new_v4();
+        let pile = t.db.spawn_gold_in_room(50, &room).expect("spawn");
+        // Merge sees the pile, then it is claimed before the write lands:
+        // simulate by claiming first, then merging.
+        assert_eq!(t.db.claim_gold_item(&pile.id).unwrap(), Some(50));
+        let merged = t.db.spawn_gold_in_room(20, &room).expect("spawn");
+        assert_eq!(merged.value, 20, "fresh pile, not 50 + 20");
+        assert_ne!(merged.id, pile.id);
+    }
+
+    #[test]
+    fn concurrent_gold_claims_credit_exactly_once() {
+        let t = open_temp("claim_race");
+        let room = Uuid::new_v4();
+        let pile = t.db.spawn_gold_in_room(100, &room).expect("spawn");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let db = t.db.clone();
+                let b = barrier.clone();
+                let id = pile.id;
+                std::thread::spawn(move || {
+                    b.wait();
+                    db.claim_gold_item(&id).unwrap()
+                })
+            })
+            .collect();
+        let wins: Vec<i64> = handles.into_iter().filter_map(|h| h.join().unwrap()).collect();
+        assert_eq!(wins, vec![100], "exactly one claimer is paid");
+    }
+
+    #[test]
+    fn one_corrupt_item_record_does_not_break_listings() {
+        let t = open_temp("corrupt_item");
+        let room = Uuid::new_v4();
+        let mut good = ItemData::new("lamp".into(), "a lamp".into(), "A lamp.".into());
+        good.location = crate::types::ItemLocation::Room(room);
+        let good_id = good.id;
+        t.db.save_item_data(good).unwrap();
+        t.db.items
+            .insert(Uuid::new_v4().as_bytes(), b"{not json".to_vec())
+            .unwrap();
+
+        let all = t.db.list_all_items().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, good_id);
+        assert_eq!(t.db.get_items_in_room(&room).unwrap().len(), 1);
+        t.db.migrate_item_legacy_bonuses_to_affects().unwrap();
+    }
+
+    #[test]
+    fn item_location_index_tracks_every_write() {
+        let t = open_temp("item_index");
+        let db = &t.db;
+        let room = Uuid::new_v4();
+        let other_room = Uuid::new_v4();
+        let ids = |v: Vec<ItemData>| v.into_iter().map(|i| i.id).collect::<Vec<_>>();
+
+        let mut item = ItemData::new("rock".into(), "a rock".into(), String::new());
+        item.location = ItemLocation::Room(room);
+        let id = item.id;
+        db.save_item_data(item).unwrap();
+        assert_eq!(ids(db.get_items_in_room(&room).unwrap()), vec![id]);
+
+        // CAS update moves it.
+        db.update_item(&id, |i| i.location = ItemLocation::Room(other_room))
+            .unwrap();
+        assert!(db.get_items_in_room(&room).unwrap().is_empty());
+        assert_eq!(ids(db.get_items_in_room(&other_room).unwrap()), vec![id]);
+
+        // Inventory lookups stay case-insensitive.
+        db.update_item(&id, |i| i.location = ItemLocation::Inventory("Mara".into()))
+            .unwrap();
+        assert_eq!(ids(db.get_items_in_inventory("mara").unwrap()), vec![id]);
+        assert_eq!(ids(db.get_items_in_inventory("MARA").unwrap()), vec![id]);
+        assert!(db.get_items_in_room(&other_room).unwrap().is_empty());
+
+        // Reopening rebuilds the same answer from disk.
+        let path = t._temp.path().to_path_buf();
+        drop(t.db);
+        let db = Db::open(&path).unwrap();
+        assert_eq!(ids(db.get_items_in_inventory("mara").unwrap()), vec![id]);
+
+        db.delete_item(&id).unwrap();
+        assert!(db.get_items_in_inventory("mara").unwrap().is_empty());
+    }
+
+    #[test]
+    fn item_location_index_keeps_uuid_order_and_gold_lookup() {
+        let t = open_temp("item_index_order");
+        let db = &t.db;
+        let room = Uuid::new_v4();
+        let mut want = Vec::new();
+        for n in 0..5 {
+            let mut item = ItemData::new(format!("thing{n}"), "a thing".into(), String::new());
+            item.location = ItemLocation::Room(room);
+            want.push(item.id);
+            db.save_item_data(item).unwrap();
+        }
+        want.sort();
+        let got: Vec<Uuid> = db.get_items_in_room(&room).unwrap().into_iter().map(|i| i.id).collect();
+        assert_eq!(got, want);
+
+        assert!(db.find_gold_in_room(&room).unwrap().is_none());
+        let gold = db.spawn_gold_in_room(25, &room).unwrap();
+        assert_eq!(db.find_gold_in_room(&room).unwrap().map(|g| g.id), Some(gold.id));
+        assert_eq!(db.claim_gold_item(&gold.id).unwrap(), Some(25));
+        assert!(db.find_gold_in_room(&room).unwrap().is_none());
+    }
+
+    /// A container's contents are the items located in it, so taking an item
+    /// out by any route (room, inventory, DG, API) can't leave it counted.
+    #[test]
+    fn container_contents_follow_item_location() {
+        let t = open_temp("container_truth");
+        let db = &t.db;
+        let mut bag = ItemData::new("bag".into(), "a bag".into(), String::new());
+        bag.item_type = ItemType::Container;
+        let bag_id = bag.id;
+        db.save_item_data(bag).unwrap();
+        let coin = ItemData::new("coin".into(), "a coin".into(), String::new());
+        let coin_id = coin.id;
+        db.save_item_data(coin).unwrap();
+
+        assert!(db.move_item_to_container(&coin_id, &bag_id).unwrap());
+        assert_eq!(db.get_items_in_container(&bag_id).unwrap().len(), 1);
+        // Out by a route that knows nothing about containers.
+        db.move_item_to_room(&coin_id, &Uuid::new_v4()).unwrap();
+        assert!(db.get_items_in_container(&bag_id).unwrap().is_empty());
+
+        // remove_item_from_container reports whether it was inside.
+        assert!(db.move_item_to_container(&coin_id, &bag_id).unwrap());
+        assert!(db.remove_item_from_container(&coin_id).unwrap());
+        assert!(!db.remove_item_from_container(&coin_id).unwrap());
+    }
+
+    #[test]
+    fn containers_refuse_loops_and_accept_weapon_attachments() {
+        let t = open_temp("container_loops");
+        let db = &t.db;
+        let bag = |n: &str| {
+            let mut b = ItemData::new(n.into(), n.into(), String::new());
+            b.item_type = ItemType::Container;
+            let id = b.id;
+            db.save_item_data(b).unwrap();
+            id
+        };
+        let outer = bag("outer");
+        let inner = bag("inner");
+        assert!(!db.move_item_to_container(&outer, &outer).unwrap(), "not into itself");
+        assert!(db.move_item_to_container(&inner, &outer).unwrap());
+        assert!(
+            !db.move_item_to_container(&outer, &inner).unwrap(),
+            "not into its own contents"
+        );
+
+        let mut rifle = ItemData::new("rifle".into(), "a rifle".into(), String::new());
+        rifle.item_type = ItemType::Weapon;
+        let rifle_id = rifle.id;
+        db.save_item_data(rifle).unwrap();
+        let mut scope = ItemData::new("scope".into(), "a scope".into(), String::new());
+        scope.attachment_slot = "optic".into();
+        let scope_id = scope.id;
+        db.save_item_data(scope).unwrap();
+        let rock = ItemData::new("rock".into(), "a rock".into(), String::new());
+        let rock_id = rock.id;
+        db.save_item_data(rock).unwrap();
+
+        assert!(
+            db.move_item_to_container(&scope_id, &rifle_id).unwrap(),
+            "attachments fit weapons"
+        );
+        assert!(
+            !db.move_item_to_container(&rock_id, &rifle_id).unwrap(),
+            "other things don't"
+        );
+        assert_eq!(db.get_items_in_container(&rifle_id).unwrap().len(), 1);
     }
 }

@@ -838,7 +838,7 @@ pub(super) fn build_item_affect(
             magnitude
         }
     } else if let Some(scale) = magnitude_scale {
-        source_value * scale
+        source_value.saturating_mul(scale)
     } else {
         magnitude
     };

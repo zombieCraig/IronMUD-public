@@ -236,22 +236,42 @@ install_dependencies() {
     apt-get install -y build-essential pkg-config libssl-dev curl
 }
 
+# The account that builds IronMUD: the user who ran sudo, if any, so
+# dependency build scripts don't run as root. Empty means root.
+build_user() {
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        echo "$SUDO_USER"
+    fi
+}
+
+# Run a command line as the build user, with their cargo env loaded.
+as_build_user() {
+    local user
+    user=$(build_user)
+    if [[ -n "$user" ]]; then
+        sudo -u "$user" -H bash -c '
+            if [[ -f "$HOME/.cargo/env" ]]; then source "$HOME/.cargo/env"; fi
+            cd "$1" && shift && eval "$@"
+        ' _ "$PWD" "$@"
+    else
+        if [[ -f "$HOME/.cargo/env" ]]; then source "$HOME/.cargo/env"; fi
+        eval "$@"
+    fi
+}
+
 # Install Rust toolchain
 install_rust() {
-    if command -v rustc &> /dev/null && command -v cargo &> /dev/null; then
-        log_info "Rust is already installed: $(rustc --version)"
+    if as_build_user 'command -v rustc && command -v cargo' &> /dev/null; then
+        log_info "Rust is already installed: $(as_build_user 'rustc --version')"
         return
     fi
 
     log_info "Installing Rust toolchain..."
 
-    # Install rustup for the current user (will be used for building)
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    # Install rustup for the build user
+    as_build_user "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
 
-    # Source cargo env for this session
-    source "$HOME/.cargo/env"
-
-    log_info "Rust installed: $(rustc --version)"
+    log_info "Rust installed: $(as_build_user 'rustc --version')"
 }
 
 # Create system user
@@ -269,12 +289,24 @@ create_user() {
 build_project() {
     log_info "Building IronMUD (release mode)..."
 
-    # Ensure cargo is in PATH
-    if [[ -f "$HOME/.cargo/env" ]]; then
-        source "$HOME/.cargo/env"
+    # Build as the invoking user rather than root: build scripts and
+    # proc-macros from every dependency run during the build.
+    local user
+    user=$(build_user)
+    if [[ -n "$user" ]] && as_build_user 'command -v cargo' &> /dev/null; then
+        log_info "Building as $user (not root)..."
+        # A previous root build may have left target/ owned by root.
+        if [[ -d target ]] && [[ "$(stat -c %U target)" != "$user" ]]; then
+            chown -R "$user" target
+        fi
+        as_build_user 'cargo build --release'
+    else
+        log_warn "Building as root. Run this script with sudo from an account that has Rust installed to build unprivileged."
+        if [[ -f "$HOME/.cargo/env" ]]; then
+            source "$HOME/.cargo/env"
+        fi
+        cargo build --release
     fi
-
-    cargo build --release
 
     if [[ ! -f "target/release/ironmud" ]]; then
         log_error "Build failed: target/release/ironmud not found"
@@ -327,9 +359,26 @@ copy_files() {
 set_permissions() {
     log_info "Setting ownership and permissions..."
 
+    # The service owns what it writes (data, scripts, backups of them).
+    # Everything it executes, and the directories holding it, belong to
+    # root: a compromised server process must not be able to replace a
+    # binary that root later runs through the ironmud-admin wrapper.
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
+    chown root:root "$INSTALL_DIR"
+    chmod 755 "$INSTALL_DIR"
+    chown -R root:root "$INSTALL_DIR/bin"
+    chmod 755 "$INSTALL_DIR/bin"
     chmod 755 "$INSTALL_DIR/bin/ironmud"
     chmod 755 "$INSTALL_DIR/bin/ironmud-admin"
+    if [[ -d "$INSTALL_DIR/assets" ]]; then
+        chown -R root:root "$INSTALL_DIR/assets"
+        chmod -R u=rwX,go=rX "$INSTALL_DIR/assets"
+    fi
+    # Backups (ironmud-sync.sh) are restored as root: keep them root-only.
+    if [[ -d "$INSTALL_DIR/backups" ]]; then
+        chown -R root:root "$INSTALL_DIR/backups"
+        chmod 700 "$INSTALL_DIR/backups"
+    fi
 }
 
 # Install systemd service

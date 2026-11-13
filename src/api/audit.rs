@@ -219,7 +219,7 @@ async fn audit_entity(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let found = scan::scan_entity(&state.db, kind, &key).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let found = scan::scan_entity(&state.db, kind, &key)?;
     // Not found is a 404, not a failing grade: content that does not exist has
     // no quality, and reporting an F would read as "this is bad" rather than
     // "you asked about the wrong vnum".
@@ -235,7 +235,7 @@ async fn audit_area(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let snapshot = scan::WorldSnapshot::load(&state.db).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let snapshot = scan::WorldSnapshot::load(&state.db)?;
     let needle = key.trim().to_lowercase();
     let area = snapshot
         .areas
@@ -255,7 +255,7 @@ async fn audit_world(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let snapshot = scan::WorldSnapshot::load(&state.db).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let snapshot = scan::WorldSnapshot::load(&state.db)?;
     Ok(Json(report_out(&scan::scan_world(&snapshot))))
 }
 
@@ -300,7 +300,7 @@ async fn findings_by_code(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let snapshot = scan::WorldSnapshot::load(&state.db).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let snapshot = scan::WorldSnapshot::load(&state.db)?;
     let area = q.area.unwrap_or_default();
     let hits = scan::live_findings_by_code(&snapshot, code.trim(), area.trim());
     Ok(Json(
@@ -359,10 +359,7 @@ async fn list_waivers(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let waivers = state
-        .db
-        .list_audit_waivers(q.area.as_deref())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let waivers = state.db.list_audit_waivers(q.area.as_deref())?;
     Ok(Json(waivers.iter().map(waiver_out).collect()))
 }
 
@@ -386,7 +383,7 @@ async fn create_waiver(
             "A reason is required: a waiver with none is indistinguishable from silencing an inconvenience".into(),
         ));
     }
-    let snapshot = scan::WorldSnapshot::load(&state.db).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let snapshot = scan::WorldSnapshot::load(&state.db)?;
     let code = req.code.trim();
     let target = req.target.trim();
     let hit = scan::locate_live_finding(&snapshot, code, target).ok_or_else(|| {
@@ -427,10 +424,7 @@ async fn create_waiver(
         reviewed_by: user.api_key.owner_character.clone(),
         created_at: now_secs(),
     };
-    state
-        .db
-        .store_audit_waiver(&waiver)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.store_audit_waiver(&waiver)?;
     Ok(Json(waiver_out(&waiver)))
 }
 
@@ -445,10 +439,7 @@ async fn delete_waiver(
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
-    let removed = state
-        .db
-        .delete_audit_waiver(req.code.trim(), req.target.trim())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let removed = state.db.delete_audit_waiver(req.code.trim(), req.target.trim())?;
     if !removed {
         return Err(ApiError::NotFound(format!(
             "No waiver on `{}` for `{}`",
@@ -505,10 +496,7 @@ async fn world_report(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let world = state
-        .state
-        .lock()
-        .map_err(|_| ApiError::Internal("world lock poisoned".into()))?;
+    let world = state.state.lock();
     let report = &world.world_report;
     let facts = &report.facts;
     let mut out = WorldReportOut {
@@ -580,13 +568,10 @@ async fn build_tracks(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
     let defs: Vec<crate::build_tracks::TrackDef> = {
-        let world = state
-            .state
-            .lock()
-            .map_err(|_| ApiError::Internal("world lock poisoned".into()))?;
+        let world = state.state.lock();
         world.build_tracks.clone()
     };
-    let snapshot = scan::WorldSnapshot::load(&state.db).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let snapshot = scan::WorldSnapshot::load(&state.db)?;
     let facts = crate::build_tracks::builder_facts(&snapshot, snapshot.ctx(), &user.api_key.owner_character);
 
     let out: Vec<TrackOut> = defs

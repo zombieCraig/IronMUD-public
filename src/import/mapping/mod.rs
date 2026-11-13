@@ -512,6 +512,8 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
                 numeric_arg: t.numeric_arg,
                 arglist: t.arglist.clone(),
                 body: t.body.clone(),
+                last_edited_by: None,
+                imported: true,
             });
         }
 
@@ -658,6 +660,9 @@ mod tests {
     fn dice_max_parses_circle_dice() {
         assert_eq!(dice_max("5d10+550"), Some(600));
         assert_eq!(dice_max("1d1+30000"), Some(30001));
+        // Hostile input: overflow is "unparseable", not a panic or a wrap.
+        assert_eq!(dice_max("2000000000d2000000000"), None);
+        assert_eq!(dice_max("1d2147483647+5"), None);
         assert_eq!(dice_max("2d6"), Some(12));
         assert_eq!(dice_max("4d6-3"), Some(21));
         assert_eq!(dice_max("garbage"), None);

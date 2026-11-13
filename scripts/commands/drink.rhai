@@ -115,7 +115,7 @@ fn apply_fear_consumable(char, magnitude, duration, source, connection_id) {
 fn apply_heal(char, magnitude, connection_id) {
     let old_hp = char.hp;
     char.hp = char.hp + magnitude;
-    let eff_max_hp = get_effective_max_hp(char.name);
+    let eff_max_hp = char.effective_max_hp();
     if char.hp > eff_max_hp { char.hp = eff_max_hp; }
     let healed = char.hp - old_hp;
     if healed > 0 {

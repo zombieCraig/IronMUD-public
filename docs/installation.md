@@ -23,6 +23,14 @@
    cargo build --release
    ```
 
+   The Matrix and Discord chat bridges are cargo features (`matrix`, `discord`), both on by
+   default. To build without them (smaller binary, no OpenSSL dependency):
+   ```bash
+   cargo build --release --no-default-features              # neither bridge
+   cargo build --release --no-default-features -F discord   # Discord only
+   ```
+   A server built without a bridge logs a warning if that bridge's environment variables are set.
+
 4. **Run the server**:
    ```bash
    cargo run --release --bin ironmud
@@ -78,8 +86,11 @@ Example:
 |----------|-------------|---------|
 | `IRONMUD_DATABASE` | Database path | `ironmud.db` |
 | `IRONMUD_CONTROL_SOCKET` | Unix control socket path used by `ironmud-admin broadcast` | `<database-dir>/control.sock` |
+| `IRONMUD_LOOPBACK_BUDGET` | Multiplier on the per-IP connection/login/creation/email limits for connections from localhost (e.g. a ttyd web gateway), which all share one budget. `0` = unlimited | `8` |
 
 The `IRONMUD_DATABASE` environment variable sets the database path for both the server and admin tool. Precedence: CLI flag (`-d`) > environment variable > default (`ironmud.db`).
+
+Every connection arriving from localhost shares one rate-limit budget. If you run a local web gateway such as ttyd, all of its players count as one client, so they get `IRONMUD_LOOPBACK_BUDGET` times the normal per-IP limits (64 simultaneous connections and 40 failed logins a minute at the default of 8). Raise it for a busy gateway; `0` removes the limits on localhost altogether (the pre-hardening behaviour, which lets anyone behind the gateway brute-force logins).
 
 `IRONMUD_CONTROL_SOCKET` only needs to be set if you want to override the default location. Both the server and the admin tool derive the default from the database path, so a standard install requires no configuration. See the [Admin Guide](admin-guide.md#control-socket) for details.
 
@@ -145,7 +156,7 @@ cargo test
 
 ## First User
 
-The first character created on a fresh database automatically becomes an administrator with full builder permissions.
+The first character created on a fresh database automatically becomes an administrator with full builder permissions when it's created from the server itself (a loopback connection, e.g. `telnet localhost 4000`). From anywhere else, set `IRONMUD_FIRST_USER_ADMIN=true` before creating it, or grant it afterwards with `ironmud-admin user grant-admin <name>`.
 
 ## TLS / Encrypted Connections
 

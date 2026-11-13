@@ -161,7 +161,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("set_wizard_data", move |connection_id: String, data: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.wizard_data = if data.is_empty() { None } else { Some(data) };
                 return true;
@@ -174,7 +174,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_wizard_data", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 return session.wizard_data.clone().unwrap_or_default();
             }
@@ -186,7 +186,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("clear_wizard_data", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.wizard_data = None;
                 return true;
@@ -205,7 +205,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // stay the default new-character experience.
     let state_clone = state.clone();
     engine.register_fn("get_class_list", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .class_definitions
             .iter()
@@ -221,7 +221,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // synthetic races (synth, bioroid, clone) can't pick "vampire".
     let state_clone = state.clone();
     engine.register_fn("get_class_list_for_race", move |race_id: String| -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .class_definitions
             .iter()
@@ -240,7 +240,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "is_class_allowed_for_race",
         move |race_id: String, class_id: String| -> bool {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             match world.class_definitions.get(&class_id) {
                 Some(def) => def.allowed_for_race(&race_id),
                 None => false,
@@ -251,7 +251,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_class_info(class_id) -> Map with name, description, starting_skills, stat_bonuses
     let state_clone = state.clone();
     engine.register_fn("get_class_info", move |class_id: String| -> rhai::Map {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut map = rhai::Map::new();
         if let Some(class) = world.class_definitions.get(&class_id) {
             map.insert("id".into(), rhai::Dynamic::from(class.id.clone()));
@@ -310,7 +310,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_random_class() -> String (random available class ID, excluding "unemployed")
     let state_clone = state.clone();
     engine.register_fn("get_random_class", move || -> String {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let available: Vec<&String> = world
             .class_definitions
             .iter()
@@ -333,7 +333,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // class survives the race filter.
     let state_clone = state.clone();
     engine.register_fn("get_random_class_for_race", move |race_id: String| -> String {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let available: Vec<&String> = world
             .class_definitions
             .iter()
@@ -355,7 +355,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_trait_list() -> Array of available trait IDs
     let state_clone = state.clone();
     engine.register_fn("get_trait_list", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .trait_definitions
             .iter()
@@ -367,7 +367,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_trait_info(trait_id) -> Map with name, description, cost, category, effects
     let state_clone = state.clone();
     engine.register_fn("get_trait_info", move |trait_id: String| -> rhai::Map {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut map = rhai::Map::new();
         if let Some(tr) = world.trait_definitions.get(&trait_id) {
             map.insert("id".into(), rhai::Dynamic::from(tr.id.clone()));
@@ -404,7 +404,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_random_race() -> String (random available race definition ID)
     let state_clone = state.clone();
     engine.register_fn("get_random_race", move || -> String {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let available: Vec<&String> = world
             .race_definitions
             .iter()
@@ -424,7 +424,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_race_list() -> Array of available race definition IDs
     let state_clone = state.clone();
     engine.register_fn("get_race_list", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .race_definitions
             .iter()
@@ -436,7 +436,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_race_info(race_id) -> Map with all definition fields
     let state_clone = state.clone();
     engine.register_fn("get_race_info", move |race_id: String| -> rhai::Map {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut map = rhai::Map::new();
         if let Some(race) = world.race_definitions.get(&race_id.to_lowercase()) {
             map.insert("id".into(), rhai::Dynamic::from(race.id.clone()));
@@ -521,7 +521,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // is_valid_race(race_id) -> bool
     let state_clone = state.clone();
     engine.register_fn("is_valid_race", move |race_id: String| -> bool {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world.race_definitions.contains_key(&race_id.to_lowercase())
     });
 
@@ -535,7 +535,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(c)) => c.race.to_lowercase(),
                 _ => return 0,
             };
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             if let Some(race) = world.race_definitions.get(&race_id) {
                 *race.resistances.get(&damage_type.to_lowercase()).unwrap_or(&0) as i64
             } else {
@@ -554,7 +554,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(c)) => c.race.to_lowercase(),
                 _ => return false,
             };
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             if let Some(race) = world.race_definitions.get(&race_id) {
                 race.passive_abilities.iter().any(|p| p.id == passive_id)
             } else {
@@ -573,7 +573,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(c)) => c.race.to_lowercase(),
                 _ => return 0,
             };
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             if let Some(race) = world.race_definitions.get(&race_id) {
                 for passive in &race.passive_abilities {
                     if let Some(val) = passive.effects.get(&effect_key) {
@@ -588,7 +588,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_race_name(race_id) -> String (display name from definition)
     let state_clone = state.clone();
     engine.register_fn("get_race_name", move |race_id: String| -> String {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         if let Some(race) = world.race_definitions.get(&race_id.to_lowercase()) {
             race.name.clone()
         } else if race_id.is_empty() {
@@ -631,7 +631,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |connection_id: String, is_builder: bool| -> bool {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
                 let char_name = {
-                    let conns_guard = conns.lock().unwrap();
+                    let conns_guard = conns.lock();
                     conns_guard
                         .get(&uuid)
                         .and_then(|s| s.character.as_ref())
@@ -645,7 +645,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             return false;
                         }
                         // Update session
-                        let mut conns_guard = conns.lock().unwrap();
+                        let mut conns_guard = conns.lock();
                         if let Some(session) = conns_guard.get_mut(&uuid) {
                             if let Some(ref mut session_char) = session.character {
                                 session_char.is_builder = is_builder;
@@ -668,7 +668,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |connection_id: String, character_name: String, is_builder: bool| {
             // Verify caller is admin
             if let Ok(caller_uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 let is_admin = conns_guard
                     .get(&caller_uuid)
                     .and_then(|s| s.character.as_ref())
@@ -692,7 +692,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
 
                 // Also update the session if this character is logged in
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 for (_id, session) in conns.iter_mut() {
                     if let Some(ref mut session_char) = session.character {
                         if session_char.name.eq_ignore_ascii_case(&character_name) {
@@ -718,7 +718,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |connection_id: String, character_name: String, is_admin: bool| {
             // Verify caller is admin
             if let Ok(caller_uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 let caller_is_admin = conns_guard
                     .get(&caller_uuid)
                     .and_then(|s| s.character.as_ref())
@@ -742,7 +742,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
 
                 // Also update the session if this character is logged in
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 for (_id, session) in conns.iter_mut() {
                     if let Some(ref mut session_char) = session.character {
                         if session_char.name.eq_ignore_ascii_case(&character_name) {
@@ -882,10 +882,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return rhai::Dynamic::UNIT,
         };
         let room_id = {
-            let conns_guard = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return rhai::Dynamic::UNIT,
-            };
+            let conns_guard = conns.lock();
             match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
                 Some(c) => c.current_room_id,
                 None => return rhai::Dynamic::UNIT,
@@ -1182,7 +1179,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_character_thirst", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     let mut map = rhai::Map::new();
@@ -1206,7 +1203,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("restore_thirst", move |connection_id: String, amount: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             if let Some(session) = conns_guard.get_mut(&uuid) {
                 if let Some(ref mut char) = session.character {
                     let old_thirst = char.thirst;
@@ -1227,7 +1224,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_character_hunger", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     let mut map = rhai::Map::new();
@@ -1251,7 +1248,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("restore_hunger", move |connection_id: String, amount: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             if let Some(session) = conns_guard.get_mut(&uuid) {
                 if let Some(ref mut char) = session.character {
                     let old_hunger = char.hunger;
@@ -1271,7 +1268,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("get_character_insulation", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     let mut total = 0i64;
@@ -1309,7 +1306,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let state_clone = state.clone();
     engine.register_fn("has_trait", move |connection_id: String, trait_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     // Check character's own traits
@@ -1319,7 +1316,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     // Check race + class definition granted traits (read-time merge)
                     let char = char.clone();
                     drop(conns_guard);
-                    let world = state_clone.lock().unwrap();
+                    let world = state_clone.lock();
                     return effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
                         .iter()
                         .any(|t| t == &trait_id);
@@ -1340,7 +1337,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return 0,
         };
 
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         let session = match conns_guard.get(&conn_uuid) {
             Some(s) => s,
             None => return 0,
@@ -1433,7 +1430,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return 0,
         };
 
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         let session = match conns_guard.get(&conn_uuid) {
             Some(s) => s,
             None => return 0,
@@ -1481,7 +1478,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return 0,
         };
 
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         let session = match conns_guard.get(&conn_uuid) {
             Some(s) => s,
             None => return 0,
@@ -1574,7 +1571,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("has_light_source", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     if let Ok(equipped) = cloned_db.get_equipped_items(&char.name) {
@@ -1590,7 +1587,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("can_see", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     // Check if they have the blindness trait or a Blind buff
@@ -1636,7 +1633,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         // Check character's ability to see in darkness
         if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
             let (god_mode, has_nv_trait, has_da_trait, has_nv_buff, race_id, char_name) = {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 if let Some(session) = conns_guard.get(&conn_uuid) {
                     if let Some(ref char) = session.character {
                         (
@@ -1666,7 +1663,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let has_racial_nv;
             let has_racial_da;
             {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if let Some(race) = world.race_definitions.get(&race_id) {
                     has_racial_nv = race.granted_traits.iter().any(|t| t == "night_vision");
                     has_racial_da = race.granted_traits.iter().any(|t| t == "dark_adapted");
@@ -1798,7 +1795,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Err(_) => return 0,
             };
 
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             let session = match conns_guard.get(&conn_uuid) {
                 Some(s) => s,
                 None => return 0,
@@ -1959,8 +1956,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // ========== Gold Functions ==========
 
     // get_character_gold(char_name) -> i64
+    // Session first (authoritative for online players), DB for offline.
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("get_character_gold", move |char_name: String| -> i64 {
+        {
+            let conns = cloned_conns.lock();
+            let online = conns
+                .values()
+                .filter_map(|s| s.character.as_ref())
+                .find(|c| c.name.eq_ignore_ascii_case(&char_name));
+            if let Some(c) = online {
+                return c.gold as i64;
+            }
+        }
         match cloned_db.get_character_data(&char_name.to_lowercase()) {
             Ok(Some(char)) => char.gold as i64,
             _ => 0,
@@ -2228,7 +2237,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_xp_feed", move |connection_id: String| -> String {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     return crate::progress::XpFeed::from_field(&char.xp_feed)
@@ -2251,7 +2260,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             return false;
         }
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.xp_feed = lc;
@@ -2286,7 +2295,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("prompt_token_lines", move |connection_id: String| -> rhai::Array {
         let ctx = (|| {
             let conn_id = uuid::Uuid::parse_str(&connection_id).ok()?;
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             let session = conns_lock.get(&conn_id)?;
             let char = session.character.as_ref()?;
             Some(crate::prompt::PromptContext::from_character(
@@ -2325,7 +2334,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(c)) => c,
                 _ => return 0,
             };
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
                 .iter()
                 .filter_map(|t| world.trait_definitions.get(t.as_str()))
@@ -2425,25 +2434,64 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "change_password",
         move |connection_id: String, new_password: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_guard = conns.lock().unwrap();
-                if let Some(session) = conns_guard.get_mut(&uuid) {
-                    if let Some(ref mut character) = session.character {
-                        match cloned_db.hash_password(&new_password) {
-                            Ok(hash) => {
-                                character.password_hash = hash;
-                                character.must_change_password = false;
-                                return cloned_db.save_character_data(character.clone()).is_ok();
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to hash password: {}", e);
-                                return false;
-                            }
-                        }
-                    }
+            let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) else {
+                return false;
+            };
+            // Hash before taking the connections lock: Argon2 is slow.
+            let hash = match cloned_db.hash_password(&new_password) {
+                Ok(h) => h,
+                Err(e) => {
+                    tracing::error!("Failed to hash password: {}", e);
+                    return false;
+                }
+            };
+            let (account_id, char_name) = {
+                let conns_guard = conns.lock();
+                let Some(session) = conns_guard.get(&uuid) else {
+                    return false;
+                };
+                let Some(character) = session.character.as_ref() else {
+                    return false;
+                };
+                (session.account_id, character.name.clone())
+            };
+            // The account hash is what login checks; the character copy is a
+            // mirror. Any outstanding `forgot` reset is cancelled.
+            let account = match account_id {
+                Some(id) => cloned_db.get_account_by_id(&id).ok().flatten(),
+                None => cloned_db.find_account_for_character(&char_name).ok().flatten(),
+            };
+            let Some(mut account) = account else {
+                tracing::error!("change_password: no account for {}", char_name);
+                return false;
+            };
+            account.password_hash = hash.clone();
+            account.pending_reset_hash = None;
+            account.pending_reset_expires_at = 0;
+            let siblings: Vec<String> = account
+                .character_names
+                .iter()
+                .filter(|n| !n.eq_ignore_ascii_case(&char_name))
+                .cloned()
+                .collect();
+            if cloned_db.save_account(account).is_err() {
+                return false;
+            }
+            // A reset flags every character; the new password satisfies all.
+            for name in &siblings {
+                if let Ok(Some(mut other)) = cloned_db.get_character_data(name) {
+                    other.password_hash = hash.clone();
+                    other.must_change_password = false;
+                    let _ = cloned_db.save_character_data(other);
                 }
             }
-            false
+            let mut conns_guard = conns.lock();
+            let Some(character) = conns_guard.get_mut(&uuid).and_then(|s| s.character.as_mut()) else {
+                return true;
+            };
+            character.password_hash = hash;
+            character.must_change_password = false;
+            cloned_db.save_character_data(character.clone()).is_ok()
         },
     );
 
@@ -2454,10 +2502,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn(
         "set_first_character_privileges",
-        move |character_name: String| -> bool {
+        move |character_name: String, connection_id: String| -> bool {
             let count = cloned_db.count_characters().unwrap_or(0);
             // Only grant if this is the very first character (count == 1 means we just created it)
             if count != 1 {
+                return false;
+            }
+            // On a fresh public server, "first to connect" could be anyone.
+            // Auto-grant only to a local connection, or when the operator
+            // opted in; otherwise they grant it from the CLI.
+            let from_loopback = uuid::Uuid::parse_str(&connection_id)
+                .ok()
+                .and_then(|cid| conns.lock().get(&cid).map(|s| s.addr.ip().is_loopback()))
+                .unwrap_or(false);
+            if !from_loopback && !first_user_admin_opt_in() {
+                tracing::warn!(
+                    "First character '{}' was created from a remote address and was NOT made an admin. \
+                     Grant it with `ironmud-admin user grant-admin {}` (or set {}=true before creating it).",
+                    character_name,
+                    character_name,
+                    FIRST_USER_ADMIN_ENV
+                );
                 return false;
             }
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&character_name) {
@@ -2468,7 +2533,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return false;
                 }
                 // Update session if online
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 for (_id, session) in conns.iter_mut() {
                     if let Some(ref mut session_char) = session.character {
                         if session_char.name.eq_ignore_ascii_case(&character_name) {
@@ -2517,7 +2582,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     //
     // The limiter Arc lives inside World, but we cannot extract it here:
     // `register_rhai_functions` is called while main.rs already holds the
-    // World mutex (std::sync::Mutex is not reentrant). Instead, each
+    // World mutex (parking_lot::Mutex is not reentrant). Instead, each
     // closure clones the state Arc and locks it lazily on call. The
     // dispatcher releases the World lock before invoking Rhai, so the
     // call-time lock acquires cleanly.
@@ -2531,14 +2596,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.is_login_throttled(ip)
@@ -2557,7 +2622,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return 0;
             }
             let throttle = {
-                let world = st.lock().unwrap();
+                let world = st.lock();
                 world.command_throttle.clone()
             };
             let cooldown = std::time::Duration::from_secs(cooldown_secs as u64);
@@ -2575,14 +2640,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.is_creation_throttled(ip)
@@ -2598,14 +2663,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.record_creation(ip);
@@ -2624,14 +2689,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.is_email_send_throttled(ip)
@@ -2649,14 +2714,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.record_email_send(ip);
@@ -2679,14 +2744,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let ip = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             match conns_guard.get(&cid) {
                 Some(s) => s.addr.ip(),
                 None => return false,
             }
         };
         let lim = {
-            let world = st.lock().unwrap();
+            let world = st.lock();
             world.ip_limiter.clone()
         };
         lim.record_auth_failure(ip);
@@ -2713,7 +2778,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "get_player_stat",
         move |connection_id: String, stat_name: String| -> i64 {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 if let Some(session) = conns_guard.get(&uuid) {
                     if let Some(ref char) = session.character {
                         return match stat_name.to_lowercase().as_str() {
@@ -2740,7 +2805,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_player_stat",
         move |connection_id: String, stat_name: String, value: i64| -> bool {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_guard = conns.lock().unwrap();
+                let mut conns_guard = conns.lock();
                 if let Some(session) = conns_guard.get_mut(&uuid) {
                     if let Some(ref mut char) = session.character {
                         let stat_val = value as i32;
@@ -2766,7 +2831,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_player_max_carry_weight", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     return 50 + (char.stat_str as i64 * 10);
@@ -2783,7 +2848,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "get_player_calculated_max_health",
         move |connection_id: String| -> i64 {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 if let Some(session) = conns_guard.get(&uuid) {
                     if let Some(ref char) = session.character {
                         return 20 + (char.stat_con as i64 * 5) + (char.level as i64 * 5);
@@ -2801,7 +2866,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "get_player_calculated_max_stamina",
         move |connection_id: String| -> i64 {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_guard = conns.lock().unwrap();
+                let conns_guard = conns.lock();
                 if let Some(session) = conns_guard.get(&uuid) {
                     if let Some(ref char) = session.character {
                         return 50 + (char.stat_con as i64 * 3) + (char.stat_str as i64 * 2);
@@ -2870,7 +2935,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |connection_id: String, character: crate::CharacterData| -> i64 {
             let mut total = character.total_seconds_played;
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                if let Ok(connections) = conns.lock() {
+                {
+                    let connections = conns.lock();
                     if let Some(start) = connections.get(&conn_id).and_then(|s| s.session_started_at) {
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -2885,23 +2951,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     );
 
     // get_effective_max_hp(char_name) -> i64
-    // Base max_hp plus sum of `EffectType::MaxHpBonus` buffs (stamped from
-    // equipped items at wear time, plus any spell-cast HP buffs). Read-only.
+    // The reachable HP ceiling (`CharacterData::effective_max_hp`): base +
+    // MaxHpBonus buffs, max-HP traits, torso wound. Reads the live session
+    // copy for an online player, else the DB. 0 if no such character.
+    // Prefer the `ch.effective_max_hp()` method when the script already
+    // holds the character it is about to save.
     let cloned_db = db.clone();
+    let conns = connections.clone();
     engine.register_fn("get_effective_max_hp", move |char_name: String| -> i64 {
-        let lname = char_name.to_lowercase();
-        match cloned_db.get_character_data(&lname) {
-            Ok(Some(c)) => {
-                let bonus: i64 = c
-                    .active_buffs
-                    .iter()
-                    .filter(|b| b.effect_type == EffectType::MaxHpBonus)
-                    .map(|b| b.magnitude as i64)
-                    .sum();
-                c.max_hp as i64 + bonus
-            }
-            _ => 0,
-        }
+        crate::script::achievements::apply_to_character(&cloned_db, &conns, &char_name, |_| false)
+            .map(|c| c.effective_max_hp() as i64)
+            .unwrap_or(0)
+    });
+    engine.register_fn("effective_max_hp", |c: &mut crate::CharacterData| -> i64 {
+        c.effective_max_hp() as i64
     });
 
     // get_effective_max_mana(char_name) -> i64
@@ -3010,7 +3073,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |char_name: String, key: String, value: i64| -> bool {
             let key_lc = key.to_lowercase();
             {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if !world.custom_skill_definitions.contains_key(&key_lc) {
                     return false;
                 }
@@ -3036,7 +3099,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |char_name: String, key: String, delta: i64| -> i64 {
             let key_lc = key.to_lowercase();
             {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if !world.custom_skill_definitions.contains_key(&key_lc) {
                     return 0;
                 }
@@ -3176,7 +3239,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return false;
                 }
                 // Update session
-                let mut conns_guard = conns.lock().unwrap();
+                let mut conns_guard = conns.lock();
                 for (_id, session) in conns_guard.iter_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3255,7 +3318,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if cloned_db.save_character_data(character.clone()).is_err() {
                 return 0;
             }
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             for (_id, session) in conns_guard.iter_mut() {
                 if let Some(ref mut sc) = session.character {
                     if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3284,7 +3347,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if cloned_db.save_character_data(character.clone()).is_err() {
                 return false;
             }
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             for (_id, session) in conns_guard.iter_mut() {
                 if let Some(ref mut sc) = session.character {
                     if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3368,7 +3431,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return false;
                 }
                 // Update session
-                let mut conns_guard = conns.lock().unwrap();
+                let mut conns_guard = conns.lock();
                 for (_id, session) in conns_guard.iter_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3479,7 +3542,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             "charisma" => "cha",
                             other => other,
                         };
-                        let world = state_clone.lock().unwrap();
+                        let world = state_clone.lock();
                         if let Some(race) = world.race_definitions.get(&race_id) {
                             let stat_mod = *race.stat_modifiers.get(short_key).unwrap_or(&0);
                             let all_stats: i32 = race
@@ -3523,7 +3586,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("restore_mana", move |connection_id: String, amount: i64| -> bool {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             if let Some(session) = conns_guard.get_mut(&uuid) {
                 if let Some(ref mut char) = session.character {
                     if !char.mana_enabled {
@@ -3545,7 +3608,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_character_mana", move |connection_id: String| -> rhai::Dynamic {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
                     let mut map = rhai::Map::new();
@@ -3577,7 +3640,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if cloned_db.save_character_data(character.clone()).is_err() {
                 return false;
             }
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             for (_id, session) in conns_guard.iter_mut() {
                 if let Some(ref mut sc) = session.character {
                     if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3613,7 +3676,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return false,
         };
         let (mut char, room_id) = {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             let session = match conns_guard.get(&conn_uuid) {
                 Some(s) => s,
                 None => return false,
@@ -3643,7 +3706,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             character.drunk_level = (character.drunk_level + amount as i32).clamp(0, 100);
             let new_level = character.drunk_level;
             if cloned_db.save_character_data(character.clone()).is_ok() {
-                let mut conns_guard = conns.lock().unwrap();
+                let mut conns_guard = conns.lock();
                 for (_id, session) in conns_guard.iter_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.eq_ignore_ascii_case(&char_name) {
@@ -3663,7 +3726,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_pending_slow_move", move |connection_id: String| -> rhai::Dynamic {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref char) = session.character {
                     if let Some(ref psm) = char.pending_slow_move {
@@ -3691,7 +3754,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let Ok(src_uuid) = uuid::Uuid::parse_str(&source_room_id) else {
                 return false;
             };
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.pending_slow_move = Some(crate::types::PendingSlowMove {
@@ -3714,7 +3777,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
             return false;
         };
-        let mut conns_lock = conns.lock().unwrap();
+        let mut conns_lock = conns.lock();
         if let Some(session) = conns_lock.get_mut(&conn_id) {
             if let Some(ref mut char) = session.character {
                 if char.pending_slow_move.is_some() {
@@ -3736,7 +3799,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
             return false;
         };
-        let mut conns_lock = conns.lock().unwrap();
+        let mut conns_lock = conns.lock();
         if let Some(session) = conns_lock.get_mut(&conn_id) {
             if session.slow_move_completing {
                 session.slow_move_completing = false;
@@ -3745,4 +3808,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
         false
     });
+}
+
+/// Opt-in for making the first character an admin even when it's created
+/// over a non-loopback connection.
+pub const FIRST_USER_ADMIN_ENV: &str = "IRONMUD_FIRST_USER_ADMIN";
+
+fn first_user_admin_opt_in() -> bool {
+    std::env::var(FIRST_USER_ADMIN_ENV)
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
 }

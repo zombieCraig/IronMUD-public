@@ -16,7 +16,7 @@ pub fn handle_readline_backspace(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.cursor_pos > 0 {
             let char_count = session.input_buffer.chars().count();
@@ -61,7 +61,7 @@ pub fn handle_readline_delete(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         let char_count = session.input_buffer.chars().count();
         if session.cursor_pos < char_count {
@@ -90,7 +90,7 @@ pub fn handle_readline_cursor_left(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.cursor_pos > 0 {
             // Get the character we're moving over and its display width
@@ -108,7 +108,7 @@ pub fn handle_readline_cursor_right(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         let char_count = session.input_buffer.chars().count();
         if session.cursor_pos < char_count {
@@ -127,7 +127,7 @@ pub fn handle_readline_cursor_home(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.cursor_pos > 0 {
             // Calculate display width of characters from start to cursor
@@ -143,7 +143,7 @@ pub fn handle_readline_cursor_end(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         let char_count = session.input_buffer.chars().count();
         if session.cursor_pos < char_count {
@@ -161,7 +161,7 @@ pub fn handle_readline_history_up(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.command_history.is_empty() {
             return;
@@ -195,7 +195,7 @@ pub fn handle_readline_history_down(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         match session.history_index {
             None => return, // Already at newest
@@ -225,7 +225,7 @@ pub fn handle_readline_transpose(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         let chars: Vec<char> = session.input_buffer.chars().collect();
         let len = chars.len();
@@ -266,7 +266,7 @@ pub fn handle_readline_delete_word(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.cursor_pos == 0 {
             return;
@@ -311,7 +311,7 @@ pub fn handle_readline_delete_to_start(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         if session.cursor_pos > 0 {
             let chars: Vec<char> = session.input_buffer.chars().collect();
@@ -332,7 +332,7 @@ pub fn handle_readline_delete_to_end(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         let char_count = session.input_buffer.chars().count();
         if session.cursor_pos < char_count {
@@ -353,7 +353,7 @@ pub fn handle_readline_cancel_line(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         // Display ^C and start new line
         let _ = tx_raw.send(b"^C\r\n> ".to_vec());
@@ -369,7 +369,7 @@ pub fn handle_readline_redraw_screen(
     connection_id: ConnectionId,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     if let Some(session) = conns.get(&connection_id) {
         // Clear screen and redraw
         let mut output = b"\x1b[2J\x1b[H".to_vec(); // Clear screen, home cursor
@@ -388,7 +388,7 @@ pub fn handle_readline_insert_char(
     c: char,
     tx_raw: &mpsc::UnboundedSender<Vec<u8>>,
 ) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         // Refuse to grow the line past the global cap. Outer read loop
         // disconnects on the same condition; this is belt-and-braces for

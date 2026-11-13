@@ -203,8 +203,13 @@ fn attempt_steal_gold(char, connection_id, is_player, player_name, mobile_id, mo
         let amount = random_int(1, target.gold / 4);
         if amount < 1 { amount = 1; }
         // Transfer gold
+        // Debit the victim first; only credit the thief if that succeeded
+        // (their purse may have changed since we read it).
+        if !add_character_gold(player_name, -amount) {
+            send_client_message(connection_id, "Their purse is lighter than you thought.");
+            return;
+        }
         add_character_gold(char.name, amount);
-        add_character_gold(player_name, -amount);
         send_client_message(connection_id, "You deftly lift " + amount + " gold from " + player_name + "'s purse.");
     } else {
         let mob = get_mobile_data(mobile_id);
@@ -214,8 +219,12 @@ fn attempt_steal_gold(char, connection_id, is_player, player_name, mobile_id, mo
         }
         let amount = random_int(1, mob.gold / 4);
         if amount < 1 { amount = 1; }
+        // Debit the mobile first; only credit the thief if that succeeded.
+        if !add_mobile_gold(mobile_id, -amount) {
+            send_client_message(connection_id, "Their purse is lighter than you thought.");
+            return;
+        }
         add_character_gold(char.name, amount);
-        set_mobile_gold(mobile_id, mob.gold - amount);
         send_client_message(connection_id, "You deftly lift " + amount + " gold from " + mobile_name + ".");
     }
 }

@@ -315,7 +315,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
             // Get the character
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         let idx = wound_index as usize;
@@ -352,7 +352,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         let original_len = char.wounds.len();
@@ -387,7 +387,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         let original_len = char.has_frostbite.len();
@@ -409,7 +409,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("stop_character_bleeding", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     // Stop bleeding on all wounds
@@ -446,7 +446,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("cure_character_poison", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     // Remove poisoned wounds
@@ -465,7 +465,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("cure_character_illness", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     char.has_illness = false;
@@ -485,7 +485,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("cure_hypothermia", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     if char.has_hypothermia {
@@ -507,7 +507,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("cure_heat_exhaustion", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     if char.has_heat_exhaustion {
@@ -529,7 +529,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("cure_heat_stroke", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     if char.has_heat_stroke {
@@ -554,11 +554,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "restore_character_hp",
         move |connection_id: String, amount: i64| -> i64 {
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
+                let mut conns_lock = conns.lock();
                 if let Some(session) = conns_lock.get_mut(&conn_id) {
                     if let Some(ref mut char) = session.character {
                         let old_hp = char.hp;
-                        char.hp = (char.hp + amount as i32).min(char.max_hp);
+                        char.hp = char.hp.saturating_add(amount as i32).min(char.effective_max_hp());
                         let healed = char.hp - old_hp;
                         let _ = cloned_db.save_character_data(char.clone());
                         return healed as i64;
@@ -575,10 +575,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("full_heal_character", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
-                    char.hp = char.max_hp;
+                    char.hp = char.effective_max_hp();
                     let _ = cloned_db.save_character_data(char.clone());
                     return true;
                 }
@@ -593,7 +593,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("revive_unconscious_character", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     if char.is_unconscious {

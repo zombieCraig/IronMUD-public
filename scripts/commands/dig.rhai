@@ -2,6 +2,8 @@
 // Player usage: dig                       (unearth buried items in a dirt_floor room)
 // Builder usage: dig <direction> [title]  (creates a new linked room)
 
+import "olc_helpers" as olc;
+
 fn get_opposite_direction(dir) {
     if dir == "north" { return "south"; }
     if dir == "south" { return "north"; }
@@ -93,6 +95,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Room creation is a builder verb. `dig` itself is access:user because it
+    // doubles as treasure digging, so the builder check has to live here:
+    // without it any player in an area-less room could mint rooms and exits.
+    if !char.is_builder && !char.is_admin {
+        send_client_message(connection_id, "Only builders can dig new rooms. To search for buried items, type 'dig'.");
+        return;
+    }
+
     let direction = first;
 
     // Get current room
@@ -105,8 +115,7 @@ fn run_command(args, connection_id) {
     // Check area permissions if current room belongs to an area
     let room_area_id = current_room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to dig from rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to dig from rooms in this area.") {
             return;
         }
         let quota_err = area_quota_check(room_area_id, "rooms");
@@ -145,16 +154,9 @@ fn run_command(args, connection_id) {
     let new_room = create_room(title, "This room has no description yet.");
 
     // Attribution: claim the room for whoever dug it. See src/attribution.rs.
-    //
-    // Only for a builder. `dig` is access:user (it is also the treasure-digging
-    // verb) and the can_edit_area gate above only runs when the current room
-    // belongs to an area — so in an area-less room any player can reach this
-    // line. Stamping unconditionally would let them mint scored, self-credited
-    // Builder-origin content. Left unstamped it is Unknown, which counts for
-    // nobody, which is the right answer.
-    if char.is_builder || char.is_admin {
-        stamp_content_created("room", "" + new_room.id, char.name);
-    }
+    // Only builders reach this point (gated above), so the stamp is always
+    // a real builder's credit.
+    stamp_content_created("room", "" + new_room.id, char.name);
     let new_room_id = new_room.id;
 
     // Check if current room is a property template room

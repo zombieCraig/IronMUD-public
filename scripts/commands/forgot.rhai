@@ -1,7 +1,8 @@
 // scripts/commands/forgot.rhai
-// Pre-auth password recovery. Looks up the account by verified email,
-// generates a random temp password, hashes it onto the account + all linked
-// characters, marks them must_change_password, and emails the temp password.
+// Pre-auth password recovery. Looks up the account by verified email and
+// emails a random temp password, valid for an hour. The current password keeps
+// working: the temp one only replaces it (and forces a change) when it is used
+// to log in, so a stranger requesting a reset can't lock the owner out.
 // All replies use a single generic message so a flooder can't enumerate
 // which emails are registered.
 
@@ -21,7 +22,7 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    let generic = "If an account with that email exists, a temporary password has been sent. Check your inbox.";
+    let generic = "If an account with that email exists, a temporary password has been sent. Check your inbox. It works for one hour; your current password keeps working too.";
 
     // Per-IP email-send cap. Checked before the account lookup so a flooder
     // can't probe many addresses to bypass the per-account throttle. Always

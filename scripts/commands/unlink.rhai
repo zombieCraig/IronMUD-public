@@ -2,6 +2,8 @@
 // Usage: unlink <direction>
 // Removes an exit from the current room
 
+import "olc_helpers" as olc;
+
 fn normalize_direction(dir) {
     let d = dir.to_lower();
     if d == "n" { return "north"; }
@@ -50,8 +52,7 @@ fn run_command(args, connection_id) {
     // Check area permissions if current room belongs to an area
     let room_area_id = room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to unlink exits from rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to unlink exits from rooms in this area.") {
             return;
         }
     }

@@ -9,7 +9,7 @@ use crate::{SharedConnections, broadcast_to_all_players};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::{debug, error, info, warn};
 
@@ -39,6 +39,11 @@ pub fn default_socket_path(database_path: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."));
     dir.join("control.sock")
 }
+
+/// Longest command line accepted from a control client.
+const MAX_COMMAND_BYTES: u64 = 64 * 1024;
+/// How long a control client has to send its command.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub async fn run_control_socket(path: PathBuf, connections: SharedConnections) -> Result<()> {
     if path.exists() {
@@ -80,9 +85,13 @@ pub async fn run_control_socket(path: PathBuf, connections: SharedConnections) -
 
 async fn handle_client(stream: UnixStream, connections: SharedConnections) -> Result<()> {
     let (read_half, mut write_half) = stream.into_split();
-    let mut reader = BufReader::new(read_half);
+    // One command per connection: bound its size and how long we wait for it.
+    let mut reader = BufReader::new(read_half.take(MAX_COMMAND_BYTES));
     let mut line = String::new();
-    let bytes = reader.read_line(&mut line).await?;
+    let bytes = match tokio::time::timeout(READ_TIMEOUT, reader.read_line(&mut line)).await {
+        Ok(r) => r?,
+        Err(_) => anyhow::bail!("control client sent nothing within {:?}", READ_TIMEOUT),
+    };
     if bytes == 0 {
         return Ok(());
     }
@@ -115,5 +124,26 @@ fn execute(cmd: ControlCommand, connections: &SharedConnections) -> ControlRespo
             ControlResponse::Ok
         }
         ControlCommand::Ping => ControlResponse::Ok,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parking_lot::Mutex;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn an_oversized_command_is_cut_off_not_buffered() {
+        let (server, mut client) = UnixStream::pair().unwrap();
+        let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let task = tokio::spawn(handle_client(server, conns));
+        let junk = vec![b'x'; 100 * 1024];
+        let _ = client.write_all(&junk).await;
+        let mut resp = String::new();
+        let _ = BufReader::new(&mut client).read_line(&mut resp).await;
+        assert!(resp.contains("invalid command"), "{resp}");
+        task.await.unwrap().unwrap();
     }
 }

@@ -294,7 +294,7 @@ pub fn dispatch_player_social(
     // touching connections — matches the deadlock-prevention rule in
     // CLAUDE.md (never hold World + Connections simultaneously).
     let social = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         match world.socials.get(verb) {
             Some(s) => s.clone(),
             None => return DispatchOutcome::NotASocial,
@@ -303,7 +303,7 @@ pub fn dispatch_player_social(
 
     // Snapshot actor state from connections.
     let actor_snapshot = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns.get(&connection_id).and_then(|s| s.character.as_ref().cloned())
     };
     let Some(actor) = actor_snapshot else {
@@ -335,7 +335,7 @@ pub fn dispatch_player_social(
     // the deadlock this codebase is built to avoid.
     {
         let db = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             world.db.clone()
         };
         crate::script::achievements::notify_social_used_core(&db, connections, state, &actor.name, &social.name);
@@ -400,7 +400,7 @@ pub fn dispatch_player_social(
             // on top of the social's normal output.
             if social.name == "comfort" && t.replicant_state.is_some() {
                 let db = {
-                    let world = state.lock().unwrap();
+                    let world = state.lock();
                     world.db.clone()
                 };
                 match crate::replicant::comfort_replicant_by_name(&db, connections, &t.name) {
@@ -499,7 +499,7 @@ fn resolve_target(
     let keyword_l = keyword.to_ascii_lowercase();
     // Players in the same room (skip the actor themselves).
     {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         for (_, sess) in conns.iter() {
             if let Some(ch) = &sess.character {
                 if ch.current_room_id != actor.current_room_id {
@@ -516,7 +516,7 @@ fn resolve_target(
     }
     // Mobiles in the room.
     let db = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         world.db.clone()
     };
     if let Ok(mobs) = db.get_mobiles_in_room(&actor.current_room_id) {
@@ -680,7 +680,7 @@ fn resolve_object(
     }
     let keyword_l = keyword.to_ascii_lowercase();
     let db = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         world.db.clone()
     };
     let matches = |item: &crate::types::ItemData| -> bool {
@@ -705,7 +705,7 @@ fn resolve_object(
 /// Send to a specific connection by id. Translates inline tba color
 /// codes to ANSI (or strips them) based on the recipient's setting.
 fn send_to(connections: &SharedConnections, connection_id: Uuid, msg: &str) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     if let Some(s) = conns.get(&connection_id) {
         let rendered = render::apply_tba_color_codes(msg, s.colors_enabled);
         let _ = s.sender.send(rendered);
@@ -714,7 +714,7 @@ fn send_to(connections: &SharedConnections, connection_id: Uuid, msg: &str) {
 
 /// Send to whichever connection currently owns the actor's character.
 fn send_to_actor(connections: &SharedConnections, actor: &CharacterData, msg: &str) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name == actor.name {
@@ -727,7 +727,7 @@ fn send_to_actor(connections: &SharedConnections, actor: &CharacterData, msg: &s
 }
 
 fn send_to_player_named(connections: &SharedConnections, name: &str, msg: &str) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name.eq_ignore_ascii_case(name) {
@@ -749,7 +749,7 @@ fn broadcast_excluding_two(
     // broadcast_to_room_awake already excludes a single name; layer the
     // victim exclusion here. We also iterate per-recipient so each player
     // gets tba color codes translated (or stripped) to match their setting.
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.current_room_id != room_id {
@@ -775,7 +775,7 @@ fn broadcast_excluding_two(
 /// Per-recipient awake-only room broadcast that translates tba color
 /// codes for each listener. Used by `emit_no_arg` and `emit_self`.
 fn broadcast_awake_with_color(connections: &SharedConnections, room_id: Uuid, msg: &str, exclude_name: &str) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.current_room_id != room_id {

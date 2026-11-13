@@ -64,7 +64,8 @@ fn run_command(args, connection_id) {
     }
 
     let name = parts[0];
-    let password = parts[1];
+    // The password is the rest of the line: `password` accepts spaces.
+    let password = rest_after_first_word(args);
 
     if name == "" {
         send_client_message(connection_id, "Account name cannot be empty.");
@@ -84,30 +85,40 @@ fn run_command(args, connection_id) {
         // Treat unknown-account lookups as auth failures too -- otherwise
         // the IP throttle never engages on username enumeration sweeps.
         record_auth_failure(connection_id);
-        send_client_message(connection_id, "Account '" + name + "' not found.");
+        // Same reply as a wrong password, so login can't be used to probe
+        // which account names exist.
+        send_client_message(connection_id, login_failed_msg());
         return;
     }
 
-    // Check if account is locked out (per-account-name lockout, unchanged
-    // since pivot — account name == old character name post-migration).
-    let lockout_remaining = check_lockout(name);
+    // Lockout is keyed by (account, source IP): failures from one address
+    // lock that address out of this account without letting a stranger lock
+    // the owner out from everywhere. Cross-account spraying is caught by the
+    // per-IP throttle above.
+    let lockout_key = name;
+    let source_ip = get_connection_ip(connection_id);
+    if source_ip != "" {
+        lockout_key = name + "@" + source_ip;
+    }
+    let lockout_remaining = check_lockout(lockout_key);
     if lockout_remaining > 0 {
         send_client_message(connection_id, "Too many failed attempts. Try again in " + format_lockout_time(lockout_remaining) + ".");
         return;
     }
 
-    // Verify password against the account's hash (source of truth post-migration).
-    let is_valid = verify_password(password, account.password_hash);
+    // Verify against the account password, or an outstanding `forgot`
+    // temp password (which is promoted on use).
+    let is_valid = verify_account_login(account.id, password);
 
     if !is_valid {
         record_auth_failure(connection_id);
-        let result = record_failed_attempt(name);
+        let result = record_failed_attempt(lockout_key);
         send_client_message(connection_id, result.message);
         return;
     }
 
     // Successful auth - clear any lockout data
-    clear_lockout_data(name);
+    clear_lockout_data(lockout_key);
 
     // Refuse banned accounts. The banned user already knows their account
     // exists (they just typed its name + password), so showing reason +
@@ -1455,16 +1466,28 @@ fn record_failed_attempt(char_name) {
 
         return #{
             is_locked: true,
-            message: "Incorrect password. Account locked for " + format_lockout_time(duration) + "."
+            message: login_failed_msg() + " Too many failed attempts; try again in " + format_lockout_time(duration) + "."
         };
     }
 
-    // Not locked yet - save and return remaining attempts
+    // Not locked yet - save. The reply doesn't count down: it would differ
+    // from the unknown-account reply and reveal that the account exists.
     save_lockout_data(char_name, data.fail_count, 0);
-    let remaining = 10 - data.fail_count;
 
     return #{
         is_locked: false,
-        message: "Incorrect password. " + remaining + " attempt(s) remaining before lockout."
+        message: login_failed_msg()
     };
+}
+
+// Everything after the first space-separated word, spaces preserved.
+fn rest_after_first_word(line) {
+    let i = line.index_of(" ");
+    if i < 0 { return ""; }
+    line.sub_string(i + 1)
+}
+
+// The one reply for both unknown accounts and wrong passwords.
+fn login_failed_msg() {
+    "Invalid account name or password."
 }

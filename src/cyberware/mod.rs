@@ -670,7 +670,7 @@ pub fn process_psyche_tick(db: &crate::db::Db, connections: &crate::SharedConnec
     let mut episode_events: Vec<(uuid::Uuid, String, &'static str)> = Vec::new();
 
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
 
         // Room occupancy by online players, for the in-company check.
         let mut room_player_counts: std::collections::HashMap<uuid::Uuid, i32> = std::collections::HashMap::new();
@@ -721,10 +721,7 @@ fn broadcast_episode_to_room(
     psycho_name: &str,
     room_message: &str,
 ) {
-    let conns = match connections.lock() {
-        Ok(c) => c,
-        Err(_) => return,
-    };
+    let conns = connections.lock();
     let line = room_message.replace("{name}", psycho_name);
     for session in conns.values() {
         let Some(ch) = session.character.as_ref() else {

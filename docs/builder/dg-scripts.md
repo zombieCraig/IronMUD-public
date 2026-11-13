@@ -171,7 +171,7 @@ These work on any character or mob head (`actor`, `victim`, `self`-when-mob).
 | `name` | Display name |
 | `id` | UUID (mobs) or player name (PCs) |
 | `level` | Level |
-| `hp` / `maxhp` / `hitp` / `maxhitp` | Current / max HP |
+| `hp` / `maxhp` / `hitp` / `maxhitp` | Current / max HP (for players, max is the reachable ceiling: item bonuses, max-HP traits, torso wound) |
 | `mana` / `maxmana` | Current / max mana |
 | `move` / `maxmove` | Stamina |
 | `gold` | Gold |
@@ -495,6 +495,10 @@ eval cost %actor.level% * 50 + 25
 
 Supports `+ - * / %`, parens, unary minus, and full precedence. Overflow falls back to passing the raw substituted string.
 
+**Conditions are parsed before variables are substituted.** In `if %speech% == secret`, whatever the player said is compared as a plain value. Text like `x || 1` in a variable can't add operators to your condition. A consequence: a variable can't hold a whole condition for `if %cond%` to evaluate. A non-empty, non-`0` value is simply true.
+
+`/=` is case-insensitive equality, or a prefix match in either direction when the shorter side is at least 3 characters (`nor /= north` is true; `n /= north` and an empty value are false).
+
 ### `wait` — cooperative pauses
 
 ```
@@ -506,7 +510,24 @@ wait 3 sec
 
 When a body contains `wait`, the runtime returns `Outcome::Done` to the host *immediately* and continues asynchronously. **You forfeit cancellation** when you use `wait` — `return 0` after a wait does not roll back the host action. This matches tbamud's behavior.
 
-`wait <N> sec` and `wait <N>` (interpreted as seconds) are both accepted.
+`wait <N> sec` and `wait <N>` (interpreted as seconds) are both accepted. `min` and `hr` units work too. A single `wait` sleeps at most one hour; longer values are clamped.
+
+### Resource limits
+
+Every trigger fire runs inside fixed limits, so a buggy or hostile script can't freeze or crash the server:
+
+| Limit | Value | What happens when hit |
+|-------|-------|-----------------------|
+| Iterations of one `while` loop | 30 | Loop exits (matches tbamud) |
+| Statements executed per fire | 10,000 | Script aborts with an eval error |
+| `if`/`while`/`switch` nesting | 32 levels | Parse error; the trigger won't save |
+| Length of any substituted string / variable | 64 KiB | Value is truncated |
+| Nested `%a(%b(..)%)%` interpolation | 32 levels | Deeper text is left literal |
+| Single `wait` | 1 hour | Clamped |
+| Scripts waiting at once | 8 per mob/object/room, 2048 world-wide | New wait-bearing fires are skipped (builder warning) until one finishes |
+| Host purged during `wait` | — | The script ends when it wakes |
+
+Stock tbamud content stays far inside all of these.
 
 ## Commands
 
@@ -748,6 +769,12 @@ No silent divergence: stealth differences between proto and instances are the fo
 - Sweep runs only on proto save (not on every fire).
 - Single O(entities of matching kind) pass — typically tens of ms for ~10k entities.
 - Rebuilds attached triggers totally from current proto state: body, flag-derived trigger types, name, chance, and arglist. Flag changes are structural (add/remove trigger types) and re-derive on the sweep.
+
+### Who can edit a prototype, and whose permissions it runs with
+
+Saving a prototype body rewrites every attached instance, so it counts as editing every host it's attached to. You can save a body only if you're an admin, or a builder who can edit every area that hosts an instance.
+
+Each save records you as the prototype's last editor, and every attached instance runs with **your** DG permissions: dangerous opcodes (`force`, `at`, `purge`, `load`, `teleport`, …) only act in areas you can edit. Untouched imported prototypes keep system trust until someone edits them. Prototypes that existed before editors were recorded run **untrusted** (dangerous opcodes refused) until someone re-saves them or an admin restores their trust with `ironmud-admin dg-proto trust`. Retyping a prototype (`trigger dg proto retype`) counts as an edit too, and like a body save or `delete`, it needs edit rights over every area hosting an instance. Admins can still use `trigger dg elevate` on an instance.
 
 ### Parse-error abort
 

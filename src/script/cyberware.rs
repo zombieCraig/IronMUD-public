@@ -45,10 +45,7 @@ fn err_map(error: &str) -> rhai::Map {
 /// Read a race's cyberware affinity from the World. Takes and RELEASES the
 /// World lock — call before locking connections.
 pub(crate) fn race_affinity(state: &SharedState, race: &str) -> CyberwareAffinity {
-    let world = match state.lock() {
-        Ok(w) => w,
-        Err(_) => return CyberwareAffinity::Normal,
-    };
+    let world = state.lock();
     world
         .race_definitions
         .get(&race.to_lowercase())
@@ -145,10 +142,7 @@ pub fn register_cyberware_functions(
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -166,10 +160,7 @@ pub fn register_cyberware_functions(
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -189,10 +180,7 @@ pub fn register_cyberware_functions(
             Ok(u) => u,
             Err(_) => return err_map("bad connection id"),
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let conns_lock = conns.lock();
         let ch = match conns_lock.get(&conn_id).and_then(|s| s.character.as_ref()) {
             Some(c) => c,
             None => return err_map("no character"),
@@ -242,10 +230,7 @@ pub fn register_cyberware_functions(
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -272,10 +257,7 @@ pub fn register_cyberware_functions(
             };
             // Resolve the character name + race WITHOUT holding both locks.
             let (char_name, race) = {
-                let conns_lock = match conns.lock() {
-                    Ok(g) => g,
-                    Err(_) => return err_map("lock"),
-                };
+                let conns_lock = conns.lock();
                 match conns_lock.get(&conn_id).and_then(|s| s.character.as_ref()) {
                     Some(c) => (c.name.clone(), c.race.clone()),
                     None => return err_map("no character"),
@@ -292,10 +274,7 @@ pub fn register_cyberware_functions(
                 None => return err_map("no such item in inventory"),
             };
 
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -335,10 +314,7 @@ pub fn register_cyberware_functions(
                 Err(_) => return err_map("bad connection id"),
             };
             let race = {
-                let conns_lock = match conns.lock() {
-                    Ok(g) => g,
-                    Err(_) => return err_map("lock"),
-                };
+                let conns_lock = conns.lock();
                 match conns_lock.get(&conn_id).and_then(|s| s.character.as_ref()) {
                     Some(c) => c.race.clone(),
                     None => return err_map("no character"),
@@ -352,10 +328,7 @@ pub fn register_cyberware_functions(
                 Err(_) => return err_map("prototype unavailable"),
             };
 
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => {
@@ -400,10 +373,7 @@ pub fn register_cyberware_functions(
                 Ok(u) => u,
                 Err(_) => return err_map("bad connection id"),
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -455,10 +425,7 @@ pub fn register_cyberware_functions(
                 Ok(u) => u,
                 Err(_) => return err_map("bad connection id"),
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -503,7 +470,8 @@ pub fn register_cyberware_functions(
                     .collect()
             };
             let name_lower = char_name.to_lowercase();
-            if let Ok(conns_lock) = conns.lock() {
+            {
+                let conns_lock = conns.lock();
                 for session in conns_lock.values() {
                     if let Some(ch) = session.character.as_ref() {
                         if ch.name.to_lowercase() == name_lower {

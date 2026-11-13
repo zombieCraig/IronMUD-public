@@ -2,6 +2,8 @@
 // mdelete <mobile_id|vnum> [confirm] - Delete/despawn a mobile (builder command)
 // Instances are despawned immediately; prototypes require 'confirm' argument
 
+import "olc_helpers" as olc;
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -33,8 +35,7 @@ fn run_command(args, connection_id) {
     // Orphans (area_id == "") fall through and remain editable by any builder.
     let mob_area_id = mobile.area_id;
     if mob_area_id != "" {
-        if !can_edit_area(mob_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to delete mobiles in that area.");
+        if !olc::require_area_edit(connection_id, mob_area_id, char.name, "You don't have permission to delete mobiles in that area.") {
             return;
         }
     }

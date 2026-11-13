@@ -38,7 +38,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
                             warning_notified: false,
                         };
 
-                        let mut conns_lock = conns.lock().unwrap();
+                        let mut conns_lock = conns.lock();
                         if let Some(session) = conns_lock.get_mut(&conn_id) {
                             session.fishing_state = Some(fishing_state);
                             return true;
@@ -54,7 +54,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("is_fishing", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 return session.fishing_state.is_some();
             }
@@ -66,7 +66,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("cancel_fishing", move |connection_id: String| -> bool {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
+            let mut conns_lock = conns.lock();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if session.fishing_state.is_some() {
                     session.fishing_state = None;
@@ -82,7 +82,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("get_fishing_bite_time", move |connection_id: String| -> i64 {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref state) = session.fishing_state {
                     return state.bite_time;
@@ -97,7 +97,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("get_fishing_room", move |connection_id: String| -> String {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref state) = session.fishing_state {
                     return state.room_id.to_string();
@@ -112,7 +112,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("get_fishing_rod", move |connection_id: String| -> String {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref state) = session.fishing_state {
                     return state.rod_item_id.to_string();
@@ -127,7 +127,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
     let conns = connections.clone();
     engine.register_fn("get_fishing_bait", move |connection_id: String| -> String {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
+            let conns_lock = conns.lock();
             if let Some(session) = conns_lock.get(&conn_id) {
                 if let Some(ref state) = session.fishing_state {
                     if let Some(bait_id) = state.bait_item_id {
@@ -137,23 +137,6 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
             }
         }
         String::new()
-    });
-
-    // get_current_time() -> i64
-    // Returns current unix timestamp
-    engine.register_fn("get_current_time", || -> i64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
-    });
-
-    // random_int(min, max) -> i64
-    // Returns a random integer between min and max (inclusive)
-    engine.register_fn("random_int", |min: i64, max: i64| -> i64 {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        rng.gen_range(min..=max)
     });
 
     // random_float() -> f64

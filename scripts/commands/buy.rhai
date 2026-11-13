@@ -177,7 +177,12 @@ fn buy_stock_item(shopkeeper, char, vnum, sell_rate, connection_id) {
     }
 
     // Deduct gold and give item
-    add_character_gold(char.name, -price);
+    if !add_character_gold(char.name, -price) {
+        // Don't leave the freshly spawned copy lying around unowned.
+        delete_item(item.id);
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", price);
     move_item_to_inventory(item.id, char.name);
 
@@ -198,10 +203,17 @@ fn buy_inventory_item(shopkeeper, char, item, sell_rate, connection_id) {
         return;
     }
 
-    // Deduct gold and transfer item
-    add_character_gold(char.name, -price);
+    // Claim the item first: only one buyer can take a given stock item.
+    if !remove_from_shop_inventory(shopkeeper.id, item.id) {
+        send_client_message(connection_id, "Someone else just bought that.");
+        return;
+    }
+    if !add_character_gold(char.name, -price) {
+        add_to_shop_inventory(shopkeeper.id, item.id);
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", price);
-    remove_from_shop_inventory(shopkeeper.id, item.id);
     move_item_to_inventory(item.id, char.name);
 
     let msg = "You buy " + item.name;
@@ -278,7 +290,12 @@ fn perform_vending_buy(vending, char, vnum, sell_rate, connection_id) {
     }
 
     // Deduct gold and give item
-    add_character_gold(char.name, -price);
+    if !add_character_gold(char.name, -price) {
+        // Don't leave the freshly spawned copy lying around unowned.
+        delete_item(item.id);
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", price);
     move_item_to_inventory(item.id, char.name);
 

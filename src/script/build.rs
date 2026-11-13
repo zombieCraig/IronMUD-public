@@ -264,12 +264,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     // because those are different facts.
     let cloned_state = state.clone();
     engine.register_fn("get_build_score", move |name: String| -> Map {
-        let mut m = Map::new();
-        let Ok(world) = cloned_state.lock() else {
-            m.insert("found".into(), Dynamic::from(false));
-            m.insert("ready".into(), Dynamic::from(false));
-            return m;
-        };
+        let world = cloned_state.lock();
         let scores = &world.build_scores;
         let mut out = match scores.get(&name) {
             Some(s) => score_map(s, scores),
@@ -296,9 +291,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     // who build the world, not the people who play in it.
     let cloned_state = state.clone();
     engine.register_fn("get_build_score_index", move || -> Array {
-        let Ok(world) = cloned_state.lock() else {
-            return Array::new();
-        };
+        let world = cloned_state.lock();
         world
             .build_scores
             .ranked()
@@ -779,15 +772,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             // Cached context, taken and released before anything else — never
             // held across the connections lock below.
             let ctx = {
-                let Ok(world) = cloned_state.lock() else {
-                    return false;
-                };
+                let world = cloned_state.lock();
                 world.audit_ctx.clone()
             };
             let pending = scan::grade_snapshot(&cloned_db, k, &id, &ctx);
-            let Ok(mut guard) = cloned_conns.lock() else {
-                return false;
-            };
+            let mut guard = cloned_conns.lock();
             match guard.get_mut(&conn) {
                 Some(session) => {
                     session.pending_audit = Some(pending);
@@ -1028,10 +1017,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     let cloned_state = state.clone();
     engine.register_fn("get_world_rating", move || -> Map {
         let mut m = Map::new();
-        let Ok(world) = cloned_state.lock() else {
-            m.insert("ready".into(), Dynamic::from(false));
-            return m;
-        };
+        let world = cloned_state.lock();
         let report = &world.world_report;
         m.insert("ready".into(), Dynamic::from(report.is_ready()));
         m.insert("generated_at".into(), Dynamic::from(report.generated_at));
@@ -1098,9 +1084,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     let cloned_state = state.clone();
     engine.register_fn("get_world_milestones", move || -> Array {
         let (facts, rating) = {
-            let Ok(world) = cloned_state.lock() else {
-                return Array::new();
-            };
+            let world = cloned_state.lock();
             let Some(rating) = world.world_report.rating.clone() else {
                 return Array::new();
             };
@@ -1147,9 +1131,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     let cloned_db = db.clone();
     let cloned_state = state.clone();
     engine.register_fn("get_build_tracks", move |scope: String, key: String| -> Array {
-        let defs: Vec<crate::build_tracks::TrackDef> = match cloned_state.lock() {
-            Ok(world) => world.build_tracks.clone(),
-            Err(_) => return Array::new(),
+        let defs: Vec<crate::build_tracks::TrackDef> = {
+            let world = cloned_state.lock();
+            world.build_tracks.clone()
         };
         let want = match scope.trim().to_lowercase().as_str() {
             "area" => crate::build_tracks::TrackScope::Area,

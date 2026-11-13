@@ -69,10 +69,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -86,7 +83,8 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
     let cdb = db.clone();
     engine.register_fn("is_character_synth", move |name: String| -> bool {
         let lower = name.to_lowercase();
-        if let Ok(conns_lock) = conns.lock() {
+        {
+            let conns_lock = conns.lock();
             if let Some(c) = conns_lock
                 .values()
                 .filter_map(|s| s.character.as_ref())
@@ -112,10 +110,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -134,10 +129,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -198,10 +190,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
                 Ok(u) => u,
                 Err(_) => return err_map("bad connection id"),
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -221,10 +210,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
     let cdb = db.clone();
     engine.register_fn("synth_technician_repair", move |target_name: String| -> rhai::Map {
         let lower = target_name.to_lowercase();
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock
             .values_mut()
             .filter_map(|s| s.character.as_mut())
@@ -259,16 +245,13 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
             allowed.insert("reason".into(), rhai::Dynamic::from(String::new()));
 
             // Non-synths (or unparseable ids) are never inhibited.
-            let is_synth = uuid::Uuid::parse_str(&connection_id)
-                .ok()
-                .and_then(|conn_id| {
-                    conns.lock().ok().map(|g| {
-                        g.get(&conn_id)
-                            .and_then(|s| s.character.as_ref())
-                            .is_some_and(|c| c.synth_state.is_some())
-                    })
-                })
-                .unwrap_or(false);
+            let is_synth = uuid::Uuid::parse_str(&connection_id).ok().is_some_and(|conn_id| {
+                conns
+                    .lock()
+                    .get(&conn_id)
+                    .and_then(|s| s.character.as_ref())
+                    .is_some_and(|c| c.synth_state.is_some())
+            });
             if !is_synth {
                 return allowed;
             }
@@ -306,7 +289,7 @@ pub fn register_synth_functions(engine: &mut Engine, db: Arc<Db>, connections: S
 /// Read helper: run `f` on the session's SynthState if present.
 fn read_synth<T>(conns: &SharedConnections, connection_id: &str, f: impl FnOnce(&SynthState) -> T) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock
         .get(&conn_id)
         .and_then(|s| s.character.as_ref())

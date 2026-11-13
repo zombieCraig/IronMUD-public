@@ -222,7 +222,7 @@ pub fn parse_castle_str(text: &str, path: &Path) -> Vec<IrTrigger> {
     let mut out = Vec::new();
     scan_calls(&cleaned, &["castle_mob_spec"], |_verb, offset, name, line| {
         out.push(IrTrigger {
-            source_vnum: base + offset,
+            source_vnum: base.saturating_add(offset),
             attach_type: AttachType::Mob,
             specproc_name: name.to_lowercase(),
             args: Vec::new(),
@@ -243,7 +243,7 @@ fn parse_castle_base(text: &str) -> Option<i32> {
             if let Some(rest) = rest.strip_prefix("Z_KINGS_C") {
                 let num: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
                 if let Ok(n) = num.parse::<i32>() {
-                    return Some(n * 100);
+                    return n.checked_mul(100);
                 }
             }
         }

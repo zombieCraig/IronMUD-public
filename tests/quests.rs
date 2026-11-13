@@ -11,8 +11,9 @@ use ironmud::db::Db;
 use ironmud::types::{
     ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective, QuestReward,
 };
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use uuid::Uuid;
 
 fn fresh_db(_label: &str) -> (Db, tempfile::TempDir) {
@@ -31,7 +32,7 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         world_report: Default::default(),
         build_scores: Default::default(),
         audit_ctx: Default::default(),
-        engine: rhai::Engine::new(),
+        engine: std::sync::Arc::new(rhai::Engine::new()),
         db: db.clone(),
         connections: connections.clone(),
         scripts: HashMap::new(),
@@ -834,7 +835,7 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
         let conns = empty_connections();
         let state = make_state(&db, &conns);
         {
-            let mut world = state.lock().unwrap();
+            let mut world = state.lock();
             world.achievement_definitions.insert("wolf_slayer".into(), ach);
         }
 

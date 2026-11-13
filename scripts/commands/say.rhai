@@ -775,7 +775,7 @@ fn treat_elemental_wounds(mobile, char, wound_type, room_id, connection_id) {
 // ========== Cleric Actions ==========
 
 fn restore_player_hp(mobile, char, room_id, connection_id) {
-    if char.hp >= char.max_hp {
+    if char.hp >= char.effective_max_hp() {
         healer_say(mobile.name, "You are already at full health.", room_id, connection_id);
         return;
     }

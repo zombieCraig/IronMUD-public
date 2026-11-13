@@ -756,9 +756,10 @@ pub struct ItemData {
     /// See `OnHitEffect` for dispatch (bleeding -> wounds, elemental -> ongoing_effects, status -> active_buffs).
     #[serde(default)]
     pub on_hit_effects: Vec<OnHitEffect>,
-    // Container fields (ItemType::Container)
-    #[serde(default)]
-    pub container_contents: Vec<Uuid>,
+    // Container fields (ItemType::Container). What a container holds is
+    // the items whose `location` is `Container(this id)` — there is no
+    // contents list on the container (old saves' `container_contents` is
+    // ignored on load).
     #[serde(default)]
     pub container_max_items: i32,
     #[serde(default)]
@@ -1014,7 +1015,6 @@ impl ItemData {
             weapon_skill: None,
             on_hit_effects: Vec::new(),
             // Container fields
-            container_contents: Vec::new(),
             container_max_items: 0,
             container_max_weight: 0,
             container_closed: false,

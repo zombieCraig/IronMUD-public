@@ -19,7 +19,7 @@ pub async fn run_rage_tick(db: db::Db, connections: SharedConnections, state: Sh
         // lock is released before the tick body touches the connections lock
         // (deadlock rule).
         let tribe_frenzy_mods: std::collections::HashMap<String, i32> = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             world
                 .trait_definitions
                 .iter()

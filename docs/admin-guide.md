@@ -222,6 +222,20 @@ ironmud-admin world clear
 To bring legacy MUD content (CircleMUD, etc.) into IronMUD, use the
 `ironmud-import` utility — see the [Import Guide](import-guide.md).
 
+### DG Prototype Trust
+
+A DG trigger prototype's attached instances run with the trust of whoever last saved its body: untouched imported content runs as **system** (no permission limits), anything else runs as its last editor, limited to the areas that builder may edit. Prototypes saved before this rule existed can't be told apart (importer or builder), so the server downgrades them once at startup and logs their vnums: they run **untrusted** (privileged DG commands are refused) until a builder re-saves them.
+
+If those prototypes came from an importer and you trust them, restore system trust with the server stopped:
+
+```bash
+ironmud-admin dg-proto list                    # vnum, name, and how each one runs
+ironmud-admin dg-proto trust --all-unedited    # every untrusted proto no one has edited in game
+ironmud-admin dg-proto trust <vnum>            # one proto
+```
+
+Only trust content you've reviewed: a system-trusted script can act anywhere in the world. Re-running `ironmud-import` also marks the protos it writes as imported.
+
 ### Server Settings
 
 ```bash
@@ -247,7 +261,7 @@ ironmud-admin settings delete <key>
 | `builder_mode` | `all` | Who can toggle builder access (`all`, `granted`, `none`) |
 | `motd` | (empty) | Message of the day shown at login |
 | `recall_enabled` | `true` | Whether the `recall` command is available |
-| `login_lockout_duration` | `600` | Seconds of failed-login lockout |
+| `login_lockout_duration` | `600` | Seconds of failed-login lockout (after 10 failures for one account from one IP; other IPs are unaffected) |
 | `idle_timeout_secs` | `300` | Seconds before a player is shown as `[Idle]`/afk (display only — does **not** disconnect) |
 | `idle_disconnect_enabled` | `true` | Whether idle sessions are dropped after the 30-minute inactivity threshold. Set to `false` to keep builders/admins logged in indefinitely |
 | `wander_chance_percent` | `33` | Per-tick chance a wander-eligible mobile moves |
@@ -300,7 +314,7 @@ ironmud-admin settings set email_verification_required true
 ironmud-admin settings set smtp_host smtp.mailgun.org
 ironmud-admin settings set smtp_port 587
 ironmud-admin settings set smtp_user postmaster@mg.example.com
-ironmud-admin settings set smtp_pass <password>
+ironmud-admin settings set smtp_pass            # prompts without echo
 ironmud-admin settings set smtp_from_address noreply@example.com
 ironmud-admin settings set smtp_from_name "Example MUD"
 
@@ -319,7 +333,13 @@ non-secret keys (`smtp_host`, `smtp_port`, `smtp_from_address`, `smtp_from_name`
 and the `*_subject` keys) appear in `admin config list`. `smtp_user` and
 `smtp_pass` are intentionally **not** listed and stay offline-only via
 `ironmud-admin settings set`, so credentials aren't typed over the wire or shown
-in the config listing.
+in the config listing. `admin config` only changes the keys it lists; anything
+else is refused in game.
+
+`ironmud-admin settings` masks secret values (any key containing `pass`,
+`secret` or `token`) in `get`/`list` output. To keep the SMTP password out of
+the database and its backups entirely, set `IRONMUD_SMTP_PASS` in the service
+environment instead; it takes precedence over the `smtp_pass` setting.
 
 To confirm SMTP is actually delivering (not just configured), use the in-game
 `admin email-test <address>` command — it sends a fixed diagnostic message to
@@ -435,6 +455,7 @@ The room ID (not alias) is required. Find it in:
 | `MATRIX_USER` | Bot username (without @) | `ironmud_bot` |
 | `MATRIX_PASSWORD` | Bot account password | `secretpassword` |
 | `MATRIX_ROOM` | Room ID (not alias) | `!AbCdEf:matrix.local` |
+| `MATRIX_SESSION_FILE` | Optional. Where the bot keeps its login session (device and access token, written mode 0600) so restarts reuse one device instead of registering a new one. Default: `matrix_session.json` next to the database. | `/opt/ironmud/data/matrix_session.json` |
 
 #### For systemd installations
 
@@ -582,6 +603,17 @@ cargo run --release
 
 Messages sent via `!tell` from Discord appear in-game with a `[Discord]` prefix (compared to `[Matrix]` for Matrix messages).
 
+### Bridge Safety Limits (Matrix and Discord)
+
+Both bridges share one command handler (`src/chat.rs`) with these rules:
+
+- `!tell` text and sender names are stripped of control characters (no ANSI/MXP escapes or line breaks) and capped at 400 / 64 characters.
+- One `!tell` per external sender every 3 seconds.
+- Matrix senders are identified by their full Matrix ID (`@user:server`), so a same-named account on another homeserver can't impersonate anyone.
+- Players can block bridge messages with `ignore discord`, `ignore matrix`, or one sender with `ignore discord:<name>` / `ignore matrix:@user:server`. Ignoring players look offline to the sender.
+- Outbound game messages are limited to 20 per 10 seconds across all bridges; the excess is dropped with a log warning.
+- Discord messages are sent with all mentions disabled (player text can't ping `@everyone`, roles or users) and truncated to 2000 characters; Matrix messages carry an empty `m.mentions` (no `@room` pings) and are capped at 4000 characters.
+
 ### Troubleshooting Discord
 
 | Issue | Solution |
@@ -664,7 +696,16 @@ Generating description... please wait.
 Accept this description? (y/n)
 ```
 
-For rooms, AI also suggests extra descriptions with keywords.
+For rooms, AI also suggests extra descriptions with keywords. Seasonal room descriptions work too (`redit seasonal <season> help <prompt>` / `rephrase`).
+
+**Limits.** Each request is a paid API call, so:
+
+- one request in flight per connection, and 10 seconds between requests per character;
+- at most 4 API calls at once, server-wide;
+- at most `IRONMUD_AI_DAILY_CAP` requests per UTC day, server-wide (default 500);
+- prompts are cut to 1,000 characters (text to rephrase: 4,000).
+
+The model's reply is cleaned before it's shown or saved: control characters and `<`/`>` (MXP tags) are removed. A draft that arrives while the builder is in another editor is discarded rather than taking over their input.
 
 ### Troubleshooting AI
 
@@ -704,7 +745,22 @@ ironmud-admin api-key show <key-id>
 
 # Revoke an API key
 ironmud-admin api-key revoke <key-id>
+
+# Issue a new secret for an existing key (same ID, name, permissions).
+# The old secret stops working immediately.
+ironmud-admin api-key rotate <key-id>
 ```
+
+Keys look like `imk_<key-id>_<secret>`. The server stores only a SHA-256 hash of the secret, so a lost key can't be recovered, only rotated.
+
+#### Legacy keys (deprecated)
+
+Keys created before this format were a bare random string with no `imk_` prefix. They still work, but every legacy key is slow to verify, and support will be removed in a future release. While one is in use:
+
+- the server logs a `[DEPRECATED]` warning for each legacy key at startup and on first use;
+- API responses authenticated with it carry `Deprecation: true` and a `Warning` header naming the key ID.
+
+To migrate, run `ironmud-admin api-key rotate <key-id>`, put the new key in each client (for the MCP server, `IRONMUD_API_KEY` in `.mcp.json`), and restart the client.
 
 ### API Key Permissions
 
@@ -712,9 +768,16 @@ ironmud-admin api-key revoke <key-id>
 |------------|-------------|
 | `read` | Can read areas, rooms, items, mobiles |
 | `write` | Can create and modify content |
-| `admin` | Bypasses area permission checks; required for player activity logs |
+| `admin` | Bypasses area permission checks |
+| `player_logs` | Can read player activity logs (everything players typed, including tells). Needs `admin`. Grant with `--admin --player-logs` at creation, or `ironmud-admin api-key player-logs <key-id> on\|off`. |
+
+Admin keys created before the `player_logs` scope existed keep player-log access; the server logs a notice for each at startup until you set it explicitly. Keys created in game never get it.
+
+Deleting a character revokes every API key it owns.
 
 By default, write operations respect IronMUD's area permission system—the API key's linked character must have appropriate builder permissions for the target area.
+
+A key's permissions are also capped by its owner's **current** role, the same rule the in-game editors (`quedit`, `achedit`, `medit`, ...) apply: `write` only counts while the owner is a builder or admin, and `admin` only while the owner is an admin. If the owner is demoted or deleted, the key drops to read-only without being edited. The server logs a warning at startup for every key limited this way.
 
 ### MCP Server Configuration
 
@@ -727,11 +790,19 @@ The MCP server (TypeScript) requires these environment variables:
 
 ### REST API Configuration
 
-The REST API runs on port 4001. For production deployments, use a reverse proxy (nginx, caddy) with HTTPS.
+The REST API is off unless `IRONMUD_API_ENABLED=true`. It runs on port 4001 (`--api-port`). For production deployments, use a reverse proxy (nginx, caddy) with HTTPS.
+
+| Variable | Purpose |
+|----------|---------|
+| `IRONMUD_API_BIND` / `--api-bind` | Address to listen on. Use `127.0.0.1` when the API is reached through an SSH tunnel or a local reverse proxy; `0.0.0.0` to accept remote connections. |
+
+If `IRONMUD_API_BIND` is not set the API currently listens on `0.0.0.0` and logs a deprecation warning at startup. The default will become `127.0.0.1`, so set it explicitly.
+
+Server-side failures return `INTERNAL_ERROR` with a short reference id; the detail is in the server log under the same id.
 
 ### Security Considerations
 
-- **API keys** are hashed with Argon2 before storage
+- **API keys** are stored as SHA-256 hashes of a random secret (legacy keys: Argon2)
 - **Transport security** - Use HTTPS via reverse proxy in production
 - **Permission enforcement** - All write operations check area permissions
 - **Rate limiting** - Can be configured via reverse proxy

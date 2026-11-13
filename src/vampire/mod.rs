@@ -57,7 +57,7 @@ pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<
     }
 
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         for (_conn_id, session) in conns.iter_mut() {
             let ch = match session.character.as_mut() {
                 Some(c) => c,
@@ -151,7 +151,7 @@ pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<
 /// vampire dragged out of the sun isn't stuck waiting for noon to recover.
 fn clear_burning_when_safe(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         for (_conn_id, session) in conns.iter_mut() {
             let ch = match session.character.as_mut() {
                 Some(c) => c,
@@ -270,7 +270,7 @@ pub fn process_blood_tick(
     let mut frenzy_events: Vec<(uuid::Uuid, String)> = Vec::new();
 
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         for (_conn_id, session) in conns.iter_mut() {
             let ch = match session.character.as_mut() {
                 Some(c) => c,
@@ -339,10 +339,7 @@ pub fn process_blood_tick(
 
 /// Tell everyone else in the room that a kindred just lost it.
 fn broadcast_frenzy_to_room(connections: &SharedConnections, room_id: &uuid::Uuid, frenzied_name: &str) {
-    let conns = match connections.lock() {
-        Ok(c) => c,
-        Err(_) => return,
-    };
+    let conns = connections.lock();
     for session in conns.values() {
         let Some(ch) = session.character.as_ref() else {
             continue;

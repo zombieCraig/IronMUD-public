@@ -1,6 +1,7 @@
 //! Bug report API endpoints
 //! All GET endpoints only return admin-approved reports to protect against prompt injection.
 
+use crate::api::validate::{LONG_DESC_MAX, NAME_MAX, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
@@ -74,10 +75,7 @@ async fn list_bugs(
     let status_filter = query.status.as_ref().and_then(|s| BugStatus::from_str(s));
 
     // API always returns approved-only
-    let mut reports = state
-        .db
-        .list_bug_reports(status_filter.as_ref(), true)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut reports = state.db.list_bug_reports(status_filter.as_ref(), true)?;
 
     // Apply offset/limit
     let offset = query.offset.unwrap_or(0);
@@ -107,8 +105,7 @@ async fn get_bug(
 
     let report = state
         .db
-        .get_bug_report(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_bug_report(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
     // API only returns approved reports
@@ -134,8 +131,7 @@ async fn get_bug_by_ticket(
 
     let report = state
         .db
-        .get_bug_report_by_ticket(num)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_bug_report_by_ticket(num)?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report #{} not found", num)))?;
 
     // API only returns approved reports
@@ -164,8 +160,7 @@ async fn update_bug(
 
     let mut report = state
         .db
-        .get_bug_report(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_bug_report(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
     let now = std::time::SystemTime::now()
@@ -197,10 +192,7 @@ async fn update_bug(
     }
 
     report.updated_at = now;
-    state
-        .db
-        .save_bug_report(report.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_bug_report(report.clone())?;
 
     Ok(Json(BugReportResponse {
         success: true,
@@ -215,6 +207,8 @@ async fn add_note(
     Path(id): Path<String>,
     Json(body): Json<AddNoteRequest>,
 ) -> Result<Json<BugReportResponse>, ApiError> {
+    check_text_len("author", &body.author, NAME_MAX)?;
+    check_text_len("message", &body.message, LONG_DESC_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -223,8 +217,7 @@ async fn add_note(
 
     let mut report = state
         .db
-        .get_bug_report(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_bug_report(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
     let now = std::time::SystemTime::now()
@@ -239,10 +232,7 @@ async fn add_note(
     });
     report.updated_at = now;
 
-    state
-        .db
-        .save_bug_report(report.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_bug_report(report.clone())?;
 
     Ok(Json(BugReportResponse {
         success: true,
@@ -262,10 +252,7 @@ async fn delete_bug(
 
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let deleted = state
-        .db
-        .delete_bug_report(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let deleted = state.db.delete_bug_report(&uuid)?;
 
     if !deleted {
         return Err(ApiError::NotFound(format!("Bug report '{}' not found", id)));

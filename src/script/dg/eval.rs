@@ -20,8 +20,14 @@
 //! ## Loop / recursion safety
 //!
 //! - `while` bodies are capped at [`LOOP_CAP`] iterations.
-//! - Nested block depth is bounded by Rust's stack — adversarial scripts
-//!   could OOM, but stock tbamud nests at most ~6 levels.
+//! - Every fire has a budget of [`MAX_STEPS`] executed statements, so
+//!   nested loops (30^n) can't run away.
+//! - Block nesting is capped by the parser
+//!   ([`super::parser::MAX_NEST_DEPTH`]); condition and arithmetic
+//!   recursion by [`MAX_EXPR_DEPTH`].
+//! - Substituted strings, and so every variable value, are capped at
+//!   [`vars::MAX_VALUE_BYTES`].
+//! - `wait` is capped at [`MAX_WAIT_SECS`].
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -37,6 +43,18 @@ use super::{EvalCtx, Outcome};
 /// Hard cap on iterations of any single `while` loop. Matches tbamud's
 /// per-pulse cap (30) — stock scripts never legitimately loop more.
 const LOOP_CAP: u32 = 30;
+
+/// Statements one fire may execute before it is aborted. Stock tbamud
+/// scripts run a few dozen; this stops nested `while` loops multiplying.
+pub const MAX_STEPS: u32 = 10_000;
+
+/// Deepest recursion the condition and arithmetic evaluators allow
+/// (`((((..`, `!!!!..`, `a||b||c..`). Deeper input evaluates as false /
+/// non-arithmetic instead of risking a stack overflow.
+pub const MAX_EXPR_DEPTH: usize = 32;
+
+/// Longest a single `wait` may sleep.
+pub const MAX_WAIT_SECS: u64 = 3600;
 
 #[derive(Debug)]
 pub struct EvalError {
@@ -78,6 +96,21 @@ pub struct State {
     pub locals: HashMap<String, String>,
     pub globals: HashSet<String>,
     pub context: Option<ScopeRef>,
+    /// Statements executed so far this fire; bounded by [`MAX_STEPS`].
+    pub steps: u32,
+}
+
+impl State {
+    /// Charge one statement against the [`MAX_STEPS`] budget.
+    fn step(&mut self) -> Result<(), EvalError> {
+        self.steps += 1;
+        if self.steps > MAX_STEPS {
+            return Err(EvalError {
+                msg: format!("script exceeded {MAX_STEPS} steps"),
+            });
+        }
+        Ok(())
+    }
 }
 
 impl State {
@@ -106,6 +139,7 @@ pub fn eval_block(block: &Block, ctx: &EvalCtx, state: &mut State) -> Result<Out
 
 fn eval_stmts(stmts: &[Stmt], ctx: &EvalCtx, state: &mut State) -> Result<Flow, EvalError> {
     for s in stmts {
+        state.step()?;
         match eval_stmt(s, ctx, state)? {
             Flow::Continue => {}
             other => return Ok(other),
@@ -367,68 +401,96 @@ fn run_case_body(body: &Block, ctx: &EvalCtx, state: &mut State) -> Result<Flow,
 /// Evaluate a DG condition string. Returns `true` if the condition is
 /// truthy. Parser is forgiving: malformed conditions evaluate as `false`
 /// (matches tbamud's silent-error behavior).
+///
+/// The condition's structure (`||`, `&&`, `!`, parentheses, comparison
+/// operator) is parsed from the *raw* text, and each operand is substituted
+/// on its own. A substituted value is therefore always a literal: a player
+/// who says `x || 1` into `if %speech% == secret` can't rewrite the logic,
+/// which substitute-then-parse allowed.
 pub fn eval_cond(cond: &str, ctx: &EvalCtx, state: &State) -> bool {
-    let interp = vars::substitute(cond.trim(), ctx, state);
-    eval_bool(&interp)
+    eval_cond_with(cond, &|x: &str| vars::substitute(x, ctx, state), 0)
 }
 
-/// Boolean evaluator over an already-substituted expression string.
-///
-/// Recursive-descent over `||` (lowest precedence), `&&`, `!`, and
-/// finally comparison/atom.
-fn eval_bool(s: &str) -> bool {
+/// Recursive-descent over `||` (lowest precedence), `&&`, `!`, parentheses,
+/// then a comparison or bare value. `subst` turns one raw operand into its
+/// value.
+fn eval_cond_with(s: &str, subst: &dyn Fn(&str) -> String, depth: usize) -> bool {
     let s = s.trim();
-    if s.is_empty() {
+    if s.is_empty() || depth > MAX_EXPR_DEPTH {
         return false;
     }
-    // Handle `||`
-    if let Some((l, r)) = split_top_level(s, "||") {
-        return eval_bool(&l) || eval_bool(&r);
+    let depth = depth + 1;
+    if let Some((l, r)) = split_raw_top_level(s, "||") {
+        return eval_cond_with(&l, subst, depth) || eval_cond_with(&r, subst, depth);
     }
-    if let Some((l, r)) = split_top_level(s, "&&") {
-        return eval_bool(&l) && eval_bool(&r);
+    if let Some((l, r)) = split_raw_top_level(s, "&&") {
+        return eval_cond_with(&l, subst, depth) && eval_cond_with(&r, subst, depth);
     }
-    // Leading `!`
     if let Some(rest) = s.strip_prefix('!') {
-        // But careful not to confuse with `!=` / `!~`.
         if !rest.starts_with('=') && !rest.starts_with('~') {
-            return !eval_bool(rest);
+            return !eval_cond_with(rest, subst, depth);
         }
     }
-    // Parenthesized
-    if s.starts_with('(') && s.ends_with(')') {
-        // Only strip if the parens are matched at top level.
-        if matched_outer_parens(s) {
-            return eval_bool(&s[1..s.len() - 1]);
+    if s.starts_with('(') && s.ends_with(')') && matched_outer_parens(s) {
+        return eval_cond_with(&s[1..s.len() - 1], subst, depth);
+    }
+    for op in &["==", "!=", "/=", "<=", ">=", "=~", "!~", "<", ">"] {
+        if let Some((l, r)) = split_raw_top_level(s, op) {
+            return apply_cmp(op, &subst(l.trim()), &subst(r.trim()));
         }
     }
-    eval_compare(s)
+    let v = subst(s);
+    let t = v.trim();
+    !(t.is_empty() || t == "0")
 }
 
-/// Find an operator at the top level (outside parens), returning the
-/// (left, right) split. Used for short-circuit ops `||` and `&&`.
-fn split_top_level(s: &str, op: &str) -> Option<(String, String)> {
+/// Split `s` at the first top-level `op`, on unsubstituted text: operators inside a
+/// `%...%` interpolation (including nested `%a(%b%)%` forms) are skipped,
+/// and only parentheses outside interpolations count toward the depth.
+fn split_raw_top_level(s: &str, op: &str) -> Option<(String, String)> {
     let bytes = s.as_bytes();
-    let mut depth: i32 = 0;
     let op_bytes = op.as_bytes();
     let n = op_bytes.len();
+    let mut depth: i32 = 0;
+    let mut in_interp = false;
+    let mut interp_parens: i32 = 0;
     let mut i = 0;
-    while i + n <= bytes.len() {
-        match bytes[i] {
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_interp {
+            match b {
+                b'(' => interp_parens += 1,
+                b')' => interp_parens = (interp_parens - 1).max(0),
+                b'%' if interp_parens == 0 => in_interp = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'%' => {
+                in_interp = true;
+                interp_parens = 0;
+                i += 1;
+                continue;
+            }
             b'(' => depth += 1,
-            b')' => depth = depth.saturating_sub(1),
+            b')' => depth = (depth - 1).max(0),
             _ => {}
         }
-        if depth == 0 && bytes[i..i + n] == *op_bytes {
-            // Avoid matching `&&` inside `&` token? DG doesn't have a single
-            // `&` so this is fine.
-            let l = s[..i].to_string();
-            let r = s[i + n..].to_string();
-            return Some((l, r));
+        if depth == 0 && i + n <= bytes.len() && bytes[i..i + n] == *op_bytes {
+            return Some((s[..i].to_string(), s[i + n..].to_string()));
         }
         i += 1;
     }
     None
+}
+
+/// Boolean evaluator over an already-substituted (or literal) string.
+/// Test-only: runtime conditions go through [`eval_cond`].
+#[cfg(test)]
+fn eval_bool(s: &str) -> bool {
+    eval_cond_with(s, &|x: &str| x.to_string(), 0)
 }
 
 fn matched_outer_parens(s: &str) -> bool {
@@ -448,26 +510,6 @@ fn matched_outer_parens(s: &str) -> bool {
         }
     }
     depth == 0
-}
-
-/// Evaluate a comparison expression `<lhs> <op> <rhs>` or a bare value
-/// (truthy if non-empty and non-zero).
-fn eval_compare(s: &str) -> bool {
-    // Operator order matters: `==`, `!=`, `/=`, `<=`, `>=`, `=~`, `!~`,
-    // then single-char `<`, `>`. Search top-level only.
-    for op in &["==", "!=", "/=", "<=", ">=", "=~", "!~"] {
-        if let Some((l, r)) = split_top_level(s, op) {
-            return apply_cmp(op, &l, &r);
-        }
-    }
-    for op in &["<", ">"] {
-        if let Some((l, r)) = split_top_level(s, op) {
-            return apply_cmp(op, &l, &r);
-        }
-    }
-    // Bare value — truthy if non-empty and not "0".
-    let t = s.trim();
-    !(t.is_empty() || t == "0")
 }
 
 fn apply_cmp(op: &str, l: &str, r: &str) -> bool {
@@ -498,7 +540,15 @@ fn apply_cmp(op: &str, l: &str, r: &str) -> bool {
         // `/=` is case-insensitive equality OR keyword-prefix match in
         // tbamud, depending on context. We use case-insensitive equality;
         // command-trigger keyword matching uses `=~`.
-        "/=" => lc == rc || lc.starts_with(&rc) || rc.starts_with(&lc),
+        // A partial match needs at least 3 characters on the shorter side:
+        // otherwise an empty or one-letter input (`%arg%` = "") matched
+        // every keyword.
+        "/=" => {
+            lc == rc || {
+                let shorter = lc.len().min(rc.len());
+                shorter >= 3 && (lc.starts_with(&rc) || rc.starts_with(&lc))
+            }
+        }
         "=~" => lc.contains(&rc),
         "!~" => !lc.contains(&rc),
         "<" => lc < rc,
@@ -622,7 +672,8 @@ fn set_player_dg_var(ctx: &EvalCtx, pname: &str, name: &str, value: Option<&str>
         }
     };
 
-    if let Ok(mut conns) = ctx.connections.lock() {
+    {
+        let mut conns = ctx.connections.lock();
         for session in conns.values_mut() {
             if let Some(ref mut ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(pname) {
@@ -685,7 +736,7 @@ pub fn parse_wait_secs(s: &str) -> u64 {
     let n_tok = tokens.next().unwrap_or("0");
     let unit = tokens.next().unwrap_or("");
     let n: u64 = n_tok.parse().unwrap_or(0);
-    match unit {
+    let secs = match unit {
         "" => {
             // Bare number — tbamud convention is "pulses" (0.1s each)
             // but most stock triggers use `wait 3 sec` explicitly. Treat
@@ -693,12 +744,15 @@ pub fn parse_wait_secs(s: &str) -> u64 {
             n
         }
         "s" | "sec" | "second" | "seconds" => n,
-        "m" | "min" | "minute" | "minutes" => n * 60,
-        "h" | "hr" | "hour" | "hours" => n * 3600,
+        "m" | "min" | "minute" | "minutes" => n.saturating_mul(60),
+        "h" | "hr" | "hour" | "hours" => n.saturating_mul(3600),
         // "wait until 6:00" — Phase 2+ time-of-day wait. Treat as 0
         // (proceed immediately) for now.
         _ => 0,
-    }
+    };
+    // An unbounded wait pins a task (and its captured context) forever,
+    // and a huge Duration overflows tokio's Instant arithmetic.
+    secs.min(MAX_WAIT_SECS)
 }
 
 /// Expression evaluator for `eval`. Supports integer arithmetic with
@@ -719,6 +773,7 @@ pub(crate) fn parse_arith(s: &str) -> Option<i64> {
     let mut p = ArithParser {
         bytes: s.as_bytes(),
         pos: 0,
+        depth: 0,
     };
     let v = p.parse_addsub()?;
     p.skip_ws();
@@ -731,6 +786,8 @@ pub(crate) fn parse_arith(s: &str) -> Option<i64> {
 struct ArithParser<'a> {
     bytes: &'a [u8],
     pos: usize,
+    /// Unary / parenthesis nesting, bounded by [`MAX_EXPR_DEPTH`].
+    depth: usize,
 }
 
 impl<'a> ArithParser<'a> {
@@ -797,6 +854,16 @@ impl<'a> ArithParser<'a> {
     }
 
     fn parse_unary(&mut self) -> Option<i64> {
+        if self.depth >= MAX_EXPR_DEPTH {
+            return None;
+        }
+        self.depth += 1;
+        let v = self.parse_unary_inner();
+        self.depth -= 1;
+        v
+    }
+
+    fn parse_unary_inner(&mut self) -> Option<i64> {
         match self.peek() {
             Some(b'-') => {
                 self.pos += 1;
@@ -890,6 +957,7 @@ pub async fn eval_block_async(block: &Block, ctx: &EvalCtx, state: &mut State) -
 fn eval_stmts_async<'a>(stmts: &'a [Stmt], ctx: &'a EvalCtx, state: &'a mut State) -> AsyncFlow<'a> {
     Box::pin(async move {
         for s in stmts {
+            state.step()?;
             match eval_stmt_async(s, ctx, state).await? {
                 Flow::Continue => {}
                 other => return Ok(other),
@@ -914,6 +982,10 @@ fn eval_stmt_async<'a>(stmt: &'a Stmt, ctx: &'a EvalCtx, state: &'a mut State) -
                     );
                 } else if secs > 0 {
                     tokio::time::sleep(Duration::from_secs(secs)).await;
+                    if !super::host_exists(ctx) {
+                        // Host purged during the wait: end the script.
+                        return Ok(Flow::Halt);
+                    }
                 }
                 Ok(Flow::Continue)
             }

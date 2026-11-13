@@ -1,5 +1,8 @@
 //! Plant prototype CRUD endpoints
 
+use crate::api::validate::{
+    LIST_MAX, LONG_DESC_MAX, NAME_MAX, VNUM_MAX, check_count, check_list, check_opt_len, check_text_len,
+};
 use axum::{
     Json, Router,
     extract::{Extension, Path, State},
@@ -177,10 +180,7 @@ async fn list_plant_prototypes(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let prototypes = state
-        .db
-        .list_all_plant_prototypes()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let prototypes = state.db.list_all_plant_prototypes()?;
 
     Ok(Json(PlantPrototypeListResponse {
         success: true,
@@ -202,8 +202,7 @@ async fn get_plant_prototype(
 
     let proto = state
         .db
-        .get_plant_prototype(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_plant_prototype(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
     Ok(Json(PlantPrototypeResponse {
@@ -224,8 +223,7 @@ async fn get_plant_prototype_by_vnum(
 
     let proto = state
         .db
-        .get_plant_prototype_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_plant_prototype_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype with vnum '{}' not found", vnum)))?;
 
     Ok(Json(PlantPrototypeResponse {
@@ -240,6 +238,19 @@ async fn create_plant_prototype(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<CreatePlantPrototypeRequest>,
 ) -> Result<Json<PlantPrototypeResponse>, ApiError> {
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("vnum", &req.vnum, VNUM_MAX)?;
+    check_text_len("seed_vnum", &req.seed_vnum, VNUM_MAX)?;
+    check_text_len("harvest_vnum", &req.harvest_vnum, VNUM_MAX)?;
+    check_opt_len("category", &req.category, NAME_MAX)?;
+    check_list("keywords", &req.keywords, LIST_MAX, NAME_MAX)?;
+    check_list("preferred_seasons", &req.preferred_seasons, LIST_MAX, NAME_MAX)?;
+    check_list("forbidden_seasons", &req.forbidden_seasons, LIST_MAX, NAME_MAX)?;
+    check_count("stages", &req.stages, LIST_MAX)?;
+    for st in &req.stages {
+        check_text_len("stages.description", &st.description, LONG_DESC_MAX)?;
+        check_text_len("stages.examine_desc", &st.examine_desc, LONG_DESC_MAX)?;
+    }
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -285,10 +296,7 @@ async fn create_plant_prototype(
         is_prototype: true,
     };
 
-    state
-        .db
-        .save_plant_prototype(proto.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_plant_prototype(proto.clone())?;
 
     notify_builders(
         &state.connections,
@@ -311,6 +319,35 @@ async fn update_plant_prototype(
     Path(id): Path<String>,
     Json(req): Json<UpdatePlantPrototypeRequest>,
 ) -> Result<Json<PlantPrototypeResponse>, ApiError> {
+    check_opt_len("name", &req.name, NAME_MAX)?;
+    check_opt_len("seed_vnum", &req.seed_vnum, VNUM_MAX)?;
+    check_opt_len("harvest_vnum", &req.harvest_vnum, VNUM_MAX)?;
+    check_opt_len("category", &req.category, NAME_MAX)?;
+    check_list(
+        "keywords",
+        req.keywords.as_deref().unwrap_or_default(),
+        LIST_MAX,
+        NAME_MAX,
+    )?;
+    check_list(
+        "preferred_seasons",
+        req.preferred_seasons.as_deref().unwrap_or_default(),
+        LIST_MAX,
+        NAME_MAX,
+    )?;
+    check_list(
+        "forbidden_seasons",
+        req.forbidden_seasons.as_deref().unwrap_or_default(),
+        LIST_MAX,
+        NAME_MAX,
+    )?;
+    if let Some(stages) = &req.stages {
+        check_count("stages", stages, LIST_MAX)?;
+        for st in stages {
+            check_text_len("stages.description", &st.description, LONG_DESC_MAX)?;
+            check_text_len("stages.examine_desc", &st.examine_desc, LONG_DESC_MAX)?;
+        }
+    }
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -319,8 +356,7 @@ async fn update_plant_prototype(
 
     let mut proto = state
         .db
-        .get_plant_prototype(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_plant_prototype(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
     if let Some(name) = req.name {
@@ -375,10 +411,7 @@ async fn update_plant_prototype(
         proto.multi_harvest = v;
     }
 
-    state
-        .db
-        .save_plant_prototype(proto.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_plant_prototype(proto.clone())?;
 
     notify_builders(
         &state.connections,
@@ -408,14 +441,10 @@ async fn delete_plant_prototype(
 
     let proto = state
         .db
-        .get_plant_prototype(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_plant_prototype(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
-    state
-        .db
-        .delete_plant_prototype(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_plant_prototype(&uuid)?;
 
     notify_builders(
         &state.connections,

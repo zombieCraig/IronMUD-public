@@ -299,7 +299,7 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
                     InfestationType::Frost,
                 ];
                 let idx = ((plant.id.as_u128() ^ (now as u128).wrapping_mul(7)) % types.len() as u128) as usize;
-                plant.infestation = types[idx];
+                plant.infestation = types.get(idx).copied().unwrap_or(InfestationType::Aphids);
                 plant.infestation_severity = 0.1;
                 broadcast_to_room(
                     connections,

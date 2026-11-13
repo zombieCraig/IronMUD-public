@@ -2,9 +2,10 @@
 // query depth limit. 512 is comfortable headroom.
 #![recursion_limit = "512"]
 
+use parking_lot::Mutex;
 use rhai::{AST, Engine};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -12,7 +13,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 pub mod aging;
+pub mod ai_guard;
 pub mod api;
+pub mod api_key_auth;
 pub mod attribution;
 pub mod audit;
 pub mod bounty;
@@ -22,12 +25,15 @@ pub mod chat;
 pub mod claude;
 pub mod combat_text;
 pub mod completion;
+mod conn_input;
+mod conn_read;
 pub mod consignment;
 pub mod control;
 pub mod corpse;
 pub mod cyberware;
 pub mod db;
 pub mod dialogue_edit;
+#[cfg(feature = "discord")]
 pub mod discord;
 pub mod editor;
 pub mod email;
@@ -38,6 +44,7 @@ pub mod group;
 pub mod import;
 pub mod init;
 pub mod leaderboard;
+#[cfg(feature = "matrix")]
 pub mod matrix;
 pub mod migration;
 pub mod morality;
@@ -110,6 +117,9 @@ pub const MAX_DESC_BYTES: usize = 32 * 1024;
 /// read loop checks it on every poll and terminates inactive sessions to
 /// reclaim per-session memory and file descriptors.
 pub const IDLE_DISCONNECT_SECS: i64 = 1800;
+/// How often an otherwise silent connection's read task wakes to run the
+/// idle check.
+const IDLE_CHECK_SECS: u64 = 30;
 
 /// Hard cap on total characters in the database. Stops account-flood DoS
 /// from filling sled with junk accounts. Five thousand is comfortably
@@ -121,7 +131,7 @@ pub type ConnectionId = Uuid;
 
 pub struct PlayerSession {
     pub character: Option<CharacterData>,
-    pub sender: mpsc::UnboundedSender<String>,
+    pub sender: session::ClientSender,
     pub raw_sender: Option<mpsc::UnboundedSender<Vec<u8>>>,
     pub input_sender: mpsc::Sender<InputEvent>,
     pub addr: std::net::SocketAddr,
@@ -226,6 +236,11 @@ pub struct PlayerSession {
     /// (we keep `olc_mode` set during a modern session so cleanup and
     /// force-save paths still recognise the editor state).
     pub modern_editor: Option<crate::editor::EditorSession>,
+    /// Dropped with the session: when anything removes this session from
+    /// `SharedConnections` (quit, kick, linkdead cleanup), the sender drops
+    /// and the connection's read task wakes and exits at once, instead of
+    /// polling the map.
+    pub removed_signal: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 /// Input events from the read handler
@@ -250,8 +265,14 @@ pub enum InputEvent {
 pub type SharedConnections = Arc<Mutex<HashMap<ConnectionId, PlayerSession>>>;
 pub type SharedState = Arc<Mutex<World>>;
 
+/// Minimum length of a newly chosen password (create, `password`, the
+/// admin CLI). Existing shorter passwords keep working.
+pub const MIN_PASSWORD_LEN: usize = 8;
+
 pub struct World {
-    pub engine: Engine,
+    /// Shared so command handlers can hold it after releasing the World
+    /// lock. Mutate only during startup, through [`World::engine_mut`].
+    pub engine: Arc<Engine>,
     pub db: crate::db::Db,
     pub connections: SharedConnections,
     pub scripts: HashMap<String, AST>,
@@ -343,6 +364,14 @@ pub struct World {
 }
 
 impl World {
+    /// Mutable access to the scripting engine, for registering functions at
+    /// startup. Panics once any handler holds a clone (i.e. after the server
+    /// starts taking commands): all registration must happen before that.
+    pub fn engine_mut(&mut self) -> &mut Engine {
+        Arc::get_mut(&mut self.engine)
+            .expect("Rhai engine mutated after it was shared; register functions before serving")
+    }
+
     /// A `World` with the two handles that matter and every definition table
     /// empty. For callers that need something to put behind a [`SharedState`]
     /// but read nothing out of it — the tick tests, and `ironmud-admin`, which
@@ -363,7 +392,7 @@ impl World {
             world_report: Default::default(),
             build_scores: Default::default(),
             audit_ctx: Default::default(),
-            engine: Engine::new(),
+            engine: Arc::new(Engine::new()),
             db,
             connections,
             scripts: HashMap::new(),
@@ -488,8 +517,8 @@ pub fn fire_environmental_triggers_impl(
             }
 
             // Find all players in this room
-            let players_in_room: Vec<(Uuid, tokio::sync::mpsc::UnboundedSender<String>)> = {
-                let conns = connections.lock().unwrap();
+            let players_in_room: Vec<(Uuid, session::ClientSender)> = {
+                let conns = connections.lock();
                 conns
                     .iter()
                     .filter_map(|(conn_id, session)| {
@@ -516,14 +545,13 @@ pub fn fire_environmental_triggers_impl(
             }
 
             // Execute trigger script
-            let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(content) => content,
                 Err(_) => continue,
             };
 
             // Create a minimal Rhai engine for trigger execution
-            let mut trigger_engine = rhai::Engine::new();
+            let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
             // Register send_client_message
             for (conn_id, sender) in &players_in_room {
@@ -543,7 +571,7 @@ pub fn fire_environmental_triggers_impl(
             trigger_engine.register_fn(
                 "broadcast_to_room",
                 move |_rid: String, message: String, _exclude: String| {
-                    let conns = conns_clone.lock().unwrap();
+                    let conns = conns_clone.lock();
                     for (_, session) in conns.iter() {
                         if let Some(ref char) = session.character {
                             if char.current_room_id == room_id {
@@ -575,12 +603,14 @@ pub fn fire_environmental_triggers_impl(
                         rhai_context.insert(k.clone().into(), v.clone().into());
                     }
 
-                    let _ = trigger_engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "run_trigger",
-                        (room_id_str, conn_id_str, rhai_context),
-                    );
+                    let _ = crate::script::trigger_sandbox::guard_panic(|| {
+                        trigger_engine.call_fn::<rhai::Dynamic>(
+                            &mut scope,
+                            &ast,
+                            "run_trigger",
+                            (room_id_str, conn_id_str, rhai_context),
+                        )
+                    });
                 }
                 any_fired = true;
             }
@@ -600,12 +630,11 @@ fn execute_room_template(
 ) {
     // Helper to broadcast message to all players in the room
     let broadcast = |msg: &str| {
-        if let Ok(conns) = connections.lock() {
-            for (_, session) in conns.iter() {
-                if let Some(ref char_data) = session.character {
-                    if char_data.current_room_id == *room_id {
-                        let _ = session.sender.send(format!("{}\n", msg));
-                    }
+        let conns = connections.lock();
+        for (_, session) in conns.iter() {
+            if let Some(ref char_data) = session.character {
+                if char_data.current_room_id == *room_id {
+                    let _ = session.sender.send(format!("{}\n", msg));
                 }
             }
         }
@@ -674,7 +703,7 @@ pub struct OnlinePlayer {
 }
 
 pub fn get_online_players(connections: &SharedConnections) -> Vec<OnlinePlayer> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns
         .values()
         .filter_map(|session| {
@@ -690,7 +719,7 @@ pub fn get_online_players(connections: &SharedConnections) -> Vec<OnlinePlayer> 
 /// Save all logged-in player characters to the database.
 /// Called during graceful shutdown to prevent data loss.
 pub fn save_all_players(connections: &SharedConnections, db: &crate::db::Db) -> usize {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     let mut saved_count = 0;
 
     for (_conn_id, session) in conns.iter() {
@@ -737,7 +766,7 @@ pub fn get_default_aliases() -> HashMap<String, String> {
 }
 
 fn resolve_alias(connections: &SharedConnections, connection_id: ConnectionId, alias: &str) -> Option<String> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     if let Some(session) = conns.get(&connection_id) {
         if let Some(ref character) = session.character {
             // User aliases take precedence over defaults
@@ -1049,12 +1078,16 @@ pub fn session_is_writing(session: &PlayerSession) -> bool {
 /// (success report with refresh count + warnings, parse-error abort, or
 /// unknown-vnum). Shared by both the line-mode and modern-editor
 /// `collecting_dg_proto_body` save paths.
-pub fn save_dg_proto_body_msg(db: &crate::db::Db, vnum: &str, body: String) -> String {
+pub fn save_dg_proto_body_msg(db: &crate::db::Db, vnum: &str, body: String, author: &str) -> String {
     let mut proto = match db.get_dg_trigger_proto(vnum) {
         Ok(Some(p)) => p,
         _ => return format!("Proto save failed: unknown vnum '{}'.\n", vnum),
     };
+    if let Err(why) = crate::script::dg::check_proto_edit(db, vnum, author, false) {
+        return format!("Proto save refused: {why}.\n(0 instances changed)\n");
+    }
     proto.body = body;
+    proto.stamp_edit(author);
     match db.save_dg_trigger_proto_with_refresh(&proto) {
         Ok((refreshed, warnings)) => {
             let mut msg = format!(
@@ -1125,14 +1158,11 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
         extra_keywords: Vec<String>,
         author: String,
         author_is_admin: bool,
-        sender: mpsc::UnboundedSender<String>,
+        sender: session::ClientSender,
     }
 
     let snap: Option<Snapshot> = {
-        let conns = match connections.lock() {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
+        let conns = connections.lock();
         let session = match conns.get(&connection_id) {
             Some(s) => s,
             None => return false,
@@ -1197,7 +1227,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
     match snap.mode.as_str() {
         "collecting_desc" => {
             if let Some(room_id) = snap.edit_room {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
                         room.description = snap.content;
                         let _ = world.db.save_room_data(room);
@@ -1207,7 +1238,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
         }
         "collecting_note" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.note_content = if snap.content.is_empty() {
                             None
@@ -1221,7 +1253,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
         }
         "collecting_long" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.long_desc = snap.content;
                         let _ = world.db.save_item_data(item);
@@ -1234,7 +1267,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
             if !snap.content.is_empty() {
                 if let (Some(vnum), Some(subj)) = (snap.board_vnum, snap.board_subject) {
                     if !snap.author.is_empty() {
-                        if let Ok(world) = state.lock() {
+                        {
+                            let world = state.lock();
                             let max = world
                                 .db
                                 .get_item_by_vnum(&vnum)
@@ -1268,7 +1302,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
                         Some(snap.author)
                     };
                     let author_is_admin = snap.author_is_admin;
-                    if let Ok(world) = state.lock() {
+                    {
+                        let world = state.lock();
                         match kind.as_str() {
                             "mobile" => {
                                 let _ = world.db.update_mobile(&id, |m| {
@@ -1311,15 +1346,17 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
         }
         "collecting_dg_proto_body" => {
             if let Some(vnum) = snap.proto_vnum.as_ref() {
-                if let Ok(world) = state.lock() {
-                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone());
+                {
+                    let world = state.lock();
+                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone(), &snap.author);
                     let _ = snap.sender.send(msg);
                 }
             }
         }
         "collecting_dialogue_node_text" => {
             if let (Some(mid), Some(name)) = (snap.edit_mobile, snap.dialogue_node_name) {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     let _ = world.db.update_mobile(&mid, |m| {
                         if let Some(tree) = m.dialogue_tree.as_mut() {
                             if let Some(node) = tree.nodes.get_mut(&name) {
@@ -1332,7 +1369,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
         }
         "collecting_extra_desc" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.extra_descs.push(ExtraDesc {
                             keywords: snap.extra_keywords,
@@ -1342,7 +1380,8 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
                     }
                 }
             } else if let Some(room_id) = snap.edit_room {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
                         room.extra_descs.push(ExtraDesc {
                             keywords: snap.extra_keywords,
@@ -1354,15 +1393,15 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
             }
         }
         "collecting_motd" => {
-            if let Ok(world) = state.lock() {
-                let _ = world.db.set_setting("motd", &snap.content);
-            }
+            let world = state.lock();
+            let _ = world.db.set_setting("motd", &snap.content);
         }
         _ => {}
     }
 
     // Clear OLC state regardless of save outcome.
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         if let Some(session) = conns.get_mut(&connection_id) {
             clear_olc_state(session);
         }
@@ -1400,11 +1439,11 @@ pub fn save_modern_editor(
         extra_keywords: Vec<String>,
         author: String,
         author_is_admin: bool,
-        sender: mpsc::UnboundedSender<String>,
+        sender: session::ClientSender,
     }
 
     let snap = {
-        let conns = connections.lock().ok()?;
+        let conns = connections.lock();
         let session = conns.get(&connection_id)?;
         let mode = match session.olc_mode.as_deref() {
             Some(m) if is_text_editor_mode(m) => m.to_string(),
@@ -1446,7 +1485,8 @@ pub fn save_modern_editor(
     match snap.mode.as_str() {
         "collecting_desc" => {
             if let Some(room_id) = snap.edit_room {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
                         room.description = snap.content;
                         let _ = world.db.save_room_data(room);
@@ -1456,7 +1496,8 @@ pub fn save_modern_editor(
         }
         "collecting_note" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.note_content = if snap.content.is_empty() {
                             None
@@ -1470,7 +1511,8 @@ pub fn save_modern_editor(
         }
         "collecting_long" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.long_desc = snap.content;
                         let _ = world.db.save_item_data(item);
@@ -1482,7 +1524,8 @@ pub fn save_modern_editor(
             if !snap.content.is_empty() {
                 if let (Some(vnum), Some(subj)) = (snap.board_vnum, snap.board_subject) {
                     if !snap.author.is_empty() {
-                        if let Ok(world) = state.lock() {
+                        {
+                            let world = state.lock();
                             let max = world
                                 .db
                                 .get_item_by_vnum(&vnum)
@@ -1516,7 +1559,8 @@ pub fn save_modern_editor(
                         Some(snap.author)
                     };
                     let author_is_admin = snap.author_is_admin;
-                    if let Ok(world) = state.lock() {
+                    {
+                        let world = state.lock();
                         match kind.as_str() {
                             "mobile" => {
                                 let _ = world.db.update_mobile(&id, |m| {
@@ -1559,15 +1603,17 @@ pub fn save_modern_editor(
         }
         "collecting_dg_proto_body" => {
             if let Some(vnum) = snap.proto_vnum.as_ref() {
-                if let Ok(world) = state.lock() {
-                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone());
+                {
+                    let world = state.lock();
+                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone(), &snap.author);
                     let _ = snap.sender.send(msg);
                 }
             }
         }
         "collecting_dialogue_node_text" => {
             if let (Some(mid), Some(name)) = (snap.edit_mobile, snap.dialogue_node_name) {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     let _ = world.db.update_mobile(&mid, |m| {
                         if let Some(tree) = m.dialogue_tree.as_mut() {
                             if let Some(node) = tree.nodes.get_mut(&name) {
@@ -1580,7 +1626,8 @@ pub fn save_modern_editor(
         }
         "collecting_extra_desc" => {
             if let Some(item_id) = snap.edit_item {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
                         item.extra_descs.push(ExtraDesc {
                             keywords: snap.extra_keywords,
@@ -1590,7 +1637,8 @@ pub fn save_modern_editor(
                     }
                 }
             } else if let Some(room_id) = snap.edit_room {
-                if let Ok(world) = state.lock() {
+                {
+                    let world = state.lock();
                     if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
                         room.extra_descs.push(ExtraDesc {
                             keywords: snap.extra_keywords,
@@ -1602,9 +1650,8 @@ pub fn save_modern_editor(
             }
         }
         "collecting_motd" => {
-            if let Ok(world) = state.lock() {
-                let _ = world.db.set_setting("motd", &snap.content);
-            }
+            let world = state.lock();
+            let _ = world.db.set_setting("motd", &snap.content);
         }
         _ => {}
     }
@@ -1621,15 +1668,16 @@ pub fn interrupt_writer_by_name(connections: &SharedConnections, state: &SharedS
     let Some(conn_id) = find_player_connection_by_name(connections, char_name) else {
         return;
     };
-    let writing = match connections.lock() {
-        Ok(conns) => conns.get(&conn_id).map(session_is_writing).unwrap_or(false),
-        Err(_) => false,
+    let writing = {
+        let conns = connections.lock();
+        conns.get(&conn_id).map(session_is_writing).unwrap_or(false)
     };
     if !writing {
         return;
     }
     force_save_editor(conn_id, connections, state);
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         if let Some(session) = conns.get(&conn_id) {
             let _ = session
                 .sender
@@ -1657,7 +1705,8 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     // Scoped so the lock is released before the main read block below
     // re-acquires it.
     {
-        if let Ok(mut conns) = connections.lock() {
+        {
+            let mut conns = connections.lock();
             if let Some(session) = conns.get_mut(connection_id) {
                 for line in progress::drain_xp_buffer(session) {
                     let _ = session.sender.send(format!("{}\n", line));
@@ -1669,7 +1718,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     // Snapshot everything the prompt can read off the session in one lock,
     // and pick the format while we are in there.
     let (format, mut ctx) = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         let session = match conns.get(connection_id) {
             Some(s) => s,
             None => return prompt::SIMPLE_FORMAT.to_string(),
@@ -1696,7 +1745,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     // OPPONENT_NAME/OPPONENT_HEALTH for GUI clients all along; this is the
     // same two facts for everyone else.
     if prompt::uses(&pieces, "target") {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         if let Ok(Some(char_data)) = world.db.get_character_data(&ctx.name) {
             if char_data.combat.in_combat && !char_data.combat.targets.is_empty() {
                 let primary = &char_data.combat.targets[0];
@@ -1714,7 +1763,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                         .target_name
                         .as_deref()
                         .and_then(|n| world.db.get_character_data(n).ok().flatten())
-                        .map(|c| (c.name.clone(), c.hp, c.max_hp))
+                        .map(|c| (c.name.clone(), c.hp, c.effective_max_hp()))
                         .unwrap_or_else(|| {
                             (
                                 primary.target_name.clone().unwrap_or_else(|| "opponent".to_string()),
@@ -1738,7 +1787,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     // so a prompt carrying two standings does not lock the world twice.
     let wanted = prompt::requested_factions(&pieces);
     if !wanted.is_empty() {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         for key in wanted {
             if let Some(def) = world.faction_definitions.get(&key) {
                 ctx.faction_names.insert(key, def.display().to_string());
@@ -1751,7 +1800,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     // script, so this stays behind the token that asks for it.
     if prompt::uses(&pieces, "extra") {
         let equipped: Vec<Uuid> = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             world
                 .db
                 .get_equipped_items(&ctx.name)
@@ -1787,7 +1836,7 @@ impl PlayerSession {
         PlayerSession {
             pending_audit: None,
             character: None,
-            sender,
+            sender: session::ClientSender::unbounded(sender),
             raw_sender: None,
             input_sender,
             addr: "127.0.0.1:0".parse().expect("loopback addr"),
@@ -1831,11 +1880,17 @@ impl PlayerSession {
             disconnected_at: None,
             session_started_at: None,
             modern_editor: None,
+            removed_signal: None,
         }
     }
 
-    /// Sync MSDP vitals if supported and requested
-    pub fn sync_msdp_vitals(&self, state: &SharedState) {
+    /// Sync MSDP vitals if supported and requested.
+    ///
+    /// Takes a `Db` handle rather than `SharedState`: callers invoke this while
+    /// holding the Connections lock, and taking the World lock here would
+    /// invert the World -> Connections lock order used elsewhere (ABBA
+    /// deadlock). `Db` is a cheap clone of Arc'd sled trees and needs no lock.
+    pub fn sync_msdp_vitals(&self, db: &crate::db::Db) {
         if !self.telnet_state.msdp_supported
             || self.telnet_state.msdp_reported_variables.is_empty()
             || self.raw_sender.is_none()
@@ -1855,7 +1910,10 @@ impl PlayerSession {
             let _ = tx_raw.send(telnet::build_msdp_var("HEALTH", &char_data.hp.to_string()));
         }
         if reported.contains("HEALTH_MAX") {
-            let _ = tx_raw.send(telnet::build_msdp_var("HEALTH_MAX", &char_data.max_hp.to_string()));
+            let _ = tx_raw.send(telnet::build_msdp_var(
+                "HEALTH_MAX",
+                &char_data.effective_max_hp().to_string(),
+            ));
         }
         if reported.contains("STAMINA") {
             let _ = tx_raw.send(telnet::build_msdp_var("STAMINA", &char_data.stamina.to_string()));
@@ -1883,8 +1941,7 @@ impl PlayerSession {
         }
         if reported.contains("ROOM_NAME") {
             if let Some(ref char) = self.character {
-                let world = state.lock().unwrap();
-                if let Ok(Some(room)) = world.db.get_room_data(&char.current_room_id) {
+                if let Ok(Some(room)) = db.get_room_data(&char.current_room_id) {
                     let _ = tx_raw.send(telnet::build_msdp_var("ROOM_NAME", &room.title));
                 }
             }
@@ -1892,12 +1949,10 @@ impl PlayerSession {
         if reported.contains("OPPONENT_HEALTH") || reported.contains("OPPONENT_NAME") {
             if let Some(ref char) = self.character {
                 if char.combat.in_combat && !char.combat.targets.is_empty() {
-                    let world = state.lock().unwrap();
                     let primary = &char.combat.targets[0];
                     if reported.contains("OPPONENT_NAME") {
                         let target_name = match primary.target_type {
-                            CombatTargetType::Mobile => world
-                                .db
+                            CombatTargetType::Mobile => db
                                 .get_mobile_data(&primary.target_id)
                                 .ok()
                                 .flatten()
@@ -1912,8 +1967,7 @@ impl PlayerSession {
                     }
                     if reported.contains("OPPONENT_HEALTH") {
                         let (hp, max_hp) = match primary.target_type {
-                            CombatTargetType::Mobile => world
-                                .db
+                            CombatTargetType::Mobile => db
                                 .get_mobile_data(&primary.target_id)
                                 .ok()
                                 .flatten()
@@ -1922,8 +1976,8 @@ impl PlayerSession {
                             CombatTargetType::Player => primary
                                 .target_name
                                 .as_deref()
-                                .and_then(|n| world.db.get_character_data(n).ok().flatten())
-                                .map(|c| (c.hp, c.max_hp.max(1)))
+                                .and_then(|n| db.get_character_data(n).ok().flatten())
+                                .map(|c| (c.hp, c.effective_max_hp()))
                                 .unwrap_or((100, 100)),
                         };
                         let pct: i32 = (hp * 100) / max_hp.max(1);
@@ -1951,10 +2005,13 @@ fn collect_on_prompt_contributions(
 ) -> String {
     let mut contributions = String::new();
 
-    let world = state.lock().unwrap();
+    // Only the Db is needed. Clone it and release World immediately: these
+    // scripts run on every prompt, and holding World across them meant one
+    // slow or looping on_prompt script stalled every command on the server.
+    let db = state.lock().db.clone();
 
     for item_id in equipped_item_ids {
-        let item = match world.db.get_item_data(item_id) {
+        let item = match db.get_item_data(item_id) {
             Ok(Some(i)) => i,
             _ => continue,
         };
@@ -1981,17 +2038,16 @@ fn collect_on_prompt_contributions(
             }
 
             // Load and execute trigger script
-            let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
 
             // Create a minimal engine for trigger execution
-            let mut trigger_engine = rhai::Engine::new();
+            let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
             // Register get_game_time for watch triggers
-            let db_for_time = world.db.clone();
+            let db_for_time = db.clone();
             trigger_engine.register_fn("get_game_time", move || -> rhai::Map {
                 let game_time = db_for_time.get_game_time().unwrap_or_default();
                 let mut map = rhai::Map::new();
@@ -2013,12 +2069,14 @@ fn collect_on_prompt_contributions(
                     let conn_id_str = connection_id.to_string();
                     let context = rhai::Map::new();
 
-                    match trigger_engine.call_fn::<rhai::Dynamic>(
-                        &mut rhai::Scope::new(),
-                        &ast,
-                        "run_trigger",
-                        (item_id_str, conn_id_str, context),
-                    ) {
+                    match crate::script::trigger_sandbox::guard_panic(|| {
+                        trigger_engine.call_fn::<rhai::Dynamic>(
+                            &mut rhai::Scope::new(),
+                            &ast,
+                            "run_trigger",
+                            (item_id_str, conn_id_str, context),
+                        )
+                    }) {
                         Ok(result) => {
                             let result_str = result.to_string();
                             if !result_str.is_empty() && result_str != "()" {
@@ -2040,6 +2098,39 @@ fn collect_on_prompt_contributions(
     contributions
 }
 
+/// Run a command script's `run_command`, converting a Rust panic inside any
+/// registered function into a script error.
+///
+/// Without this, a panic in a native Rhai function (e.g. an unchecked
+/// `gen_range`) unwinds out of `handle_connection`, skipping its cleanup: the
+/// session stays in `SharedConnections` as a ghost and the linkdead/save path
+/// never runs. The player instead sees an error and keeps their connection.
+fn call_run_command_guarded(
+    engine: &Engine,
+    scope: &mut rhai::Scope,
+    ast: &rhai::AST,
+    args: String,
+    connection_id: String,
+    command: &str,
+) -> Result<rhai::Dynamic, String> {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        engine.call_fn::<rhai::Dynamic>(scope, ast, "run_command", (args, connection_id))
+    }));
+    match outcome {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(panic) => {
+            let detail = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            error!("Command '{}' panicked: {}", command, detail);
+            Err("an internal error occurred".to_string())
+        }
+    }
+}
+
 pub async fn handle_connection(
     socket: tokio::net::TcpStream,
     addr: std::net::SocketAddr,
@@ -2054,21 +2145,27 @@ pub async fn handle_connection(
     // (or a scripted attacker) inflate the queue without limit.
     let (tx_input, mut rx_input) = mpsc::channel::<InputEvent>(INPUT_CHANNEL_CAPACITY);
     let (tx_raw, rx_raw) = mpsc::unbounded_channel::<Vec<u8>>();
+    // Bounded by bytes queued; overflow posts `Disconnect` to the input loop.
+    let tx_client = session::ClientSender::new(tx_client, tx_input.clone());
+    let drain = tx_client.drain_handle();
 
     // Get the connections map from World and store the PlayerSession
-    let connections = {
-        let world = state.lock().unwrap();
-        world.connections.clone()
+    // `msdp_db` lets MSDP syncs read room/opponent data while the
+    // Connections lock is held, without re-taking the World lock.
+    let (connections, msdp_db) = {
+        let world = state.lock();
+        (world.connections.clone(), world.db.clone())
     };
 
     // Activity log for whoever logs in on this connection (see `player_log`).
     let mut play_log = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         player_log::SessionTracker::new(world.db.clone(), connection_id, addr)
     };
 
+    let (removed_tx, removed_rx) = tokio::sync::oneshot::channel::<()>();
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         conns.insert(
             connection_id,
             PlayerSession {
@@ -2121,6 +2218,7 @@ pub async fn handle_connection(
                 disconnected_at: None,
                 session_started_at: None,
                 modern_editor: None,
+                removed_signal: Some(removed_tx),
             },
         );
     }
@@ -2128,7 +2226,7 @@ pub async fn handle_connection(
     // Send welcome banner. Rendered with the create / forgot lines swapped
     // for their three-arg variants when email verification is required.
     let banner = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         crate::session::banner::render_login_banner(&world.db)
     };
     if !banner.is_empty() {
@@ -2138,7 +2236,7 @@ pub async fn handle_connection(
     // Spawn character-mode read task with telnet protocol support. Hand it a
     // cloned `Db` handle (cheap, Arc-based) so the read loop can consult the
     // `idle_disconnect_enabled` setting without ever locking the World mutex.
-    let read_db = { state.lock().unwrap().db.clone() };
+    let read_db = { state.lock().db.clone() };
     tokio::spawn(handle_read_char_mode(
         reader,
         addr,
@@ -2147,16 +2245,24 @@ pub async fn handle_connection(
         connections.clone(),
         tx_raw,
         read_db,
+        removed_rx,
     ));
 
     // Spawn write task with raw byte support for telnet negotiation
-    tokio::spawn(handle_write_with_raw(writer, addr, rx_client, rx_raw));
+    tokio::spawn(handle_write_with_raw(writer, addr, rx_client, rx_raw, drain));
+
+    let cx = conn_input::ConnCx {
+        connection_id,
+        connections: &connections,
+        state: &state,
+        tx_client: &tx_client,
+    };
 
     // Main loop for processing client input and sending responses
     loop {
         // Check if connection still exists. If not, it means it was disconnected by a script.
         let is_connected = {
-            let conns = connections.lock().unwrap();
+            let conns = connections.lock();
             conns.contains_key(&connection_id)
         };
         if !is_connected {
@@ -2167,7 +2273,7 @@ pub async fn handle_connection(
 
         // Only send prompt in line mode (char mode echoes as you type)
         let is_char_mode = {
-            let conns = connections.lock().unwrap();
+            let conns = connections.lock();
             conns
                 .get(&connection_id)
                 .map(|s| s.telnet_state.char_mode)
@@ -2175,9 +2281,9 @@ pub async fn handle_connection(
         };
         if !is_char_mode {
             {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 if let Some(session) = conns.get(&connection_id) {
-                    session.sync_msdp_vitals(&state);
+                    session.sync_msdp_vitals(&msdp_db);
                 }
             }
             let prompt = build_prompt(&connection_id, &connections, &state);
@@ -2201,388 +2307,7 @@ pub async fn handle_connection(
 
         // Handle Tab completion
         if matches!(event, InputEvent::Tab) {
-            // Get current input buffer and cursor position
-            let (current_input, cursor_pos, window_width, colors_enabled) = {
-                let conns = connections.lock().unwrap();
-                conns
-                    .get(&connection_id)
-                    .map(|s| {
-                        (
-                            s.input_buffer.clone(),
-                            s.cursor_pos,
-                            s.telnet_state.window_width,
-                            s.colors_enabled,
-                        )
-                    })
-                    .unwrap_or_default()
-            };
-
-            // Gather completion data
-            let (
-                available_commands,
-                room_vnums,
-                item_vnums,
-                mobile_vnums,
-                area_prefixes,
-                recipe_vnums,
-                transport_vnums,
-                property_template_vnums,
-                shop_preset_vnums,
-                plant_vnums,
-                quest_vnums,
-                spell_names,
-                language_keys,
-                online_players,
-                mobs_in_room,
-                items_in_room,
-                class_ids,
-                race_ids,
-                achievement_keys,
-                custom_skill_keys,
-                faction_keys,
-                social_commands,
-                has_builder_access,
-            ) = {
-                let world = state.lock().unwrap();
-
-                // Get commands the user can access
-                let is_logged_in = {
-                    let conns = connections.lock().unwrap();
-                    conns.get(&connection_id).and_then(|s| s.character.as_ref()).is_some()
-                };
-                let (is_builder, is_admin) = {
-                    let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.character.as_ref())
-                        .map(|c| (c.is_builder, c.is_admin))
-                        .unwrap_or((false, false))
-                };
-
-                let visible: Vec<(&String, &CommandMeta)> = world
-                    .command_metadata
-                    .iter()
-                    .filter(|(_, meta)| match meta.access.as_str() {
-                        "guest" => true,
-                        "user" => is_logged_in,
-                        "builder" => is_builder || is_admin,
-                        "admin" => is_admin,
-                        _ => true,
-                    })
-                    .collect();
-
-                let mut available_commands: Vec<String> = visible.iter().map(|(name, _)| (*name).clone()).collect();
-
-                // Socials are virtual `command_metadata` entries tagged
-                // `kind = "social"` (see `register_socials_in_command_metadata`).
-                // Sorted so the completer can binary-search it when tinting
-                // the candidate list.
-                let mut social_commands: Vec<String> = visible
-                    .iter()
-                    .filter(|(_, meta)| meta.kind.as_deref() == Some("social"))
-                    .map(|(name, _)| name.to_lowercase())
-                    .collect();
-                social_commands.sort();
-
-                // Append the player's current room contextual verbs (deduped).
-                // Runtime dispatch is still handled by DG OnCommand triggers;
-                // this just lets the verbs surface in TAB completion.
-                let current_room_id = {
-                    let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.character.as_ref())
-                        .map(|c| c.current_room_id)
-                };
-                if let Some(room_id) = current_room_id {
-                    if room_id != Uuid::nil() {
-                        if let Ok(Some(room)) = world.db.get_room_data(&room_id) {
-                            for cc in &room.contextual_commands {
-                                if !available_commands.iter().any(|c| c == &cc.verb) {
-                                    available_commands.push(cc.verb.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Get vnums from database
-                let room_vnums: Vec<String> = world
-                    .db
-                    .list_all_rooms()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|r| r.vnum.clone())
-                    .collect();
-
-                let item_vnums: Vec<String> = world
-                    .db
-                    .list_all_items()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter(|i| i.is_prototype)
-                    .filter_map(|i| i.vnum.clone())
-                    .collect();
-
-                let mobile_vnums: Vec<String> = world
-                    .db
-                    .list_all_mobiles()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter(|m| m.is_prototype)
-                    .filter_map(|m| Some(m.vnum.clone()))
-                    .filter(|v| !v.is_empty())
-                    .collect();
-
-                let area_prefixes: Vec<String> = world
-                    .db
-                    .list_all_areas()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|a| a.prefix.clone())
-                    .collect();
-
-                let recipe_vnums: Vec<String> = world.recipes.keys().cloned().collect();
-
-                let transport_vnums: Vec<String> = world
-                    .db
-                    .list_all_transports()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|t| t.vnum.clone())
-                    .collect();
-
-                let property_template_vnums: Vec<String> = world
-                    .db
-                    .list_all_property_templates()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|t| t.vnum.clone())
-                    .collect();
-
-                let shop_preset_vnums: Vec<String> = world
-                    .db
-                    .list_all_shop_presets()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|p| p.vnum.clone())
-                    .collect();
-
-                let plant_vnums: Vec<String> = world
-                    .db
-                    .list_all_plant_prototypes()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|p| p.vnum.clone())
-                    .collect();
-
-                let quest_vnums: Vec<String> = world
-                    .db
-                    .list_all_quests()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|q| q.vnum.clone())
-                    .collect();
-
-                let spell_names: Vec<String> = world.spell_definitions.values().map(|s| s.name.clone()).collect();
-
-                let language_keys: Vec<String> = world.language_definitions.keys().cloned().collect();
-
-                // Get online player names
-                let online_players: Vec<String> = {
-                    let conns = connections.lock().unwrap();
-                    conns
-                        .values()
-                        .filter_map(|s| s.character.as_ref())
-                        .map(|c| c.name.clone())
-                        .collect()
-                };
-
-                // What is standing and lying in this player's current room:
-                // mobs for `talk <mob>`, both for `build audit mob|item <kw>`,
-                // which resolves a keyword against the room before the world.
-                let (mobs_in_room, items_in_room): (Vec<String>, Vec<String>) = match current_room_id {
-                    Some(room_id) if room_id != Uuid::nil() => {
-                        let mobs = world
-                            .db
-                            .get_mobiles_in_room(&room_id)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|m| !m.is_prototype)
-                            .flat_map(|m| {
-                                let mut keys = m.keywords.clone();
-                                keys.push(m.name);
-                                keys
-                            })
-                            .collect();
-                        let items = world
-                            .db
-                            .get_items_in_room(&room_id)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|i| !i.is_prototype && !i.flags.buried)
-                            .flat_map(|i| {
-                                let mut keys = i.keywords.clone();
-                                keys.push(i.name);
-                                keys
-                            })
-                            .collect();
-                        (mobs, items)
-                    }
-                    _ => (Vec::new(), Vec::new()),
-                };
-
-                let has_builder_access = is_builder || is_admin;
-
-                let class_ids: Vec<String> = world.class_definitions.keys().cloned().collect();
-                let race_ids: Vec<String> = world.race_definitions.keys().cloned().collect();
-                let achievement_keys: Vec<String> = world.achievement_definitions.keys().cloned().collect();
-                let custom_skill_keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
-                let faction_keys: Vec<String> = world.faction_definitions.keys().cloned().collect();
-
-                (
-                    available_commands,
-                    room_vnums,
-                    item_vnums,
-                    mobile_vnums,
-                    area_prefixes,
-                    recipe_vnums,
-                    transport_vnums,
-                    property_template_vnums,
-                    shop_preset_vnums,
-                    plant_vnums,
-                    quest_vnums,
-                    spell_names,
-                    language_keys,
-                    online_players,
-                    mobs_in_room,
-                    items_in_room,
-                    class_ids,
-                    race_ids,
-                    achievement_keys,
-                    custom_skill_keys,
-                    faction_keys,
-                    social_commands,
-                    has_builder_access,
-                )
-            };
-
-            // Perform completion
-            let result = completion::complete(
-                &current_input,
-                cursor_pos,
-                &completion::CompletionData {
-                    available_commands: &available_commands,
-                    room_vnums: &room_vnums,
-                    item_vnums: &item_vnums,
-                    mobile_vnums: &mobile_vnums,
-                    area_prefixes: &area_prefixes,
-                    recipe_vnums: &recipe_vnums,
-                    transport_vnums: &transport_vnums,
-                    property_template_vnums: &property_template_vnums,
-                    shop_preset_vnums: &shop_preset_vnums,
-                    plant_vnums: &plant_vnums,
-                    quest_vnums: &quest_vnums,
-                    spell_names: &spell_names,
-                    language_keys: &language_keys,
-                    online_players: &online_players,
-                    mobs_in_room: &mobs_in_room,
-                    items_in_room: &items_in_room,
-                    class_ids: &class_ids,
-                    race_ids: &race_ids,
-                    achievement_keys: &achievement_keys,
-                    custom_skill_keys: &custom_skill_keys,
-                    faction_keys: &faction_keys,
-                    social_commands: &social_commands,
-                    is_builder: has_builder_access,
-                },
-            );
-
-            if result.is_empty() {
-                // No completions - just beep or do nothing
-                continue;
-            }
-
-            if result.is_unique() {
-                // Single match - auto-complete
-                let completed = &result.completions[0];
-                let to_add = &completed[result.partial.len()..];
-
-                let new_input = {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        // Find byte offset for cursor position (char-based)
-                        let byte_pos = session
-                            .input_buffer
-                            .char_indices()
-                            .nth(session.cursor_pos)
-                            .map(|(i, _)| i)
-                            .unwrap_or(session.input_buffer.len());
-
-                        let at_end = byte_pos >= session.input_buffer.len();
-
-                        // Insert completion at cursor position
-                        session.input_buffer.insert_str(byte_pos, to_add);
-                        session.cursor_pos += to_add.chars().count();
-
-                        // Add trailing space only if cursor was at end of buffer
-                        if at_end {
-                            session.input_buffer.push(' ');
-                            session.cursor_pos += 1;
-                        }
-
-                        session.input_buffer.clone()
-                    } else {
-                        continue;
-                    }
-                };
-
-                // Redraw the full line (handles cursor positioning)
-                let cursor_pos = {
-                    let conns = connections.lock().unwrap();
-                    conns.get(&connection_id).map(|s| s.cursor_pos).unwrap_or(0)
-                };
-                let redraw = telnet::redraw_input_line("> ", &new_input, cursor_pos);
-                let _ = tx_client.send(String::from_utf8_lossy(&redraw).into_owned());
-            } else {
-                // Multiple matches - show list and complete common prefix
-                let display = completion::format_completions(&result, window_width, colors_enabled);
-
-                // Complete to common prefix if it's longer than what we have
-                let to_add = if result.common_prefix.len() > result.partial.len() {
-                    &result.common_prefix[result.partial.len()..]
-                } else {
-                    ""
-                };
-
-                if !to_add.is_empty() {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        let byte_pos = session
-                            .input_buffer
-                            .char_indices()
-                            .nth(session.cursor_pos)
-                            .map(|(i, _)| i)
-                            .unwrap_or(session.input_buffer.len());
-
-                        session.input_buffer.insert_str(byte_pos, to_add);
-                        session.cursor_pos += to_add.chars().count();
-                    }
-                }
-
-                // Redraw: show completions list, then redraw input line with cursor
-                let (new_input, cursor_pos) = {
-                    let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .map(|s| (s.input_buffer.clone(), s.cursor_pos))
-                        .unwrap_or_default()
-                };
-                let redraw = telnet::redraw_input_line("> ", &new_input, cursor_pos);
-                let redraw_str = String::from_utf8_lossy(&redraw).into_owned();
-                let output = format!("\r\n{}\r\n{}", display, redraw_str);
-                let _ = tx_client.send(output);
-            }
+            conn_input::tab_completion(&cx);
             continue;
         }
 
@@ -2600,7 +2325,7 @@ pub async fn handle_connection(
         match &event {
             InputEvent::ModernEditorCancel => {
                 {
-                    let mut conns = connections.lock().unwrap();
+                    let mut conns = connections.lock();
                     if let Some(session) = conns.get_mut(&connection_id) {
                         clear_olc_state(session);
                     }
@@ -2608,7 +2333,7 @@ pub async fn handle_connection(
                 // Clear the screen the editor was painting on so the
                 // legacy prompt lands on a clean line.
                 if let Some(raw) = {
-                    let conns = connections.lock().unwrap();
+                    let conns = connections.lock();
                     conns.get(&connection_id).and_then(|s| s.raw_sender.clone())
                 } {
                     let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
@@ -2620,19 +2345,19 @@ pub async fn handle_connection(
             }
             InputEvent::ModernEditorSave(content) => {
                 let mode = {
-                    let conns = connections.lock().unwrap();
+                    let conns = connections.lock();
                     conns.get(&connection_id).and_then(|s| s.olc_mode.clone())
                 };
                 let bytes = content.len();
                 let result = save_modern_editor(connection_id, &connections, &state, content.clone());
                 {
-                    let mut conns = connections.lock().unwrap();
+                    let mut conns = connections.lock();
                     if let Some(session) = conns.get_mut(&connection_id) {
                         clear_olc_state(session);
                     }
                 }
                 if let Some(raw) = {
-                    let conns = connections.lock().unwrap();
+                    let conns = connections.lock();
                     conns.get(&connection_id).and_then(|s| s.raw_sender.clone())
                 } {
                     let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
@@ -2686,7 +2411,7 @@ pub async fn handle_connection(
 
         // Update last activity time for idle tracking
         {
-            let mut conns = connections.lock().unwrap();
+            let mut conns = connections.lock();
             if let Some(session) = conns.get_mut(&connection_id) {
                 session.last_activity_time = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -2697,549 +2422,36 @@ pub async fn handle_connection(
 
         // Check for OLC description collection mode
         let olc_mode = {
-            let conns = connections.lock().unwrap();
+            let conns = connections.lock();
             conns.get(&connection_id).and_then(|s| s.olc_mode.clone())
         };
 
         if olc_mode.as_deref() == Some("collecting_desc") {
-            // Use shared editor command handler
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    if content.len() > crate::api::validate::DESCRIPTION_MAX {
-                        let _ = tx_client.send(format!(
-                            "Description too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            crate::api::validate::DESCRIPTION_MAX
-                        ));
-                        continue;
-                    }
-                    // Save buffer to room description
-                    let edit_room_id = {
-                        let conns = connections.lock().unwrap();
-                        conns.get(&connection_id).and_then(|s| s.olc_edit_room)
-                    };
-
-                    if let Some(room_id) = edit_room_id {
-                        let world = state.lock().unwrap();
-                        if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
-                            room.description = content;
-                            let _ = world.db.save_room_data(room);
-                        }
-                        drop(world);
-                        let _ = tx_client.send("Description saved.\n".to_string());
-                    } else {
-                        let _ = tx_client.send("Error: No room being edited.\n".to_string());
-                    }
-
-                    // Clear OLC state
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_room = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::Cancel => {
-                    // Clear OLC state
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_room = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Description editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_desc(&cx, &input);
             continue;
         }
 
         // Check for OLC note collection mode (item.note_content)
         if olc_mode.as_deref() == Some("collecting_note") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    // Cap at 32 KB to avoid runaway bodies. Keep mode active on over-cap.
-                    const MAX_NOTE_BYTES: usize = 32 * 1024;
-                    if content.len() > MAX_NOTE_BYTES {
-                        let _ = tx_client.send(format!(
-                            "Note too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            MAX_NOTE_BYTES
-                        ));
-                    } else {
-                        let edit_item_id = {
-                            let conns = connections.lock().unwrap();
-                            conns.get(&connection_id).and_then(|s| s.olc_edit_item)
-                        };
-
-                        let (saved, cleared) = if let Some(item_id) = edit_item_id {
-                            let world = state.lock().unwrap();
-                            match world.db.get_item_data(&item_id) {
-                                Ok(Some(mut item)) => {
-                                    let cleared = content.is_empty();
-                                    item.note_content = if cleared { None } else { Some(content) };
-                                    let ok = world.db.save_item_data(item).is_ok();
-                                    (ok, cleared)
-                                }
-                                _ => (false, false),
-                            }
-                        } else {
-                            (false, false)
-                        };
-
-                        if saved {
-                            let _ =
-                                tx_client.send(if cleared { "Note cleared.\n" } else { "Note saved.\n" }.to_string());
-                        } else {
-                            let _ = tx_client.send("Error: could not save note.\n".to_string());
-                        }
-
-                        {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                session.olc_mode = None;
-                                session.olc_buffer.clear();
-                                session.olc_edit_item = None;
-                                session.olc_undo_buffer = None;
-                            }
-                        }
-                        let prompt = build_prompt(&connection_id, &connections, &state);
-                        let _ = tx_client.send(prompt);
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_item = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Note editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_note(&cx, &input);
             continue;
         }
 
         // Check for OLC long-description collection mode (item.long_desc)
         if olc_mode.as_deref() == Some("collecting_long") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    const MAX_LONG_BYTES: usize = 32 * 1024;
-                    if content.len() > MAX_LONG_BYTES {
-                        let _ = tx_client.send(format!(
-                            "Long description too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            MAX_LONG_BYTES
-                        ));
-                    } else {
-                        let edit_item_id = {
-                            let conns = connections.lock().unwrap();
-                            conns.get(&connection_id).and_then(|s| s.olc_edit_item)
-                        };
-
-                        let saved = if let Some(item_id) = edit_item_id {
-                            let world = state.lock().unwrap();
-                            match world.db.get_item_data(&item_id) {
-                                Ok(Some(mut item)) => {
-                                    item.long_desc = content;
-                                    world.db.save_item_data(item).is_ok()
-                                }
-                                _ => false,
-                            }
-                        } else {
-                            false
-                        };
-
-                        if saved {
-                            let _ = tx_client.send("Long description saved.\n".to_string());
-                        } else {
-                            let _ = tx_client.send("Error: could not save long description.\n".to_string());
-                        }
-
-                        {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                session.olc_mode = None;
-                                session.olc_buffer.clear();
-                                session.olc_edit_item = None;
-                                session.olc_undo_buffer = None;
-                            }
-                        }
-                        let prompt = build_prompt(&connection_id, &connections, &state);
-                        let _ = tx_client.send(prompt);
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_item = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Long description editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_long(&cx, &input);
             continue;
         }
 
         // Check for OLC bulletin board post collection mode
         if olc_mode.as_deref() == Some("collecting_board_post") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    const MAX_POST_BYTES: usize = 32 * 1024;
-                    if content.len() > MAX_POST_BYTES {
-                        let _ = tx_client.send(format!(
-                            "Post too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            MAX_POST_BYTES
-                        ));
-                    } else if content.is_empty() {
-                        let _ =
-                            tx_client.send("Empty post not saved. Type some text or .cancel to abort.\n".to_string());
-                    } else {
-                        let (board_vnum, subject, author) = {
-                            let conns = connections.lock().unwrap();
-                            match conns.get(&connection_id) {
-                                Some(s) => (
-                                    s.olc_edit_board_vnum.clone(),
-                                    s.olc_board_subject.clone(),
-                                    s.character.as_ref().map(|c| c.name.clone()),
-                                ),
-                                None => (None, None, None),
-                            }
-                        };
-
-                        let saved = match (board_vnum, subject, author) {
-                            (Some(vnum), Some(subj), Some(name)) => {
-                                let world = state.lock().unwrap();
-                                let max = world
-                                    .db
-                                    .get_item_by_vnum(&vnum)
-                                    .ok()
-                                    .flatten()
-                                    .and_then(|item| item.board_max_messages);
-                                let post = BoardPost::new(vnum, name, subj, content);
-                                world.db.store_board_post(post, max).is_ok()
-                            }
-                            _ => false,
-                        };
-
-                        if saved {
-                            let _ = tx_client.send("Post saved.\n".to_string());
-                        } else {
-                            let _ = tx_client.send("Error: could not save post.\n".to_string());
-                        }
-
-                        {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                session.olc_mode = None;
-                                session.olc_buffer.clear();
-                                session.olc_edit_board_vnum = None;
-                                session.olc_board_subject = None;
-                                session.olc_undo_buffer = None;
-                            }
-                        }
-                        let prompt = build_prompt(&connection_id, &connections, &state);
-                        let _ = tx_client.send(prompt);
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_board_vnum = None;
-                            session.olc_board_subject = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Post cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_board_post(&cx, &input);
             continue;
         }
 
         // Check for OLC DG trigger body collection mode
         if olc_mode.as_deref() == Some("collecting_dg_body") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    const MAX_DG_BODY_BYTES: usize = 32 * 1024;
-                    if content.len() > MAX_DG_BODY_BYTES {
-                        let _ = tx_client.send(format!(
-                            "DG body too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            MAX_DG_BODY_BYTES
-                        ));
-                    } else {
-                        // Run the analyzer up front. ParseError refuses the
-                        // save (mirrors proto path); other issues become
-                        // post-save warnings shown to the editor.
-                        let issues = crate::script::dg::analyze::analyze(&content);
-                        let parse_errors: Vec<&_> = issues
-                            .iter()
-                            .filter(|i| i.kind == crate::script::dg::analyze::IssueKind::ParseError)
-                            .collect();
-                        if !parse_errors.is_empty() {
-                            let detail = parse_errors
-                                .iter()
-                                .map(|i| i.detail.as_str())
-                                .collect::<Vec<_>>()
-                                .join("; ");
-                            let _ = tx_client.send(format!(
-                                "Save refused: parse error: {}\nUse .r to keep editing or .a to abort.\n",
-                                detail
-                            ));
-                            continue;
-                        }
-                        let warnings: Vec<String> = issues
-                            .into_iter()
-                            .filter(|i| i.kind != crate::script::dg::analyze::IssueKind::ParseError)
-                            .map(|i| format!("  warning: {:?}: {}", i.kind, i.detail))
-                            .collect();
-
-                        let (host_kind, host_id, idx, author, author_is_admin) = {
-                            let conns = connections.lock().unwrap();
-                            conns
-                                .get(&connection_id)
-                                .map(|s| {
-                                    let kind = s.olc_edit_trigger_host.clone();
-                                    let id = match kind.as_deref() {
-                                        Some("mobile") => s.olc_edit_mobile,
-                                        Some("item") => s.olc_edit_item,
-                                        Some("room") => s.olc_edit_room,
-                                        _ => None,
-                                    };
-                                    let (author, is_admin) = s
-                                        .character
-                                        .as_ref()
-                                        .map(|c| (c.name.clone(), c.is_admin))
-                                        .unwrap_or((String::new(), false));
-                                    (kind, id, s.olc_edit_trigger_index, author, is_admin)
-                                })
-                                .unwrap_or((None, None, None, String::new(), false))
-                        };
-
-                        // Author stamping policy (F3 full):
-                        // - Always overwrite `authored_by` to the editing
-                        //   character's name. Admins are stamped as well so
-                        //   the audit trail is complete; the opcode gate
-                        //   trusts admin authors via can_edit_area.
-                        // - Non-admin authors must NOT carry `elevated=true`
-                        //   forward; if a builder edits a body that an admin
-                        //   previously elevated, the elevation is dropped to
-                        //   prevent privilege passthrough.
-                        let saved = if let (Some(kind), Some(id), Some(idx)) = (host_kind, host_id, idx) {
-                            let world = state.lock().unwrap();
-                            let body = if content.is_empty() { None } else { Some(content) };
-                            let author_opt = if author.is_empty() { None } else { Some(author.clone()) };
-                            match kind.as_str() {
-                                "mobile" => world
-                                    .db
-                                    .update_mobile(&id, |m| {
-                                        if idx < m.triggers.len() {
-                                            m.triggers[idx].dg_body = body.clone();
-                                            m.triggers[idx].authored_by = author_opt.clone();
-                                            if !author_is_admin {
-                                                m.triggers[idx].elevated = false;
-                                            }
-                                        }
-                                    })
-                                    .is_ok(),
-                                "item" => world
-                                    .db
-                                    .update_item(&id, |i| {
-                                        if idx < i.triggers.len() {
-                                            i.triggers[idx].dg_body = body.clone();
-                                            i.triggers[idx].authored_by = author_opt.clone();
-                                            if !author_is_admin {
-                                                i.triggers[idx].elevated = false;
-                                            }
-                                        }
-                                    })
-                                    .is_ok(),
-                                "room" => world
-                                    .db
-                                    .update_room(&id, |r| {
-                                        if idx < r.triggers.len() {
-                                            r.triggers[idx].dg_body = body.clone();
-                                            r.triggers[idx].authored_by = author_opt.clone();
-                                            if !author_is_admin {
-                                                r.triggers[idx].elevated = false;
-                                            }
-                                        }
-                                    })
-                                    .is_ok(),
-                                _ => false,
-                            }
-                        } else {
-                            false
-                        };
-
-                        let mut save_msg = if saved {
-                            "DG trigger body saved.\n".to_string()
-                        } else {
-                            "Error: could not save DG trigger body.\n".to_string()
-                        };
-                        if saved && !warnings.is_empty() {
-                            save_msg.push_str(&warnings.join("\n"));
-                            save_msg.push('\n');
-                        }
-                        let _ = tx_client.send(save_msg);
-
-                        {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                session.olc_mode = None;
-                                session.olc_buffer.clear();
-                                session.olc_edit_room = None;
-                                session.olc_edit_item = None;
-                                session.olc_edit_mobile = None;
-                                session.olc_edit_trigger_host = None;
-                                session.olc_edit_trigger_index = None;
-                                session.olc_undo_buffer = None;
-                            }
-                        }
-                        let prompt = build_prompt(&connection_id, &connections, &state);
-                        let _ = tx_client.send(prompt);
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_room = None;
-                            session.olc_edit_item = None;
-                            session.olc_edit_mobile = None;
-                            session.olc_edit_trigger_host = None;
-                            session.olc_edit_trigger_index = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("DG trigger body editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_dg_body(&cx, &input);
             continue;
         }
 
@@ -3248,427 +2460,31 @@ pub async fn handle_connection(
         // save_dg_trigger_proto_with_refresh: analyzer parse-check,
         // persist, then sweep refresh across all attached instances.
         if olc_mode.as_deref() == Some("collecting_dg_proto_body") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    const MAX_DG_BODY_BYTES: usize = 32 * 1024;
-                    if content.len() > MAX_DG_BODY_BYTES {
-                        let _ = tx_client.send(format!(
-                            "Proto body too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
-                            content.len(),
-                            MAX_DG_BODY_BYTES
-                        ));
-                    } else {
-                        let proto_vnum = {
-                            let conns = connections.lock().unwrap();
-                            conns.get(&connection_id).and_then(|s| s.olc_edit_proto_vnum.clone())
-                        };
-                        let msg = if let Some(vnum) = proto_vnum {
-                            let world = state.lock().unwrap();
-                            save_dg_proto_body_msg(&world.db, &vnum, content)
-                        } else {
-                            "Proto save failed: no proto vnum bound to this editor session.\n".to_string()
-                        };
-                        let _ = tx_client.send(msg);
-                        {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                session.olc_mode = None;
-                                session.olc_buffer.clear();
-                                session.olc_edit_proto_vnum = None;
-                                session.olc_undo_buffer = None;
-                            }
-                        }
-                        let prompt = build_prompt(&connection_id, &connections, &state);
-                        let _ = tx_client.send(prompt);
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_proto_vnum = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("DG proto body editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_dg_proto_body(&cx, &input);
             continue;
         }
 
         // Multi-line text editor for a dialogue tree node's `text` field.
         if olc_mode.as_deref() == Some("collecting_dialogue_node_text") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    let (mob_id, node_name) = {
-                        let conns = connections.lock().unwrap();
-                        conns
-                            .get(&connection_id)
-                            .map(|s| (s.olc_edit_mobile, s.olc_dialogue_node_name.clone()))
-                            .unwrap_or((None, None))
-                    };
-                    let saved = if let (Some(mid), Some(name)) = (mob_id, node_name) {
-                        let world = state.lock().unwrap();
-                        world
-                            .db
-                            .update_mobile(&mid, |m| {
-                                if let Some(tree) = m.dialogue_tree.as_mut() {
-                                    if let Some(node) = tree.nodes.get_mut(&name) {
-                                        node.text = content.clone();
-                                    }
-                                }
-                            })
-                            .is_ok()
-                    } else {
-                        false
-                    };
-                    let _ = tx_client.send(if saved {
-                        "Dialogue node text saved.\n".to_string()
-                    } else {
-                        "Error: could not save dialogue node text.\n".to_string()
-                    });
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_mobile = None;
-                            session.olc_dialogue_node_name = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::Cancel => {
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_mobile = None;
-                            session.olc_dialogue_node_name = None;
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Dialogue node text editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_dialogue_node_text(&cx, &input);
             continue;
         }
 
         // Check for OLC extra description collection mode
         if olc_mode.as_deref() == Some("collecting_extra_desc") {
-            // Use shared editor command handler
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    // Mode-specific save: add extra description to either the room
-                    // or the item being edited (item path takes precedence when set).
-                    let (edit_room_id, edit_item_id, keywords) = {
-                        let conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get(&connection_id) {
-                            (
-                                session.olc_edit_room,
-                                session.olc_edit_item,
-                                session.olc_extra_keywords.clone(),
-                            )
-                        } else {
-                            (None, None, Vec::new())
-                        }
-                    };
-
-                    if let Some(item_id) = edit_item_id {
-                        let world = state.lock().unwrap();
-                        if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
-                            item.extra_descs.push(ExtraDesc {
-                                keywords,
-                                description: content,
-                            });
-                            let _ = world.db.save_item_data(item);
-                        }
-                        drop(world);
-                        let _ = tx_client.send("Extra description saved.\n".to_string());
-                    } else if let Some(room_id) = edit_room_id {
-                        let world = state.lock().unwrap();
-                        if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
-                            room.extra_descs.push(ExtraDesc {
-                                keywords,
-                                description: content,
-                            });
-                            let _ = world.db.save_room_data(room);
-                        }
-                        drop(world);
-                        let _ = tx_client.send("Extra description saved.\n".to_string());
-                    } else {
-                        let _ = tx_client.send("Error: No room or item being edited.\n".to_string());
-                    }
-
-                    // Clear OLC mode and buffer
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_room = None;
-                            session.olc_edit_item = None;
-                            session.olc_extra_keywords.clear();
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                }
-                EditorCommandResult::Cancel => {
-                    // Clear OLC mode and buffer
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_edit_room = None;
-                            session.olc_edit_item = None;
-                            session.olc_extra_keywords.clear();
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("Extra description editing cancelled.\n".to_string());
-                }
-                EditorCommandResult::AppendText(text) => {
-                    // Append line to buffer (save undo first)
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                            session.olc_buffer.push(text);
-                        }
-                    }
-                    let _ = tx_client.send("Line added.\n".to_string());
-                }
-            }
+            conn_input::collect_extra_desc(&cx, &input);
             continue;
         }
 
         // Check for OLC MOTD collection mode
         if olc_mode.as_deref() == Some("collecting_motd") {
-            let result = {
-                let mut conns = connections.lock().unwrap();
-                if let Some(session) = conns.get_mut(&connection_id) {
-                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
-                } else {
-                    EditorCommandResult::Cancel
-                }
-            };
-
-            match result {
-                EditorCommandResult::Handled(msg) => {
-                    let _ = tx_client.send(msg);
-                }
-                EditorCommandResult::Save(content) => {
-                    let world = state.lock().unwrap();
-                    let _ = world.db.set_setting("motd", &content);
-                    drop(world);
-                    let _ = tx_client.send("MOTD saved.\n".to_string());
-
-                    // Clear OLC state
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::Cancel => {
-                    // Clear OLC state
-                    {
-                        let mut conns = connections.lock().unwrap();
-                        if let Some(session) = conns.get_mut(&connection_id) {
-                            session.olc_mode = None;
-                            session.olc_buffer.clear();
-                            session.olc_undo_buffer = None;
-                        }
-                    }
-                    let _ = tx_client.send("MOTD editing cancelled.\n".to_string());
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
-                EditorCommandResult::AppendText(text) => {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
-                        session.olc_buffer.push(text);
-                    }
-                }
-            }
+            conn_input::collect_motd(&cx, &input);
             continue;
         }
 
         // Handle AI description confirmation mode
         if olc_mode.as_deref() == Some("ai_confirm") {
-            let trimmed = input.trim().to_lowercase();
-
-            if trimmed == "y" || trimmed == "yes" {
-                // Accept the AI description
-                let (response, target) = {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        let response = session.pending_ai_response.take();
-                        let target = session.pending_ai_target.take();
-                        session.olc_mode = None;
-                        session.pending_ai_request = None;
-                        (response, target)
-                    } else {
-                        (None, None)
-                    }
-                };
-
-                if let (Some(response), Some(target)) = (response, target) {
-                    if response.success {
-                        // Apply the description based on target type
-                        let world = state.lock().unwrap();
-                        let engine_ptr = &world.engine as *const Engine;
-                        drop(world);
-
-                        let engine = unsafe { &*engine_ptr };
-                        let mut scope = rhai::Scope::new();
-                        scope.push("connection_id", connection_id.to_string());
-
-                        // Apply main description
-                        if let Some(ref desc) = response.description {
-                            match target.target_type {
-                                claude::AiTargetType::Room => {
-                                    scope.push("room_id", target.entity_id.to_string());
-                                    scope.push("new_desc", desc.clone());
-                                    let _ = engine
-                                        .eval_with_scope::<()>(&mut scope, "set_room_description(room_id, new_desc);");
-                                }
-                                claude::AiTargetType::Mobile => {
-                                    scope.push("mobile_id", target.entity_id.to_string());
-                                    scope.push("new_desc", desc.clone());
-                                    if target.field == "short_desc" {
-                                        let _ = engine.eval_with_scope::<()>(
-                                            &mut scope,
-                                            "set_mobile_short_desc(mobile_id, new_desc);",
-                                        );
-                                    } else {
-                                        let _ = engine.eval_with_scope::<()>(
-                                            &mut scope,
-                                            "set_mobile_long_desc(mobile_id, new_desc);",
-                                        );
-                                    }
-                                }
-                                claude::AiTargetType::Item => {
-                                    scope.push("item_id", target.entity_id.to_string());
-                                    scope.push("new_desc", desc.clone());
-                                    if target.field == "short_desc" {
-                                        let _ = engine.eval_with_scope::<()>(
-                                            &mut scope,
-                                            "set_item_short_desc(item_id, new_desc);",
-                                        );
-                                    } else {
-                                        let _ = engine.eval_with_scope::<()>(
-                                            &mut scope,
-                                            "set_item_long_desc(item_id, new_desc);",
-                                        );
-                                    }
-                                }
-                            }
-                        }
-
-                        // Apply extra descriptions for rooms
-                        let extra_count = response.extra_descs.len();
-                        if matches!(target.target_type, claude::AiTargetType::Room) && extra_count > 0 {
-                            for extra in &response.extra_descs {
-                                let keywords_str = extra.keywords.join(" ");
-                                scope.push("room_id", target.entity_id.to_string());
-                                scope.push("keywords", keywords_str);
-                                scope.push("extra_desc", extra.description.clone());
-                                let _ = engine.eval_with_scope::<()>(
-                                    &mut scope,
-                                    "add_room_extra_desc(room_id, keywords, extra_desc);",
-                                );
-                            }
-                            let _ = tx_client.send(format!(
-                                "Description updated. {} extra description(s) added.\n",
-                                extra_count
-                            ));
-                        } else {
-                            let _ = tx_client.send("Description updated.\n".to_string());
-                        }
-                    }
-                }
-                continue;
-            } else if trimmed == "n" || trimmed == "no" {
-                // Reject the AI description
-                {
-                    let mut conns = connections.lock().unwrap();
-                    if let Some(session) = conns.get_mut(&connection_id) {
-                        session.pending_ai_response = None;
-                        session.pending_ai_target = None;
-                        session.pending_ai_request = None;
-                        session.olc_mode = None;
-                    }
-                }
-                let _ = tx_client.send("Description rejected.\n".to_string());
-                continue;
-            } else {
-                let _ = tx_client.send("Please enter 'y' to accept or 'n' to reject.\n".to_string());
+            if conn_input::ai_confirm(&cx, &input) {
                 continue;
             }
         }
@@ -3676,83 +2492,7 @@ pub async fn handle_connection(
         // Handle character wizard modes (from create.rhai, login.rhai, or traits.rhai)
         debug!("OLC mode check: {:?}", olc_mode);
         if let Some(ref mode) = olc_mode {
-            let script_path = if mode.starts_with("chargen_") || mode == "migration_prompt" {
-                // Check wizard_data to determine which script started the wizard
-                let is_migration = {
-                    let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.wizard_data.as_ref())
-                        .map(|d| d.contains("migration=true"))
-                        .unwrap_or(false)
-                };
-                if is_migration || mode == "migration_prompt" {
-                    Some("scripts/commands/login.rhai".to_string())
-                } else {
-                    Some("scripts/commands/create.rhai".to_string())
-                }
-            } else if mode == "traits_select" {
-                Some("scripts/commands/traits.rhai".to_string())
-            } else if mode == "select_character"
-                || mode == "retire_pick"
-                || mode == "retire_confirm"
-                || mode == "delete_account_confirm"
-            {
-                // Roster mode (post-auth, pre-character-pick) and its
-                // self-service retire / account-delete sub-flows. All inputs
-                // go to login.rhai, which branches on the OLC mode string.
-                Some("scripts/commands/login.rhai".to_string())
-            } else if mode == "email_verify_prompt" {
-                // Email verification: 6-digit code, 'resend', or 'cancel'.
-                // create.rhai owns the unauthenticated path (which is where
-                // verification originates); login.rhai's gate also routes
-                // through create.rhai for consistent handling.
-                Some("scripts/commands/create.rhai".to_string())
-            } else if mode == "mail_compose" {
-                // mail compose stays in mail.rhai so @attach/@detach/@@/@
-                // and free-form lines all reach handle_compose_mode.
-                Some("scripts/commands/mail.rhai".to_string())
-            } else {
-                None
-            };
-
-            if let Some(script) = script_path {
-                // Clone the AST and engine reference
-                let (ast_opt, engine_ptr) = {
-                    let world = state.lock().unwrap();
-                    let ast = world.scripts.get(&script).cloned();
-                    let engine_ptr = &world.engine as *const Engine;
-                    (ast, engine_ptr)
-                };
-
-                if let Some(ast) = ast_opt {
-                    let mut scope = rhai::Scope::new();
-                    scope.set_value("args", input.clone());
-                    scope.set_value("connection_id", connection_id.to_string());
-
-                    let engine = unsafe { &*engine_ptr };
-                    match engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "run_command",
-                        (input.clone(), connection_id.to_string()),
-                    ) {
-                        Ok(output) => {
-                            if output.is_string() {
-                                let msg = output.into_string().unwrap();
-                                if !msg.is_empty() {
-                                    let _ = tx_client.send(msg);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let _ = tx_client.send(format!("Error: {}\n", e));
-                        }
-                    }
-                    // Send prompt after wizard command execution
-                    let prompt = build_prompt(&connection_id, &connections, &state);
-                    let _ = tx_client.send(prompt);
-                }
+            if conn_input::script_mode(&cx, &input, mode) {
                 continue;
             }
         }
@@ -3763,7 +2503,7 @@ pub async fn handle_connection(
         // unhandled keywords fall through to normal command dispatch.
         if crate::script::dialogue::session_in_dialogue(&connections, &connection_id) {
             let db_clone = {
-                let world = state.lock().unwrap();
+                let world = state.lock();
                 world.db.clone()
             };
             let outcome =
@@ -3775,7 +2515,7 @@ pub async fn handle_connection(
                     speech,
                 } => {
                     let actor_name = {
-                        let conns = connections.lock().unwrap();
+                        let conns = connections.lock();
                         conns
                             .get(&connection_id)
                             .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -3799,7 +2539,7 @@ pub async fn handle_connection(
                     speech,
                 } => {
                     let actor_name = {
-                        let conns = connections.lock().unwrap();
+                        let conns = connections.lock();
                         conns
                             .get(&connection_id)
                             .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -3824,7 +2564,7 @@ pub async fn handle_connection(
         // History recall: !! or !prefix (bash-style)
         let input = if input.starts_with('!') && input.len() > 1 {
             let recall_result = {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 if let Some(session) = conns.get(&connection_id) {
                     if input == "!!" {
                         session.command_history.front().cloned()
@@ -3892,7 +2632,7 @@ pub async fn handle_connection(
 
             // Check if user is logged in
             let is_logged_in = {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 conns
                     .get(&connection_id)
                     .map(|s| s.character.is_some())
@@ -3902,7 +2642,7 @@ pub async fn handle_connection(
 
             // Get player permissions for access control
             let (is_builder, is_admin, abbrev_enabled) = {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 conns
                     .get(&connection_id)
                     .map(|s| {
@@ -3918,7 +2658,7 @@ pub async fn handle_connection(
 
             // Try to resolve command - exact match first, then prefix matching if enabled
             let (resolved_command, access_requirement) = {
-                let world = state.lock().unwrap();
+                let world = state.lock();
                 let script_path = format!("scripts/commands/{}.rhai", command_name);
 
                 // Try exact match first
@@ -3978,7 +2718,7 @@ pub async fn handle_connection(
             // Block commands while unconscious (allow only essential ones)
             if is_logged_in {
                 let is_unconscious = {
-                    let conns = connections.lock().unwrap();
+                    let conns = connections.lock();
                     conns
                         .get(&connection_id)
                         .and_then(|s| s.character.as_ref())
@@ -4002,7 +2742,7 @@ pub async fn handle_connection(
             // Return(0) cancels the host command. Skip while not logged in.
             if is_logged_in {
                 let db_arc = {
-                    let world = state.lock().unwrap();
+                    let world = state.lock();
                     std::sync::Arc::new(world.db.clone())
                 };
                 if crate::script::dg::fire_oncommand_for_player(
@@ -4052,12 +2792,10 @@ pub async fn handle_connection(
 
             // Clone the AST and engine reference outside the lock to avoid deadlock
             // Rhai functions will need to lock state themselves
-            let (ast_opt, engine_ptr) = {
-                let world = state.lock().unwrap();
+            let (ast_opt, engine) = {
+                let world = state.lock();
                 let ast = world.scripts.get(&script_path).cloned();
-                // SAFETY: The engine lives as long as World, and we only use it while state exists
-                let engine_ptr = &world.engine as *const Engine;
-                (ast, engine_ptr)
+                (ast, world.engine.clone())
             };
 
             let mut log_outcome = player_log::outcome::OK;
@@ -4066,13 +2804,13 @@ pub async fn handle_connection(
                 scope.set_value("args", args.to_string());
                 scope.set_value("connection_id", connection_id.to_string());
 
-                // SAFETY: Engine pointer is valid because state (and World) still exists
-                let engine = unsafe { &*engine_ptr };
-                match engine.call_fn::<rhai::Dynamic>(
+                match call_run_command_guarded(
+                    &engine,
                     &mut scope,
                     &ast,
-                    "run_command",
-                    (args.to_string(), connection_id.to_string()),
+                    args.to_string(),
+                    connection_id.to_string(),
+                    &resolved_command,
                 ) {
                     Ok(output) => {
                         if output.is_string() {
@@ -4107,15 +2845,16 @@ pub async fn handle_connection(
             // `audit::scan::grade_change_line`.
             {
                 let pending = {
-                    let mut conns = connections.lock().unwrap();
+                    let mut conns = connections.lock();
                     conns.get_mut(&connection_id).and_then(|s| s.pending_audit.take())
                 };
                 if let Some(pending) = pending {
                     // One lock, both values, released before the grading runs.
-                    let handles = { state.lock().ok().map(|w| (w.db.clone(), w.audit_ctx.clone())) };
-                    if let Some((db, ctx)) = handles
-                        && let Some(line) = audit::scan::grade_change_line(&db, &pending, &ctx)
-                    {
+                    let (db, ctx) = {
+                        let w = state.lock();
+                        (w.db.clone(), w.audit_ctx.clone())
+                    };
+                    if let Some(line) = audit::scan::grade_change_line(&db, &pending, &ctx) {
                         let _ = tx_client.send(format!("{line}\n"));
                     }
                 }
@@ -4123,9 +2862,9 @@ pub async fn handle_connection(
 
             // Sync MSDP vitals before sending prompt
             {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 if let Some(session) = conns.get(&connection_id) {
-                    session.sync_msdp_vitals(&state);
+                    session.sync_msdp_vitals(&msdp_db);
                 }
             }
 
@@ -4134,7 +2873,7 @@ pub async fn handle_connection(
             // lands on row 1 of the freshly-cleared editor screen as a
             // visible remnant until the user redraws with ^L.
             let suppress_prompt = {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 conns.get(&connection_id).map(session_in_modern_editor).unwrap_or(false)
             };
             if !suppress_prompt {
@@ -4150,7 +2889,7 @@ pub async fn handle_connection(
 
     // Session gone from the map = the script removed it (quit); still present
     // with a character = TCP drop, which leaves the character linkdead.
-    let still_present = connections.lock().unwrap().contains_key(&connection_id);
+    let still_present = connections.lock().contains_key(&connection_id);
     play_log.finish(if still_present { "linkdead" } else { "quit" });
 
     // Best-effort save of any in-progress multi-line edit before the session
@@ -4162,7 +2901,7 @@ pub async fn handle_connection(
     // Clean up character on unexpected disconnect (TCP close without logout/quit)
     // Mark as linkdead and wait 3 minutes before final cleanup.
     let character_present = {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         if let Some(session) = conns.get_mut(&connection_id) {
             if session.character.is_some() {
                 session.disconnected_at = Some(
@@ -4184,7 +2923,7 @@ pub async fn handle_connection(
 
     if character_present {
         let char_name_for_linkdead = {
-            let conns = connections.lock().unwrap();
+            let conns = connections.lock();
             conns
                 .get(&connection_id)
                 .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -4204,7 +2943,7 @@ pub async fn handle_connection(
             // If it was reclaimed by a reconnect, it would have been removed from the map
             // by disconnect_existing_session in login.rhai.
             let cleanup_info = {
-                let mut conns = cleanup_connections.lock().unwrap();
+                let mut conns = cleanup_connections.lock();
                 if let Some(session) = conns.get(&connection_id) {
                     if session.disconnected_at.is_some() {
                         if let Some(ref character) = session.character {
@@ -4238,7 +2977,7 @@ pub async fn handle_connection(
 
                 // Save character to database
                 {
-                    let world = cleanup_state.lock().unwrap();
+                    let world = cleanup_state.lock();
                     if let Err(e) = world.db.save_character_data(character) {
                         error!("Failed to save {} on disconnect timeout: {}", char_name, e);
                     } else {
@@ -4256,7 +2995,7 @@ pub async fn handle_connection(
 
                 // Notify chat integrations (Matrix/Discord)
                 {
-                    let world = cleanup_state.lock().unwrap();
+                    let world = cleanup_state.lock();
                     if let Some(ref chat_tx) = world.chat_sender {
                         let _ = chat_tx.send(chat::ChatMessage::Broadcast(format!(
                             "{} has lost their connection.",
@@ -4297,65 +3036,43 @@ async fn handle_read_char_mode(
     connections: SharedConnections,
     tx_raw: mpsc::UnboundedSender<Vec<u8>>,
     db: crate::db::Db,
+    mut removed: tokio::sync::oneshot::Receiver<()>,
 ) {
-    use crate::telnet::*;
+    use crate::conn_read::{self, ReadCx, ReadFlow};
+    use crate::telnet::{TelnetParser, build_initial_negotiations};
 
     // Fires on every exit path so the main loop breaks and cleans up the session.
     let _disconnect_guard = DisconnectOnDrop(tx_input.clone());
+    let cx = ReadCx {
+        addr,
+        connection_id,
+        connections: &connections,
+        tx_input: &tx_input,
+        tx_raw: &tx_raw,
+    };
 
     let mut parser = TelnetParser::new();
     let mut buf = [0u8; 256];
-    let mut line_buffer = String::new();
+    // Line mode: raw bytes of the current line, decoded as UTF-8 at newline.
+    let mut line_buffer: Vec<u8> = Vec::new();
 
-    // Send initial telnet negotiations
-    let negotiations = build_initial_negotiations();
-    let _ = tx_raw.send(negotiations);
+    let _ = tx_raw.send(build_initial_negotiations());
 
-    // Set a timeout for negotiation response (500ms for quick fallback to line mode)
+    // Clients that don't answer telnet negotiation within 500ms get line mode.
     let negotiation_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(500);
     let mut negotiation_complete = false;
     let mut char_mode_enabled = false;
 
     loop {
         // Check if connection was removed by script (e.g., quit command)
-        let is_connected = {
-            let conns = connections.lock().unwrap();
-            conns.contains_key(&connection_id)
-        };
-        if !is_connected {
+        if !connections.lock().contains_key(&connection_id) {
             info!("Read task: connection {} removed, exiting.", addr);
             break;
         }
-
-        // Idle disconnect — drop sessions whose `last_activity_time` has not
-        // advanced within the threshold. Reclaims sockets/RAM held by idle
-        // or abandoned connections (HIGH-3 in the security audit). Admins can
-        // disable it globally via the `idle_disconnect_enabled` setting (set to
-        // "false"); the setting is only consulted once a session is already past
-        // the threshold, so this sled read stays rare and cheap.
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        let idle_secs = {
-            let conns = connections.lock().unwrap();
-            conns
-                .get(&connection_id)
-                .map(|s| now_secs.saturating_sub(s.last_activity_time))
-                .unwrap_or(0)
-        };
-        if idle_secs > IDLE_DISCONNECT_SECS
-            && db
-                .get_setting_or_default("idle_disconnect_enabled", "true")
-                .unwrap_or_else(|_| "true".to_string())
-                != "false"
-        {
-            info!("Client {} idle for {}s, disconnecting.", addr, idle_secs);
-            let _ = tx_raw.send(b"\r\nDisconnected for inactivity.\r\n".to_vec());
+        if conn_read::idle_timed_out(&cx, &db) {
             break;
         }
 
-        // Use timeout for initial negotiation period, then periodic timeout to check disconnect
         let read_result = if !negotiation_complete && tokio::time::Instant::now() < negotiation_deadline {
             match tokio::time::timeout(
                 negotiation_deadline - tokio::time::Instant::now(),
@@ -4365,16 +3082,9 @@ async fn handle_read_char_mode(
             {
                 Ok(result) => result,
                 Err(_) => {
-                    // Negotiation timeout - check if we got char mode
+                    // Negotiation window over - use whatever mode was agreed.
                     negotiation_complete = true;
-                    let is_char_mode = {
-                        let conns = connections.lock().unwrap();
-                        conns
-                            .get(&connection_id)
-                            .map(|s| s.telnet_state.char_mode)
-                            .unwrap_or(false)
-                    };
-                    char_mode_enabled = is_char_mode;
+                    char_mode_enabled = conn_read::session_char_mode(&cx);
                     if !char_mode_enabled {
                         info!("Client {} using line mode (no telnet negotiation response)", addr);
                     }
@@ -4382,454 +3092,54 @@ async fn handle_read_char_mode(
                 }
             }
         } else {
-            // Use timeout to periodically check if connection was removed
-            match tokio::time::timeout(tokio::time::Duration::from_millis(100), reader.read(&mut buf)).await {
-                Ok(result) => result,
-                Err(_) => continue, // Timeout - loop back to check if still connected
+            // Wake on input, on the session being removed (its signal sender
+            // drops), or every IDLE_CHECK_SECS to re-run the idle check above.
+            // `read` on a TcpStream is cancel-safe, so losing the race to the
+            // other branches drops no bytes.
+            tokio::select! {
+                result = reader.read(&mut buf) => result,
+                _ = &mut removed => {
+                    info!("Read task: connection {} removed, exiting.", addr);
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(IDLE_CHECK_SECS)) => continue,
             }
         };
 
-        match read_result {
+        let n = match read_result {
             Ok(0) => break, // Connection closed
-            Ok(n) => {
-                let (data, events) = parser.process_bytes(&buf[..n]);
-                let had_events = !events.is_empty();
-
-                // Handle telnet events
-                for event in events {
-                    match event {
-                        TelnetEvent::Will(opt) => {
-                            // Track negotiation state
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                match opt {
-                                    OPT_SGA => {
-                                        // Send DO response for SGA
-                                        let _ = tx_raw.send(respond_to_will(opt));
-                                        session.telnet_state.suppress_go_ahead = true;
-                                        // Both sides agreeing to SGA enables char mode
-                                        if session.telnet_state.echo {
-                                            session.telnet_state.char_mode = true;
-                                            char_mode_enabled = true;
-                                        }
-                                    }
-                                    OPT_MXP => {
-                                        // Client supports MXP - auto-enable it
-                                        // Don't send DO MXP response - we already sent it in initial negotiation
-                                        // Sending it again would cause an infinite loop
-                                        if !session.telnet_state.mxp_supported {
-                                            session.telnet_state.mxp_supported = true;
-                                            session.mxp_enabled = true;
-                                            // Send MXP activation sequence
-                                            let _ = tx_raw.send(build_mxp_activation());
-                                            debug!("MXP auto-enabled for connection {}", connection_id);
-                                        }
-                                    }
-                                    OPT_TTYPE => {
-                                        // Client supports TTYPE - start MTTS 3-stage negotiation
-                                        // We already sent DO TTYPE in initial negotiation
-                                        if session.telnet_state.ttype_stage == 0 {
-                                            session.telnet_state.ttype_stage = 1;
-                                            let _ = tx_raw.send(build_ttype_send());
-                                        }
-                                    }
-                                    OPT_MSDP => {
-                                        session.telnet_state.msdp_supported = true;
-                                    }
-                                    _ => {
-                                        // Send standard response for other options
-                                        let _ = tx_raw.send(respond_to_will(opt));
-                                    }
-                                }
-                            }
-                        }
-                        TelnetEvent::Wont(opt) => {
-                            // Client refused option
-                            let _ = tx_raw.send(build_negotiation(DONT, opt));
-                        }
-                        TelnetEvent::Do(opt) => {
-                            let response = respond_to_do(opt);
-                            let _ = tx_raw.send(response);
-
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                match opt {
-                                    OPT_ECHO => {
-                                        session.telnet_state.echo = true;
-                                        if session.telnet_state.suppress_go_ahead {
-                                            session.telnet_state.char_mode = true;
-                                            char_mode_enabled = true;
-                                        }
-                                    }
-                                    OPT_SGA => {
-                                        session.telnet_state.suppress_go_ahead = true;
-                                    }
-                                    OPT_MSDP => {
-                                        session.telnet_state.msdp_supported = true;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        TelnetEvent::Dont(opt) => {
-                            // Client refused our option
-                            let _ = tx_raw.send(build_negotiation(WONT, opt));
-                        }
-                        TelnetEvent::Subnegotiation(opt, subneg_data) => {
-                            match opt {
-                                OPT_NAWS => {
-                                    if let Some((width, height)) = parse_naws(&subneg_data) {
-                                        let mut conns = connections.lock().unwrap();
-                                        if let Some(session) = conns.get_mut(&connection_id) {
-                                            session.telnet_state.window_width = width;
-                                            session.telnet_state.window_height = height;
-                                        }
-                                    }
-                                }
-                                OPT_TTYPE => {
-                                    // Handle TTYPE IS response (MTTS 3-stage negotiation)
-                                    if let Some(ttype_str) = parse_ttype_is(&subneg_data) {
-                                        let mut conns = connections.lock().unwrap();
-                                        if let Some(session) = conns.get_mut(&connection_id) {
-                                            let stage = session.telnet_state.ttype_stage;
-                                            match stage {
-                                                1 => {
-                                                    // Stage 1: Client name (e.g., "MUDLET")
-                                                    session.telnet_state.client_name = Some(ttype_str);
-                                                    session.telnet_state.ttype_stage = 2;
-                                                    let _ = tx_raw.send(build_ttype_send());
-                                                }
-                                                2 => {
-                                                    // Stage 2: Terminal type (e.g., "XTERM-256COLOR")
-                                                    session.telnet_state.terminal_type = Some(ttype_str);
-                                                    session.telnet_state.ttype_stage = 3;
-                                                    let _ = tx_raw.send(build_ttype_send());
-                                                }
-                                                3 => {
-                                                    // Stage 3: MTTS bitvector or repeated value
-                                                    if let Some(flags) = parse_mtts_flags(&ttype_str) {
-                                                        session.telnet_state.mtts_flags = flags;
-                                                        session.telnet_state.utf8_supported = (flags & MTTS_UTF8) != 0;
-                                                    }
-                                                    session.telnet_state.ttype_stage = 4; // Complete
-
-                                                    // Dynamically enable server-side echo for standard terminal emulators.
-                                                    // This avoids triggering password masking mode in dedicated MUD clients.
-                                                    if telnet::should_enable_server_echo(&session.telnet_state) {
-                                                        debug!(
-                                                            "Enabling server-side echo for terminal client {}",
-                                                            connection_id
-                                                        );
-                                                        let _ = tx_raw.send(telnet::build_negotiation(
-                                                            telnet::WILL,
-                                                            telnet::OPT_ECHO,
-                                                        ));
-                                                    }
-
-                                                    // Log client capabilities
-                                                    let ts = &session.telnet_state;
-                                                    info!(
-                                                        "Client {} capabilities - name: {:?}, type: {:?}, MTTS: {} (UTF-8: {}, ANSI: {}, 256color: {})",
-                                                        connection_id,
-                                                        ts.client_name,
-                                                        ts.terminal_type,
-                                                        ts.mtts_flags,
-                                                        ts.utf8_supported,
-                                                        (ts.mtts_flags & MTTS_ANSI) != 0,
-                                                        (ts.mtts_flags & MTTS_256_COLORS) != 0,
-                                                    );
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                }
-                                OPT_MSDP => {
-                                    let vars = parse_msdp(&subneg_data);
-                                    let mut conns = connections.lock().unwrap();
-                                    if let Some(session) = conns.get_mut(&connection_id) {
-                                        for (var, val) in vars {
-                                            if var == "REPORT" {
-                                                debug!("MSDP Client {} requested REPORT for {}", connection_id, val);
-                                                session.telnet_state.msdp_reported_variables.insert(val.to_uppercase());
-                                            } else if var == "UNREPORT" {
-                                                debug!("MSDP Client {} requested UNREPORT for {}", connection_id, val);
-                                                session
-                                                    .telnet_state
-                                                    .msdp_reported_variables
-                                                    .remove(&val.to_uppercase());
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Mark negotiation complete after first data or if we got responses
-                if !negotiation_complete && (!data.is_empty() || had_events) {
-                    let is_char_mode = {
-                        let conns = connections.lock().unwrap();
-                        conns
-                            .get(&connection_id)
-                            .map(|s| s.telnet_state.char_mode)
-                            .unwrap_or(false)
-                    };
-                    char_mode_enabled = is_char_mode;
-                    negotiation_complete = true;
-                }
-
-                // Process data bytes
-                for byte in data {
-                    if char_mode_enabled {
-                        // Character-by-character mode with escape sequence parsing
-                        // Parse byte through escape sequence state machine
-                        let key_event = {
-                            let mut conns = connections.lock().unwrap();
-                            if let Some(session) = conns.get_mut(&connection_id) {
-                                let (new_state, event) = telnet::parse_key_byte(session.escape_state.clone(), byte);
-                                session.escape_state = new_state;
-                                event
-                            } else {
-                                None
-                            }
-                        };
-
-                        // Handle the key event
-                        if let Some(key) = key_event {
-                            use telnet::KeyEvent;
-
-                            // Modern editor intercept: when a beta editor
-                            // session is active on this connection, every
-                            // key is routed to it, draining any rendered
-                            // bytes to the raw output channel. We never
-                            // reach the readline / line-mode branches
-                            // below while the editor owns the screen.
-                            let modern_action = {
-                                let mut conns = connections.lock().unwrap();
-                                if let Some(session) = conns.get_mut(&connection_id) {
-                                    let w = session.telnet_state.window_width;
-                                    let h = session.telnet_state.window_height;
-                                    if let Some(ref mut editor) = session.modern_editor {
-                                        editor.set_size(w, h);
-                                        let action = editor.handle_key(&key);
-                                        let bytes = editor.take_output();
-                                        Some((action, bytes))
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            };
-
-                            if let Some((action, bytes)) = modern_action {
-                                if !bytes.is_empty() {
-                                    let _ = tx_raw.send(bytes);
-                                }
-                                use crate::editor::EditorAction;
-                                match action {
-                                    EditorAction::None => {}
-                                    EditorAction::Save => {
-                                        let content = {
-                                            let mut conns = connections.lock().unwrap();
-                                            conns
-                                                .get_mut(&connection_id)
-                                                .and_then(|s| s.modern_editor.take())
-                                                .map(|e| e.take_text())
-                                                .unwrap_or_default()
-                                        };
-                                        let _ = tx_input.try_send(InputEvent::ModernEditorSave(content));
-                                    }
-                                    EditorAction::Cancel => {
-                                        {
-                                            let mut conns = connections.lock().unwrap();
-                                            if let Some(s) = conns.get_mut(&connection_id) {
-                                                s.modern_editor = None;
-                                            }
-                                        }
-                                        let _ = tx_input.try_send(InputEvent::ModernEditorCancel);
-                                    }
-                                }
-                                continue;
-                            }
-
-                            match key {
-                                KeyEvent::Tab => {
-                                    if tx_input.try_send(InputEvent::Tab).is_err() {
-                                        let _ = tx_raw.send(b"\r\nSlow down -- input queue full.\r\n".to_vec());
-                                    }
-                                }
-                                KeyEvent::Enter => {
-                                    // Submit line and add to history
-                                    let line = {
-                                        let mut conns = connections.lock().unwrap();
-                                        if let Some(session) = conns.get_mut(&connection_id) {
-                                            let line = session.input_buffer.trim().to_string();
-                                            // Add to history if non-empty and different from last
-                                            if !line.is_empty() {
-                                                let should_add = session
-                                                    .command_history
-                                                    .front()
-                                                    .map(|last| last != &line)
-                                                    .unwrap_or(true);
-                                                if should_add {
-                                                    session.command_history.push_front(line.clone());
-                                                    if session.command_history.len() > telnet::MAX_HISTORY_SIZE {
-                                                        session.command_history.pop_back();
-                                                    }
-                                                }
-                                            }
-                                            session.input_buffer.clear();
-                                            session.cursor_pos = 0;
-                                            session.history_index = None;
-                                            session.saved_input.clear();
-                                            line
-                                        } else {
-                                            line_buffer.trim().to_string()
-                                        }
-                                    };
-                                    line_buffer.clear();
-                                    let _ = tx_raw.send(b"\r\n".to_vec());
-                                    if tx_input.try_send(InputEvent::Line(line)).is_err() {
-                                        let _ = tx_raw.send(b"Slow down -- input queue full.\r\n".to_vec());
-                                    }
-                                }
-                                KeyEvent::Backspace => {
-                                    handle_readline_backspace(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::Delete => {
-                                    handle_readline_delete(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::ArrowUp => {
-                                    handle_readline_history_up(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::ArrowDown => {
-                                    handle_readline_history_down(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::ArrowLeft => {
-                                    handle_readline_cursor_left(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::ArrowRight => {
-                                    handle_readline_cursor_right(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::Home | KeyEvent::CtrlA => {
-                                    handle_readline_cursor_home(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::End | KeyEvent::CtrlE => {
-                                    handle_readline_cursor_end(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlT => {
-                                    handle_readline_transpose(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlW => {
-                                    handle_readline_delete_word(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlU => {
-                                    handle_readline_delete_to_start(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlK => {
-                                    handle_readline_delete_to_end(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlC => {
-                                    handle_readline_cancel_line(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlL => {
-                                    handle_readline_redraw_screen(&connections, connection_id, &tx_raw);
-                                }
-                                KeyEvent::CtrlD => {
-                                    // Logout on empty line
-                                    let should_logout = {
-                                        let conns = connections.lock().unwrap();
-                                        conns
-                                            .get(&connection_id)
-                                            .map(|s| s.input_buffer.is_empty())
-                                            .unwrap_or(false)
-                                    };
-                                    if should_logout {
-                                        let _ = tx_input.try_send(InputEvent::Line("quit".to_string()));
-                                    }
-                                }
-                                KeyEvent::Char(c) => {
-                                    if line_buffer.len() + c.len_utf8() > MAX_INPUT_LINE {
-                                        let _ = tx_raw.send(b"\r\nInput line too long.\r\n".to_vec());
-                                        info!("Client {} sent oversized line, disconnecting.", addr);
-                                        return;
-                                    }
-                                    handle_readline_insert_char(&connections, connection_id, c, &tx_raw);
-                                    line_buffer.push(c);
-                                }
-                                KeyEvent::Unknown => {
-                                    // Ignore unknown keys
-                                }
-                                KeyEvent::CtrlX
-                                | KeyEvent::CtrlO
-                                | KeyEvent::CtrlG
-                                | KeyEvent::CtrlY
-                                | KeyEvent::CtrlZ
-                                | KeyEvent::CtrlBackslash
-                                | KeyEvent::CtrlUnderscore => {
-                                    // Modern editor keys outside the editor — ignore.
-                                }
-                                KeyEvent::PageUp | KeyEvent::PageDown => {
-                                    // Modern editor scroll keys outside the editor — ignore.
-                                }
-                                KeyEvent::MouseClick { .. } => {
-                                    // Mouse reports only matter inside the
-                                    // modern editor; mouse tracking is off
-                                    // outside it so we shouldn't normally
-                                    // see these.
-                                }
-                                KeyEvent::ShiftArrowUp
-                                | KeyEvent::ShiftArrowDown
-                                | KeyEvent::ShiftArrowLeft
-                                | KeyEvent::ShiftArrowRight
-                                | KeyEvent::ShiftHome
-                                | KeyEvent::ShiftEnd
-                                | KeyEvent::CtrlQ
-                                | KeyEvent::CtrlV
-                                | KeyEvent::BracketedPasteStart
-                                | KeyEvent::BracketedPasteEnd => {
-                                    // Modern-editor-only keys; ignore in
-                                    // readline mode.
-                                }
-                            }
-                        }
-                    } else {
-                        // Line mode - accumulate until newline
-                        match byte {
-                            CHAR_CR => {}
-                            CHAR_LF => {
-                                let line = line_buffer.trim().to_string();
-                                line_buffer.clear();
-                                if tx_input.try_send(InputEvent::RawLine(line)).is_err() {
-                                    let _ = tx_raw.send(b"Slow down -- input queue full.\r\n".to_vec());
-                                }
-                            }
-                            _ => {
-                                if let Some(c) = char::from_u32(byte as u32) {
-                                    if line_buffer.len() + c.len_utf8() > MAX_INPUT_LINE {
-                                        // Pre-auth memory DoS guard. Drop the
-                                        // connection rather than silently
-                                        // truncating — a legitimate client
-                                        // never sends an 8 KiB+ line.
-                                        let _ = tx_raw.send(b"\r\nInput line too long.\r\n".to_vec());
-                                        info!("Client {} sent oversized line, disconnecting.", addr);
-                                        return;
-                                    }
-                                    line_buffer.push(c);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            Ok(n) => n,
             Err(e) => {
                 error!("Failed to read from socket {}: {}", addr, e);
                 break;
+            }
+        };
+
+        let (data, events) = parser.process_bytes(&buf[..n]);
+        let had_events = !events.is_empty();
+        for event in events {
+            if conn_read::handle_telnet_event(&cx, event) {
+                char_mode_enabled = true;
+            }
+        }
+
+        // Mark negotiation complete after first data or if we got responses
+        if !negotiation_complete && (!data.is_empty() || had_events) {
+            char_mode_enabled = conn_read::session_char_mode(&cx);
+            negotiation_complete = true;
+        }
+
+        for byte in data {
+            let flow = if char_mode_enabled {
+                match conn_read::parse_key(&cx, byte) {
+                    Some(key) => conn_read::handle_key(&cx, key),
+                    None => ReadFlow::Continue,
+                }
+            } else {
+                conn_read::handle_line_byte(&cx, &mut line_buffer, byte)
+            };
+            if flow == ReadFlow::Disconnect {
+                return;
             }
         }
     }
@@ -4844,29 +3154,51 @@ async fn handle_write_with_raw(
     addr: std::net::SocketAddr,
     mut rx_client: mpsc::UnboundedReceiver<String>,
     mut rx_raw: mpsc::UnboundedReceiver<Vec<u8>>,
+    drain: session::DrainHandle,
 ) {
+    use tokio::time::timeout;
+    let write_timeout = session::outbox::WRITE_TIMEOUT;
     loop {
+        if drain.is_overflowed() {
+            warn!("Client {} stopped reading output; closing its socket.", addr);
+            break;
+        }
         // `biased` drains rx_raw before rx_client so the \r\n emitted when the
         // user hits Enter can't lose a race to the command's response text and
         // end up written after it (which glued responses onto the echoed line).
         tokio::select! {
             biased;
             Some(raw) = rx_raw.recv() => {
-                if let Err(e) = writer.write_all(&raw).await {
-                    error!("Failed to write raw bytes to socket {}: {}", addr, e);
-                    break;
+                match timeout(write_timeout, writer.write_all(&raw)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        error!("Failed to write raw bytes to socket {}: {}", addr, e);
+                        break;
+                    }
+                    Err(_) => {
+                        warn!("Write to {} timed out; closing its socket.", addr);
+                        break;
+                    }
                 }
-                let _ = writer.flush().await;
+                let _ = timeout(write_timeout, writer.flush()).await;
             }
             Some(msg) = rx_client.recv() => {
+                drain.mark_written(msg.len());
                 // Convert \n to \r\n for proper telnet line endings
                 // First normalize any existing \r\n to \n, then convert all \n to \r\n
                 let telnet_msg = msg.replace("\r\n", "\n").replace("\n", "\r\n");
-                if let Err(e) = writer.write_all(telnet_msg.as_bytes()).await {
-                    error!("Failed to write to socket {}: {}", addr, e);
-                    break;
+                match timeout(write_timeout, writer.write_all(telnet_msg.as_bytes())).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        error!("Failed to write to socket {}: {}", addr, e);
+                        break;
+                    }
+                    Err(_) => {
+                        warn!("Write to {} timed out; closing its socket.", addr);
+                        break;
+                    }
                 }
-                let _ = writer.flush().await;
+                let _ = timeout(write_timeout, writer.flush()).await;
             }
             else => break,
         }
@@ -4876,19 +3208,29 @@ async fn handle_write_with_raw(
 
 pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
     let limiter = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         world.ip_limiter.clone()
     };
     // Clone the Db arc once for site-ban lookups in the accept loop. Keeping
     // it outside the loop avoids relocking the World mutex on every accept.
     let db_for_bans = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         world.db.clone()
     };
     tokio::select! {
         _ = async {
             loop {
-                let (mut socket, addr) = listener.accept().await.unwrap();
+                // Never panic on accept: EMFILE/ENFILE (fd exhaustion) or
+                // ECONNABORTED are transient, and a panic here would kill the
+                // listener task for good while the rest of the server runs on.
+                let (mut socket, addr) = match listener.accept().await {
+                    Ok(pair) => pair,
+                    Err(e) => {
+                        warn!("accept() failed: {e}; retrying");
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
+                };
 
                 // Per-IP connection cap. An attacker that opens hundreds of
                 // sockets from one IP would otherwise exhaust file descriptors
@@ -4935,10 +3277,11 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
                 let connection_id = Uuid::new_v4();
                 let limiter_for_conn = limiter.clone();
                 tokio::spawn(async move {
+                    // Release on drop, so the per-IP slot (paired with the
+                    // try_acquire above) is freed even if handle_connection
+                    // returns early or panics.
+                    let _slot = ratelimit::ConnectionSlot::new(limiter_for_conn, addr.ip());
                     handle_connection(socket, addr, state, connection_id).await;
-                    // Always release, even if handle_connection returned
-                    // early; pairs with the try_acquire above.
-                    limiter_for_conn.release(addr.ip());
                 });
             }
         } => {},
@@ -4950,9 +3293,11 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
 
 /// Notify friends when a player enters the Linkdead state
 fn notify_friends_linkdead(connections: &SharedConnections, state: &SharedState, char_name: &str) {
-    let world = state.lock().unwrap();
-    if let Ok(all_chars) = world.db.list_all_characters() {
-        let conns = connections.lock().unwrap();
+    // Clone the Db handle and release World before the full character scan,
+    // and never hold World while taking Connections.
+    let db = state.lock().db.clone();
+    if let Ok(all_chars) = db.list_all_characters() {
+        let conns = connections.lock();
         for char_data in all_chars {
             if char_data.friends.iter().any(|f| f.eq_ignore_ascii_case(char_name)) {
                 if char_data.ignored.iter().all(|i| !i.eq_ignore_ascii_case(char_name)) {
@@ -4969,5 +3314,125 @@ fn notify_friends_linkdead(connections: &SharedConnections, state: &SharedState,
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod guarded_call_tests {
+    use super::*;
+
+    /// A panic inside a native Rhai function must surface as a script error,
+    /// not unwind out of handle_connection (which would skip session cleanup).
+    #[test]
+    fn panicking_native_fn_becomes_a_script_error() {
+        let mut engine = Engine::new();
+        engine.register_fn("boom", || -> i64 { panic!("native fn panic") });
+        let ast = engine
+            .compile("fn run_command(args, connection_id) { boom() }")
+            .expect("compile");
+        let mut scope = rhai::Scope::new();
+        let result = call_run_command_guarded(&engine, &mut scope, &ast, String::new(), String::new(), "boom");
+        assert_eq!(result.unwrap_err(), "an internal error occurred");
+    }
+}
+
+#[cfg(test)]
+mod lock_order_tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// Regression: `sync_msdp_vitals` is called while the Connections lock is
+    /// held. It used to take the World lock for ROOM_NAME / OPPONENT_*, which
+    /// inverted the World -> Connections order used by tab completion and
+    /// deadlocked the server. It must now complete while another thread holds
+    /// World.
+    #[test]
+    fn sync_msdp_vitals_does_not_take_world_lock() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::Db::open(temp.path()).expect("open db");
+        let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let state = World::minimal_shared(db.clone(), conns.clone());
+
+        let (tx_client, _rx) = mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_in) = mpsc::channel::<InputEvent>(1);
+        let (tx_raw, mut rx_raw) = mpsc::unbounded_channel::<Vec<u8>>();
+        let mut session = PlayerSession::new_for_test(tx_client, tx_input);
+        session.raw_sender = Some(tx_raw);
+        session.telnet_state.msdp_supported = true;
+        for v in ["ROOM_NAME", "OPPONENT_NAME", "OPPONENT_HEALTH", "HEALTH"] {
+            session.telnet_state.msdp_reported_variables.insert(v.to_string());
+        }
+        let ch: CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Msdp",
+            "password_hash": "",
+            "current_room_id": Uuid::new_v4(),
+        }))
+        .expect("build character");
+        session.character = Some(ch);
+
+        // Hold World for the whole call, as tab completion would.
+        let _world = state.lock();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            session.sync_msdp_vitals(&db);
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("sync_msdp_vitals blocked on the World lock");
+        assert!(rx_raw.try_recv().is_ok(), "expected MSDP output");
+    }
+}
+
+#[cfg(test)]
+mod read_task_tests {
+    use super::*;
+
+    /// Removing a session from `SharedConnections` wakes its read task at
+    /// once (the session's `removed_signal` sender drops), rather than on the
+    /// next poll or idle tick.
+    #[tokio::test]
+    async fn removing_the_session_ends_the_read_task_promptly() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _client = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (server_side, peer) = listener.accept().await.unwrap();
+        let (reader, _writer) = server_side.into_split();
+
+        let temp = tempfile::tempdir().unwrap();
+        let db = crate::db::Db::open(temp.path()).unwrap();
+        let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let (tx_client, _rx_client) = mpsc::unbounded_channel();
+        let (tx_input, _rx_input) = mpsc::channel(8);
+        let (tx_raw, _rx_raw) = mpsc::unbounded_channel();
+        let (removed_tx, removed_rx) = tokio::sync::oneshot::channel();
+        let id = Uuid::new_v4();
+        let mut session = PlayerSession::new_for_test(tx_client, tx_input.clone());
+        session.removed_signal = Some(removed_tx);
+        session.last_activity_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        connections.lock().insert(id, session);
+
+        let task = tokio::spawn(handle_read_char_mode(
+            reader,
+            peer,
+            id,
+            tx_input,
+            connections.clone(),
+            tx_raw,
+            db,
+            removed_rx,
+        ));
+        // Past the 500ms negotiation window, into the steady-state select.
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        assert!(!task.is_finished(), "still reading while the session exists");
+
+        connections.lock().remove(&id);
+        tokio::time::timeout(std::time::Duration::from_secs(2), task)
+            .await
+            .expect("read task ended within 2s of removal (idle tick is 30s)")
+            .unwrap();
     }
 }

@@ -27,7 +27,7 @@ fn fresh_db() -> (Db, tempfile::TempDir) {
 
 fn shared(db: &Db) -> (ironmud::SharedConnections, ironmud::SharedState) {
     let connections: ironmud::SharedConnections =
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
     let state = ironmud::World::minimal_shared(db.clone(), connections.clone());
     (connections, state)
 }
@@ -352,10 +352,10 @@ fn the_tick_installs_the_rating_where_the_command_reads_it() {
     let (connections, state) = shared(&db);
     area_with_rooms(&db, "home", "Ana", 15);
 
-    assert!(!state.lock().unwrap().world_report.is_ready());
+    assert!(!state.lock().world_report.is_ready());
     tick(&db, &connections, &state, 4242);
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     assert!(world.world_report.is_ready());
     assert_eq!(world.world_report.generated_at, 4242);
     assert_eq!(world.world_report.facts.room_count, 15);
@@ -373,7 +373,7 @@ fn the_rating_and_the_scores_come_from_one_scan() {
     area_with_rooms(&db, "home", "Ana", 30);
     tick(&db, &connections, &state, 8000);
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     assert_eq!(world.build_scores.generated_at, world.world_report.generated_at);
     assert_eq!(
         world
@@ -418,7 +418,8 @@ fn milestone_evaluation_is_cheap_to_repeat() {
 
 fn run_world_command(db: &Db, args: &str) -> String {
     use ironmud::{PlayerSession, World};
-    use std::sync::{Arc, Mutex};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
 
     let connections: ironmud::SharedConnections = Arc::new(Mutex::new(std::collections::HashMap::new()));
     let state = World::minimal_shared(db.clone(), connections.clone());
@@ -436,12 +437,12 @@ fn run_world_command(db: &Db, args: &str) -> String {
         }))
         .unwrap(),
     );
-    connections.lock().unwrap().insert(conn_id, session);
+    connections.lock().insert(conn_id, session);
 
     // A FREE-STANDING engine, deliberately not `world.engine`.
     //
     // Bindings like `get_world_rating` lock `SharedState`, and
-    // `std::sync::Mutex` is not reentrant — running a script while holding the
+    // `parking_lot::Mutex` is not reentrant — running a script while holding the
     // World lock deadlocks. The server avoids this by cloning the AST and
     // dropping the lock before `call_fn`; a test is simpler if it never takes
     // the lock at all.

@@ -11,7 +11,8 @@
 
 #![recursion_limit = "256"]
 
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 use ironmud::audit::scan::WorldSnapshot;
 use ironmud::bounty::{self, Outcome};
@@ -106,7 +107,7 @@ fn accepted_points_reach_the_builder_score() {
     bounty::accept(&db, &connections, &state, ticket, "Ana", false, 4000).unwrap();
 
     ironmud::build_score::process_build_score_tick(&db, &connections, &state, 5000).unwrap();
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let bo = world.build_scores.get("Bo").expect("Bo has a score");
     assert_eq!(bo.bounty_points, 45);
     assert_eq!(bo.total, 45);
@@ -567,7 +568,7 @@ fn run_bounty(db: &Db, args: &str, actor: &str, is_admin: bool) -> String {
         }))
         .unwrap(),
     );
-    connections.lock().unwrap().insert(conn_id, session);
+    connections.lock().insert(conn_id, session);
 
     let mut engine = rhai::Engine::new();
     engine.set_max_expr_depths(128, 128);
@@ -754,7 +755,7 @@ fn run_bounty_in_room(db: &Db, args: &str, actor: &str, room_id: Uuid) -> String
         }))
         .unwrap(),
     );
-    connections.lock().unwrap().insert(conn_id, session);
+    connections.lock().insert(conn_id, session);
 
     let mut engine = rhai::Engine::new();
     engine.set_max_expr_depths(128, 128);

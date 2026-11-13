@@ -177,8 +177,8 @@ fn run_command(args, connection_id) {
     // Get HP status
     let target_char = get_character_data(target_name);
     let hp_percent = 100;
-    if target_char != () && target_char.max_hp > 0 {
-        hp_percent = (target_char.hp * 100) / target_char.max_hp;
+    if target_char != () && target_char.effective_max_hp() > 0 {
+        hp_percent = (target_char.hp * 100) / target_char.effective_max_hp();
     }
 
     // Determine overall status based on HP, wounds, bleeding, and conditions

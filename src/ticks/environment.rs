@@ -198,7 +198,8 @@ fn decrement_light_burn_time(db: &db::Db, connections: &SharedConnections) -> Re
 
         // Try to resolve the owner as a player (Equipped(name)) and notify them + their room.
         let mut notified_player = false;
-        if let Ok(conns) = connections.lock() {
+        {
+            let conns = connections.lock();
             for (_conn_id, session) in conns.iter() {
                 if let Some(ref char) = session.character {
                     if char.name.to_lowercase() == owner.to_lowercase() {
@@ -352,8 +353,7 @@ fn fire_environmental_triggers(
         // condition didn't actually change.
         let local_context: std::collections::HashMap<String, String>;
         let context_ref: &std::collections::HashMap<String, String> =
-            if trigger_type == TriggerType::OnWeatherChange && weather_change.is_some() {
-                let (old_global, new_global) = weather_change.unwrap();
+            if let (TriggerType::OnWeatherChange, Some((old_global, new_global))) = (trigger_type, weather_change) {
                 let climate = db.room_climate(&room);
                 let local_old = climate.project(old_global);
                 let local_new = climate.project(new_global);
@@ -401,8 +401,8 @@ fn fire_environmental_triggers(
             }
 
             // Find all awake players in this room (sleeping players don't see environmental triggers)
-            let players_in_room: Vec<(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)> = {
-                let conns = connections.lock().unwrap();
+            let players_in_room: Vec<(uuid::Uuid, ironmud::session::ClientSender)> = {
+                let conns = connections.lock();
                 conns
                     .iter()
                     .filter_map(|(conn_id, session)| {
@@ -430,7 +430,7 @@ fn fire_environmental_triggers(
 
             // Execute trigger script
             let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match ironmud::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(content) => content,
                 Err(e) => {
                     debug!("Environmental trigger script not found: {} - {}", script_path, e);
@@ -439,7 +439,7 @@ fn fire_environmental_triggers(
             };
 
             // Create a minimal Rhai engine for trigger execution
-            let mut trigger_engine = rhai::Engine::new();
+            let mut trigger_engine = ironmud::script::trigger_sandbox::sandboxed_engine();
 
             // Register send_client_message
             for (conn_id, sender) in &players_in_room {
@@ -459,7 +459,7 @@ fn fire_environmental_triggers(
             trigger_engine.register_fn(
                 "broadcast_to_room",
                 move |_rid: String, message: String, _exclude: String| {
-                    let conns = conns_clone.lock().unwrap();
+                    let conns = conns_clone.lock();
                     for (_, session) in conns.iter() {
                         if let Some(ref char) = session.character {
                             if char.current_room_id == room_id {
@@ -492,12 +492,14 @@ fn fire_environmental_triggers(
                             rhai_context.insert(k.clone().into(), v.clone().into());
                         }
 
-                        match trigger_engine.call_fn::<rhai::Dynamic>(
-                            &mut scope,
-                            &ast,
-                            "run_trigger",
-                            (room_id_str.clone(), conn_id_str.clone(), rhai_context.clone()),
-                        ) {
+                        match ironmud::script::trigger_sandbox::guard_panic(|| {
+                            trigger_engine.call_fn::<rhai::Dynamic>(
+                                &mut scope,
+                                &ast,
+                                "run_trigger",
+                                (room_id_str.clone(), conn_id_str.clone(), rhai_context.clone()),
+                            )
+                        }) {
                             Ok(_) => {
                                 debug!(
                                     "Environmental trigger {} executed for room {}",
@@ -534,12 +536,11 @@ fn execute_room_template_main(
 ) {
     // Helper to broadcast message to all players in the room
     let broadcast = |msg: &str| {
-        if let Ok(conns) = connections.lock() {
-            for (_, session) in conns.iter() {
-                if let Some(ref char_data) = session.character {
-                    if char_data.current_room_id == *room_id {
-                        let _ = session.sender.send(format!("{}\n", msg));
-                    }
+        let conns = connections.lock();
+        for (_, session) in conns.iter() {
+            if let Some(ref char_data) = session.character {
+                if char_data.current_room_id == *room_id {
+                    let _ = session.sender.send(format!("{}\n", msg));
                 }
             }
         }
@@ -552,9 +553,8 @@ fn execute_room_template_main(
             }
         }
         "time_message" => {
-            if args.len() >= 2 {
-                let target_time = &args[0].to_lowercase();
-                let message = &args[1];
+            if let [target_time, message, ..] = args {
+                let target_time = &target_time.to_lowercase();
 
                 if let Some(new_time) = context.get("new_time") {
                     if new_time.to_lowercase() == *target_time {
@@ -564,9 +564,8 @@ fn execute_room_template_main(
             }
         }
         "weather_message" => {
-            if args.len() >= 2 {
-                let target_weather = args[0].to_lowercase();
-                let message = &args[1];
+            if let [target_weather, message, ..] = args {
+                let target_weather = target_weather.to_lowercase();
 
                 if let Some(new_weather) = context.get("new_weather") {
                     let weather_lower = new_weather.to_lowercase();
@@ -585,9 +584,8 @@ fn execute_room_template_main(
             }
         }
         "season_message" => {
-            if args.len() >= 2 {
-                let target_season = args[0].to_lowercase();
-                let message = &args[1];
+            if let [target_season, message, ..] = args {
+                let target_season = target_season.to_lowercase();
 
                 if let Some(new_season) = context.get("new_season") {
                     if new_season.to_lowercase() == target_season {
@@ -628,7 +626,7 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
     // Collect room broadcasts to send after releasing the lock (prevents deadlock)
     let mut room_broadcasts: Vec<(uuid::Uuid, String, String)> = Vec::new();
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
         if let Some(ref mut char) = session.character {
@@ -1112,7 +1110,8 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
 
     // Send helpline alerts to all players with helpline enabled
     if !helpline_alerts.is_empty() {
-        if let Ok(conns) = connections.lock() {
+        {
+            let conns = connections.lock();
             for session in conns.values() {
                 if let Some(ref char) = session.character {
                     if char.helpline_enabled {

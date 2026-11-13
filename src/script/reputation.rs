@@ -110,9 +110,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     // For builder tooling and tab completion, not for the standing display.
     let list_state = state.clone();
     engine.register_fn("list_faction_keys", move || -> rhai::Array {
-        let mut keys: Vec<String> = match list_state.lock() {
-            Ok(w) => w.faction_definitions.keys().cloned().collect(),
-            Err(_) => Vec::new(),
+        let mut keys: Vec<String> = {
+            let w = list_state.lock();
+            w.faction_definitions.keys().cloned().collect()
         };
         keys.sort();
         keys.into_iter().map(rhai::Dynamic::from).collect()

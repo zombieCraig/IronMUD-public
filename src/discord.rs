@@ -15,8 +15,22 @@ use serenity::model::gateway::Ready;
 use serenity::model::id::ChannelId;
 use serenity::prelude::*;
 
-use crate::chat::ChatMessage;
-use crate::{SharedConnections, find_player_connection_by_name, get_online_players, send_client_message};
+use serenity::builder::{CreateAllowedMentions, CreateMessage};
+
+use crate::SharedConnections;
+use crate::chat::{ChatMessage, handle_bridge_command, truncate_chars};
+
+/// Discord's per-message character limit.
+const DISCORD_MAX_CHARS: usize = 2000;
+
+/// Post `text` to `channel` with every mention disabled (no @everyone,
+/// role or user pings from player-controlled text) and truncated to fit.
+async fn post(http: &serenity::http::Http, channel: ChannelId, text: &str) -> serenity::Result<Message> {
+    let msg = CreateMessage::new()
+        .content(truncate_chars(text, DISCORD_MAX_CHARS))
+        .allowed_mentions(CreateAllowedMentions::new());
+    channel.send_message(http, msg).await
+}
 
 /// Configuration for Discord bot, loaded from environment variables
 #[derive(Clone)]
@@ -82,8 +96,8 @@ impl EventHandler for Handler {
         let body = msg.content.trim();
         let sender = msg.author.name.as_str();
 
-        if let Some(response) = handle_discord_command(body, sender, &self.connections) {
-            if let Err(e) = self.target_channel.say(&ctx.http, &response).await {
+        if let Some(response) = handle_bridge_command("Discord", body, sender, &self.connections) {
+            if let Err(e) = post(&ctx.http, self.target_channel, &response).await {
                 error!("Failed to send response to Discord: {}", e);
             }
         }
@@ -142,7 +156,7 @@ pub async fn run_discord_bot(
     };
 
     // Send startup message
-    if let Err(e) = target_channel.say(&http, "IronMUD server is now online.").await {
+    if let Err(e) = post(&http, target_channel, "IronMUD server is now online.").await {
         warn!("Failed to send Discord startup message: {}", e);
     }
 
@@ -160,7 +174,7 @@ pub async fn run_discord_bot(
             ChatMessage::Broadcast(text) => text,
         };
 
-        if let Err(e) = target_channel.say(&http, &text).await {
+        if let Err(e) = post(&http, target_channel, &text).await {
             error!("Failed to send to Discord channel: {}", e);
         }
     }
@@ -189,88 +203,4 @@ async fn setup_avatar(http: &serenity::http::Http, avatar_path: &str) -> anyhow:
     info!("Discord avatar uploaded successfully from {}", avatar_path);
 
     Ok(())
-}
-
-/// Handle incoming Discord commands (!who, !tell)
-fn handle_discord_command(body: &str, sender: &str, connections: &SharedConnections) -> Option<String> {
-    if body.eq_ignore_ascii_case("!who") {
-        return Some(handle_who_command(connections));
-    }
-
-    if body.to_lowercase().starts_with("!tell ") {
-        let args = &body[6..].trim();
-        return Some(handle_tell_command(args, sender, connections));
-    }
-
-    if body.eq_ignore_ascii_case("!help") {
-        return Some(
-            "IronMUD Discord Commands:\n\
-            !who - List online players\n\
-            !tell <player> <message> - Send a message to an online player\n\
-            !help - Show this help"
-                .to_string(),
-        );
-    }
-
-    None
-}
-
-/// Handle the !who command - list online players
-fn handle_who_command(connections: &SharedConnections) -> String {
-    let players = get_online_players(connections);
-
-    if players.is_empty() {
-        return "No players currently online.".to_string();
-    }
-
-    // Build player names with AFK status
-    let names: Vec<String> = {
-        let conns = connections.lock().unwrap();
-        players
-            .iter()
-            .map(|p| {
-                let is_afk = conns.values().any(|session| {
-                    if let Some(ref char) = session.character {
-                        char.name == p.name && session.afk
-                    } else {
-                        false
-                    }
-                });
-                if is_afk {
-                    format!("{} [AFK]", p.name)
-                } else {
-                    p.name.clone()
-                }
-            })
-            .collect()
-    };
-    format!("Players online ({}): {}", names.len(), names.join(", "))
-}
-
-/// Handle the !tell command - send a message to an online player
-fn handle_tell_command(args: &str, sender: &str, connections: &SharedConnections) -> String {
-    let parts: Vec<&str> = args.splitn(2, ' ').collect();
-
-    if parts.len() < 2 {
-        return "Usage: !tell <player> <message>".to_string();
-    }
-
-    let target_name = parts[0];
-    let message = parts[1];
-
-    if message.trim().is_empty() {
-        return "Usage: !tell <player> <message>".to_string();
-    }
-
-    // Find the player
-    match find_player_connection_by_name(connections, target_name) {
-        Some(conn_id) => {
-            let formatted_msg = format!("\n[Discord] {} says: {}\n", sender, message);
-            send_client_message(connections, conn_id.to_string(), formatted_msg);
-            format!("Message sent to {}.", target_name)
-        }
-        None => {
-            format!("Player '{}' is not online.", target_name)
-        }
-    }
 }

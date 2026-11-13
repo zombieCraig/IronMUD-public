@@ -219,7 +219,7 @@ pub fn process_rage_tick(
     let mut frenzy_rooms: Vec<(uuid::Uuid, String)> = Vec::new();
 
     {
-        let mut conns = connections.lock().unwrap();
+        let mut conns = connections.lock();
         for (_conn_id, session) in conns.iter_mut() {
             let ch = match session.character.as_mut() {
                 Some(c) => c,
@@ -256,10 +256,7 @@ pub fn process_rage_tick(
 /// Room broadcast when a Garou loses it (mirrors the vampire bloodlust
 /// broadcast). Skips the frenzied werewolf themself.
 fn broadcast_frenzy_to_room(connections: &SharedConnections, room_id: &uuid::Uuid, frenzied_name: &str) {
-    let conns = match connections.lock() {
-        Ok(g) => g,
-        Err(_) => return,
-    };
+    let conns = connections.lock();
     for session in conns.values() {
         let Some(ch) = session.character.as_ref() else { continue };
         if ch.current_room_id != *room_id || ch.name.eq_ignore_ascii_case(frenzied_name) {

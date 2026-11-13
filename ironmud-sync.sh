@@ -134,8 +134,11 @@ do_backup() {
     echo "=================================================="
     echo ""
 
-    # Create backup directory
+    # Create backup directory. Backups hold password hashes and are restored
+    # as root, so only root may read or write them.
     mkdir -p "$BACKUP_DIR"
+    chown root:root "$BACKUP_DIR"
+    chmod 700 "$BACKUP_DIR"
 
     # Generate timestamp and filename
     local timestamp=$(date +%Y%m%d-%H%M%S)
@@ -176,10 +179,9 @@ do_backup() {
         exit 1
     fi
 
-    tar -czvf "$backup_file" $items_to_backup
-
-    # Set ownership so ironmud user can access backups
-    chown "$SERVICE_USER:$SERVICE_GROUP" "$backup_file"
+    (umask 077; tar -czvf "$backup_file" $items_to_backup)
+    chown root:root "$backup_file"
+    chmod 600 "$backup_file"
 
     log_info "Backup created: $backup_file"
 
@@ -204,6 +206,35 @@ do_backup() {
     echo "To transfer to another server:"
     echo "  scp $backup_file user@other-server:/tmp/"
     echo ""
+}
+
+# Succeeds only if every archive member is a regular file or directory
+# under data/ironmud.db or scripts/triggers, with no absolute or '..' path.
+verify_backup_members() {
+    local file="$1"
+    local bad=0
+    # Types from the verbose listing: '-' file, 'd' directory. Anything else
+    # (symlink, hardlink, device, fifo) is refused.
+    if tar -tvzf "$file" | cut -c1 | grep -qv '^[-d]$'; then
+        log_error "Archive contains links or special files"
+        bad=1
+    fi
+    while IFS= read -r member; do
+        member="${member#./}"
+        case "$member" in
+            /*|..|../*|*/..|*/../*)
+                log_error "Unsafe path in archive: $member"
+                bad=1
+                ;;
+            data/ironmud.db|data/ironmud.db/*|scripts/triggers|scripts/triggers/*|data/|data|scripts/|scripts)
+                ;;
+            *)
+                log_error "Unexpected path in archive: $member"
+                bad=1
+                ;;
+        esac
+    done < <(tar -tzf "$file")
+    return $bad
 }
 
 # Restore from backup
@@ -244,10 +275,16 @@ do_restore() {
     echo "=================================================="
     echo ""
 
-    # Verify tarball integrity
+    # Verify tarball integrity and contents. The archive is extracted as
+    # root, so it may only contain regular files and directories under the
+    # two paths a backup writes, with no absolute or '..' paths.
     log_step "Verifying backup archive..."
     if ! tar -tzf "$backup_file" > /dev/null 2>&1; then
         log_error "Backup file is corrupted or invalid"
+        exit 1
+    fi
+    if ! verify_backup_members "$backup_file"; then
+        log_error "Backup archive contains unexpected entries; refusing to restore"
         exit 1
     fi
     log_info "Archive verified"
@@ -274,17 +311,35 @@ do_restore() {
         log_info "Existing database preserved"
     fi
 
-    if [[ -d "$INSTALL_DIR/scripts/triggers" ]]; then
-        local pre_restore_triggers="$INSTALL_DIR/scripts/triggers.pre-restore-$timestamp"
-        log_step "Backing up existing triggers to $pre_restore_triggers..."
-        cp -r "$INSTALL_DIR/scripts/triggers" "$pre_restore_triggers"
-        log_info "Existing triggers preserved"
+    # Extract into a private staging directory first, without the archive's
+    # owners or modes, then move only the expected paths into place.
+    log_step "Extracting backup..."
+    local staging
+    staging=$(mktemp -d "$INSTALL_DIR/.restore-XXXXXX")
+    trap 'rm -rf "$staging"' EXIT
+    tar -xzf "$backup_file" -C "$staging" --no-same-owner --no-same-permissions
+    if find "$staging" ! -type f ! -type d | grep -q .; then
+        log_error "Backup archive produced non-regular files; refusing to restore"
+        exit 1
     fi
 
-    # Extract backup
-    log_step "Extracting backup..."
-    cd "$INSTALL_DIR"
-    tar -xzvf "$backup_file"
+    if [[ -d "$staging/data/ironmud.db" ]]; then
+        mkdir -p "$INSTALL_DIR/data"
+        mv "$staging/data/ironmud.db" "$INSTALL_DIR/data/ironmud.db"
+    fi
+
+    if [[ -d "$staging/scripts/triggers" ]]; then
+        if [[ -d "$INSTALL_DIR/scripts/triggers" ]]; then
+            local pre_restore_triggers="$INSTALL_DIR/scripts/triggers.pre-restore-$timestamp"
+            log_step "Moving existing triggers to $pre_restore_triggers..."
+            mv "$INSTALL_DIR/scripts/triggers" "$pre_restore_triggers"
+            log_info "Existing triggers preserved"
+        fi
+        mkdir -p "$INSTALL_DIR/scripts"
+        mv "$staging/scripts/triggers" "$INSTALL_DIR/scripts/triggers"
+    fi
+    rm -rf "$staging"
+    trap - EXIT
 
     # Fix permissions
     log_step "Setting permissions..."

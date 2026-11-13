@@ -164,7 +164,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            if let Ok(mut conns) = conn_clone.lock() {
+            {
+                let mut conns = conn_clone.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.account_id = Some(acct_uuid);
                     session.account_name = Some(account_name);
@@ -184,8 +185,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         };
         conn_clone
             .lock()
-            .ok()
-            .and_then(|conns| conns.get(&conn_uuid).and_then(|s| s.account_id.map(|u| u.to_string())))
+            .get(&conn_uuid)
+            .and_then(|s| s.account_id.map(|u| u.to_string()))
             .unwrap_or_default()
     });
 
@@ -200,8 +201,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             conn_clone
                 .lock()
-                .ok()
-                .and_then(|conns| conns.get(&conn_uuid).and_then(|s| s.account_name.clone()))
+                .get(&conn_uuid)
+                .and_then(|s| s.account_name.clone())
                 .unwrap_or_default()
         },
     );
@@ -213,7 +214,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        if let Ok(mut conns) = conn_clone.lock() {
+        {
+            let mut conns = conn_clone.lock();
             if let Some(session) = conns.get_mut(&conn_uuid) {
                 session.account_id = None;
                 session.account_name = None;

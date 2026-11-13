@@ -291,7 +291,10 @@ fn put_gold_in_container(char, amount, container_keyword, connection_id) {
     }
 
     // Subtract from balance
-    add_character_gold(char.name, -amount);
+    if !add_character_gold(char.name, -amount) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
 
     // Spawn gold in container (auto-merges with existing gold)
     let gold = spawn_gold_in_container(amount, container.id);

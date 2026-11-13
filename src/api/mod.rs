@@ -44,6 +44,9 @@ pub struct ApiState {
     pub state: SharedState,
 }
 
+/// In-flight API requests served at once; the rest wait their turn.
+const MAX_CONCURRENT_REQUESTS: usize = 32;
+
 /// Create the API router with all routes
 pub fn create_router(state: Arc<ApiState>) -> Router {
     let api_routes = Router::new()
@@ -72,6 +75,12 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
                                                                                       // which prevents browser-based CSRF with stored tokens.
         )
         .layer(TraceLayer::new_for_http())
+        // Every field is length-checked by its handler; this bounds what the
+        // JSON parser will buffer before any of that runs.
+        .layer(axum::extract::DefaultBodyLimit::max(validate::REQUEST_BODY_MAX))
+        // Back-pressure for the whole API: past this many in-flight requests
+        // new ones queue instead of piling more blocking work on the server.
+        .layer(tower::limit::ConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
         .with_state(state)
 }
 
@@ -89,6 +98,7 @@ async fn health_check() -> Json<serde_json::Value> {
 
 /// Run the API server on the specified bind address and port
 pub async fn run_api_server(state: Arc<ApiState>, bind: &str, port: u16) {
+    warn_about_api_keys(&state.db);
     let app = create_router(state);
     let addr = format!("{}:{}", bind, port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -98,13 +108,64 @@ pub async fn run_api_server(state: Arc<ApiState>, bind: &str, port: u16) {
 
 /// Notify builders about API changes
 pub fn notify_builders(connections: &SharedConnections, message: &str) {
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 if character.is_builder || character.is_admin {
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
+        }
+    }
+}
+
+/// Log once at startup for each key still in the deprecated legacy format,
+/// and each key whose owner no longer holds the role its permissions need.
+fn warn_about_api_keys(db: &Db) {
+    let Ok(keys) = db.list_all_api_keys() else {
+        return;
+    };
+    for key in keys
+        .iter()
+        .filter(|k| k.enabled && crate::api_key_auth::is_legacy_hash(&k.key_hash))
+    {
+        tracing::warn!(
+            "[DEPRECATED] API key '{}' ({}) uses the legacy format, which is slow to verify and \
+             will stop working in a future release. Rotate it: `ironmud-admin api-key rotate {}`",
+            key.name,
+            key.id,
+            key.id
+        );
+    }
+    for key in keys
+        .iter()
+        .filter(|k| k.enabled && k.permissions.admin && k.permissions.player_logs.is_none())
+    {
+        tracing::warn!(
+            "API key '{}' ({}) can read player logs only because it predates the separate \
+             player_logs scope. Keep it with `ironmud-admin api-key player-logs {} on`, or \
+             remove it with `... off`.",
+            key.name,
+            key.id,
+            key.id
+        );
+    }
+    for key in keys.iter().filter(|k| k.enabled) {
+        let effective = auth::effective_permissions(db, key);
+        if effective.write != key.permissions.write || effective.admin != key.permissions.admin {
+            tracing::warn!(
+                "API key '{}' ({}) is limited to {}: its owner '{}' is not {}",
+                key.name,
+                key.id,
+                if effective.write { "write" } else { "read-only" },
+                key.owner_character,
+                if effective.write {
+                    "an admin"
+                } else {
+                    "a builder or admin"
+                },
+            );
         }
     }
 }

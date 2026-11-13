@@ -70,7 +70,7 @@ const rewardSchema = {
       type: "object",
       properties: {
         kind: { const: "gold" },
-        amount: { type: "number", description: "Gold delivered on completion" },
+        amount: { type: "number", description: "Gold delivered on completion (0 to 1,000,000)" },
       },
       required: ["kind", "amount"],
     },

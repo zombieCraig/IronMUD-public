@@ -313,7 +313,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "notify_admins_bug",
         move |reporter: String, ticket: i64, preview: String| {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             for (_id, session) in conns_guard.iter() {
                 if let Some(ref char) = session.character {
                     if char.is_admin {
@@ -333,7 +333,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "notify_player_bug_update",
         move |reporter: String, ticket: i64, status: String| {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             for (_id, session) in conns_guard.iter() {
                 if let Some(ref char) = session.character {
                     if char.name.to_lowercase() == reporter.to_lowercase() {

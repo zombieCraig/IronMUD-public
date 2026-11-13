@@ -39,7 +39,18 @@ impl IntoResponse for ApiError {
             ApiError::VnumInUse(msg) => (StatusCode::CONFLICT, "VNUM_IN_USE", msg),
             ApiError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, "INVALID_INPUT", msg),
             ApiError::Conflict(msg) => (StatusCode::CONFLICT, "CONFLICT", msg),
-            ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg),
+            ApiError::Internal(msg) => {
+                // The detail (DB/serde errors, paths) is for the server log,
+                // not the client.
+                let reference = uuid::Uuid::new_v4().simple().to_string();
+                let reference = &reference[..8];
+                tracing::error!("API internal error [{}]: {}", reference, msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    format!("Internal server error (ref {reference}); see the server log"),
+                )
+            }
         };
 
         let body = Json(json!({

@@ -10,7 +10,7 @@ use std::sync::Arc;
 /// Get character name from connection ID
 fn get_character_name_from_connection(conns: &SharedConnections, connection_id: &str) -> String {
     if let Ok(uuid) = uuid::Uuid::parse_str(connection_id) {
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         if let Some(session) = conns_guard.get(&uuid) {
             if let Some(ref char) = session.character {
                 return char.name.clone();
@@ -1443,7 +1443,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
 
         // Relocate any online players out of property rooms before deletion
-        if let Ok(mut conns) = cloned_conns.lock() {
+        {
+ let mut conns = cloned_conns.lock();
             for (_conn_id, session) in conns.iter_mut() {
                 if let Some(ref mut character) = session.character {
                     if lease.instanced_rooms.contains(&character.current_room_id) {
@@ -1516,7 +1517,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             return true; // Same person
         }
 
-        let conns = cloned_conns.lock().unwrap();
+        let conns = cloned_conns.lock();
 
         // Find both characters
         let mut char1_data: Option<&crate::CharacterData> = None;
@@ -1654,7 +1655,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         };
 
         // Relocate any online players out of property rooms before deletion
-        if let Ok(mut conns) = cloned_conns.lock() {
+        {
+ let mut conns = cloned_conns.lock();
             for (_conn_id, session) in conns.iter_mut() {
                 if let Some(ref mut character) = session.character {
                     if lease.instanced_rooms.contains(&character.current_room_id) {

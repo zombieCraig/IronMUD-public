@@ -41,8 +41,10 @@ fn run_command(args, connection_id) {
     // Broadcast to others in room
     broadcast_to_room(room_id, char_name + " prays to the gods.", char_name);
 
-    // Send to Matrix
-    matrix_broadcast(char_name + " prays to the gods: " + args);
+    // Relay to the chat bridge, at most once a minute per player so a
+    // spammer can't crowd out other announcements. Over the limit the prayer
+    // still shows locally; it just isn't relayed.
+    chat_broadcast_limited("pray:" + char_name, 60, char_name + " prays to the gods: " + args);
 }
 
 fn handle_temple_pray(char, god_vnum, args, connection_id) {

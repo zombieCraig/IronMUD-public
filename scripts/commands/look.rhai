@@ -613,7 +613,7 @@ fn show_player_description(other_char, char_name, term_width, connection_id) {
     }
 
     // Health status
-    let health = get_health_status(other_char.hp, other_char.max_hp, other_char.name);
+    let health = get_health_status(other_char.hp, other_char.effective_max_hp(), other_char.name);
     if health != "" {
         output += "\n" + health;
     }

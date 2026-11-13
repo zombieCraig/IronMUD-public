@@ -301,10 +301,10 @@ pub struct CharacterData {
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)
     #[serde(default)]
     pub escrow_ids: Vec<Uuid>, // Escrow IDs for evicted items
-    /// Consignment listings this character currently has on brokers. Mirrors
-    /// `escrow_ids`: the listing is findable from the seller without scanning
-    /// the whole tree.
-    #[serde(default)]
+    /// Unused: listings are found by scanning the consignment tree by seller.
+    /// Kept (and no longer written) so existing saves still load; nothing
+    /// reads it. Old values are dropped the next time the character saves.
+    #[serde(default, skip_serializing)]
     pub consignment_ids: Vec<Uuid>,
     /// Corpses this character has left lying around, newest last.
     ///
@@ -421,6 +421,52 @@ pub struct CharacterData {
     /// pending move by skipping the delay check exactly once.
     #[serde(default)]
     pub pending_slow_move: Option<PendingSlowMove>,
+}
+
+impl CharacterData {
+    /// Worst wound penalty (percent) on one body part, 0 if unhurt there.
+    pub fn worst_wound_penalty(&self, part: BodyPart) -> i32 {
+        self.wounds
+            .iter()
+            .filter(|w| w.body_part == part)
+            .map(|w| w.level.penalty())
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The hit-point ceiling this character can actually reach: base
+    /// `max_hp`, plus `MaxHpBonus` buffs (worn items, spells), scaled by the
+    /// max-HP traits (vigorous +15%, tough +20%, frail -20%, sickly -10%),
+    /// then reduced by the worst torso wound. Every heal, regen cap and
+    /// health display uses this, so a trait means the same thing to a
+    /// potion as it does to resting. Never below 1.
+    pub fn effective_max_hp(&self) -> i32 {
+        let bonus: i64 = self
+            .active_buffs
+            .iter()
+            .filter(|b| b.effect_type == super::EffectType::MaxHpBonus)
+            .map(|b| b.magnitude as i64)
+            .sum();
+        let mut cap = self.max_hp as i64 + bonus;
+        let has = |id: &str| self.traits.iter().any(|t| t == id);
+        if has("vigorous") {
+            cap = cap * 115 / 100;
+        }
+        if has("tough") {
+            cap = cap * 120 / 100;
+        }
+        if has("frail") {
+            cap = cap * 80 / 100;
+        }
+        if has("sickly") {
+            cap = cap * 90 / 100;
+        }
+        let torso = self.worst_wound_penalty(BodyPart::Torso) as i64;
+        if torso > 0 {
+            cap = cap * (100 - torso) / 100;
+        }
+        cap.clamp(1, i32::MAX as i64) as i32
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -585,5 +631,58 @@ impl ShopPreset {
             min_value: 0,
             max_value: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod effective_max_hp_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn ch(extra: serde_json::Value) -> CharacterData {
+        let mut v = json!({
+            "name": "Tess",
+            "password_hash": "",
+            "current_room_id": Uuid::nil(),
+            "max_hp": 100,
+        });
+        v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(v).expect("build character")
+    }
+
+    #[test]
+    fn base_without_modifiers() {
+        assert_eq!(ch(json!({})).effective_max_hp(), 100);
+    }
+
+    #[test]
+    fn traits_scale_the_ceiling() {
+        assert_eq!(ch(json!({"traits": ["tough"]})).effective_max_hp(), 120);
+        assert_eq!(ch(json!({"traits": ["vigorous"]})).effective_max_hp(), 115);
+        assert_eq!(ch(json!({"traits": ["frail"]})).effective_max_hp(), 80);
+        assert_eq!(ch(json!({"traits": ["sickly"]})).effective_max_hp(), 90);
+    }
+
+    #[test]
+    fn buffs_then_traits_then_torso_wound() {
+        let c = ch(json!({
+            "traits": ["tough"],
+            "active_buffs": [{
+                "effect_type": "max_hp_bonus", "magnitude": 50,
+                "remaining_secs": -1, "source": "item:x"
+            }],
+            "wounds": [{"body_part": "torso", "level": "severe", "wound_type": "cut"}],
+        }));
+        // (100 + 50) * 1.2 = 180, severe torso wound -50% = 90.
+        assert_eq!(c.effective_max_hp(), 90);
+    }
+
+    #[test]
+    fn never_below_one() {
+        let c = ch(json!({
+            "max_hp": 0,
+            "traits": ["frail"],
+        }));
+        assert_eq!(c.effective_max_hp(), 1);
     }
 }

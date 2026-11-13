@@ -251,8 +251,6 @@ fn do_consign(db: &Db, char_name: &str, item_id: &str, broker_id: &str, price: i
         let _ = db.save_item_data(restored);
         return result(false, "Something went wrong and the deal fell through.");
     }
-    let listing_id = listing.id;
-    let _ = db.update_character(char_name, |c| c.consignment_ids.push(listing_id));
 
     result(
         true,
@@ -313,15 +311,20 @@ fn do_unconsign(db: &Db, char_name: &str, room_id: &str, listing_id: &str) -> Dy
                     format!("You could not carry {} on top of everything else.", item.name),
                 );
             }
+            // Claim the listing before moving the item: the row's removal is
+            // atomic, so a concurrent `buy` and `unconsign` cannot both win.
+            if !db.delete_consignment(&uuid).unwrap_or(false) {
+                return result(false, "That has already been sold.");
+            }
             item.location = ItemLocation::Inventory(char_name.to_lowercase());
             let _ = db.save_item_data(item);
         }
         // The item is gone (an admin purge, a stale row). Clear the listing
         // anyway rather than leaving a row that can never be resolved.
-        _ => {}
+        _ => {
+            let _ = db.delete_consignment(&uuid);
+        }
     }
-    let _ = db.delete_consignment(&uuid);
-    let _ = db.update_character(char_name, |c| c.consignment_ids.retain(|id| *id != uuid));
 
     result(true, format!("You take {} back off the shelf.", listing.item_name))
 }
@@ -335,9 +338,6 @@ fn do_unconsign(db: &Db, char_name: &str, room_id: &str, listing_id: &str) -> Dy
 fn clear_missing_listing(db: &Db, connections: &SharedConnections, listing: &ConsignmentListing) {
     let listing_id = listing.id;
     let _ = db.delete_consignment(&listing_id);
-    let _ = db.update_character(&listing.seller_name, |c| {
-        c.consignment_ids.retain(|id| *id != listing_id);
-    });
     crate::script::achievements::send_to_player(
         connections,
         &listing.seller_name,
@@ -409,7 +409,20 @@ fn do_buy(
     // this function saved the buyer's stale session copy straight back over it
     // and the purchase refunded itself. `purse::add_gold` writes the session,
     // which is what the rest of the game reads.
+    // Claim the listing FIRST. Removing the row is atomic, so of two buyers
+    // (or a buyer racing the seller's `unconsign`) exactly one gets past here.
+    // Every failure below puts the row back. Previously the row was deleted
+    // last, so two concurrent buyers were both charged and the seller was
+    // paid twice.
+    if !db.delete_consignment(&uuid).unwrap_or(false) {
+        return result(false, "Someone else bought it first.");
+    }
+    let relist = || {
+        let _ = db.save_consignment(&listing);
+    };
+
     if !crate::purse::add_gold(db, connections, state, char_name, -listing.price) {
+        relist();
         return result(false, format!("You cannot afford it. It is {} gold.", listing.price));
     }
 
@@ -417,6 +430,7 @@ fn do_buy(
     if db.save_item_data(item).is_err() {
         // Refund rather than leave them short for an item they never received.
         let _ = crate::purse::add_gold(db, connections, state, char_name, listing.price);
+        relist();
         return result(false, "Something went wrong and the deal fell through.");
     }
 
@@ -427,10 +441,6 @@ fn do_buy(
     // *online* seller was the one who lost the money before, because their
     // session copy outlived the DB write.
     let _ = crate::purse::add_bank(db, connections, &listing.seller_name, to_seller);
-    let _ = db.update_character(&listing.seller_name, |c| {
-        c.consignment_ids.retain(|id| *id != uuid);
-    });
-    let _ = db.delete_consignment(&uuid);
 
     crate::script::achievements::send_to_player(
         connections,

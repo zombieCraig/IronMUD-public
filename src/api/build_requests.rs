@@ -17,6 +17,7 @@
 //! approval queue for work builders asked for themselves — would make the board
 //! useless for the thing it exists to do.
 
+use crate::api::validate::{LIST_MAX, LONG_DESC_MAX, NAME_MAX, VNUM_MAX, check_list, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
@@ -114,8 +115,7 @@ async fn list_requests(
     let status = query.status.as_deref().and_then(RequestStatus::from_key);
     let mut data: Vec<BuildRequest> = state
         .db
-        .list_build_requests()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_build_requests()?
         .into_iter()
         .filter(|r| match (&query.claimed_by, status) {
             (Some(name), _) => r.claimed_by.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(name)),
@@ -154,8 +154,7 @@ async fn get_request(
     }
     let data = state
         .db
-        .get_build_request_by_ticket(ticket)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_build_request_by_ticket(ticket)?
         .ok_or_else(|| ApiError::NotFound(format!("Bounty #{ticket} not found")))?;
     Ok(Json(RequestResponse { success: true, data }))
 }
@@ -165,6 +164,9 @@ async fn post_request(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<PostRequest>,
 ) -> Result<Json<RequestResponse>, ApiError> {
+    check_text_len("title", &req.title, NAME_MAX)?;
+    check_text_len("detail", &req.detail, LONG_DESC_MAX)?;
+    check_text_len("area", &req.area, VNUM_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -174,8 +176,7 @@ async fn post_request(
     let kind = req.kind.as_deref().and_then(crate::types::ContentKind::from_key);
     let area = state
         .db
-        .list_all_areas()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_areas()?
         .into_iter()
         .find(|a| a.prefix.eq_ignore_ascii_case(req.area.trim()));
     let (area_id, label) = match area {
@@ -193,8 +194,7 @@ async fn post_request(
         &req.detail,
         req.points,
         now(),
-    )
-    .map_err(|e| ApiError::Internal(e.to_string()))?;
+    )?;
 
     notify_builders(
         &state.connections,
@@ -215,7 +215,7 @@ async fn claim_request(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let claimant = user.api_key.owner_character.clone();
-    let outcome = bounty::claim(&state.db, ticket, &claimant, now()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let outcome = bounty::claim(&state.db, ticket, &claimant, now())?;
     Ok(Json(OutcomeResponse {
         success: outcome.is_ok(),
         message: outcome.message().to_string(),
@@ -228,12 +228,12 @@ async fn submit_request(
     Path(ticket): Path<i64>,
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<OutcomeResponse>, ApiError> {
+    check_list("linked", &req.linked, LIST_MAX, VNUM_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let claimant = user.api_key.owner_character.clone();
-    let outcome = bounty::submit(&state.db, ticket, &claimant, req.linked, now())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let outcome = bounty::submit(&state.db, ticket, &claimant, req.linked, now())?;
     if outcome.is_ok() {
         notify_builders(
             &state.connections,

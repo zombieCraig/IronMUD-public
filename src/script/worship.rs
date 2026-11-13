@@ -67,7 +67,7 @@ fn mutate_character<T>(
     // session mutex across sled IO stalls every other connection.
     let mut f = Some(f);
     let online: Option<(T, CharacterData)> = {
-        let mut guard = connections.lock().unwrap();
+        let mut guard = connections.lock();
         let mut hit = None;
         for (_id, session) in guard.iter_mut() {
             if let Some(ref mut ch) = session.character {
@@ -93,7 +93,7 @@ fn mutate_character<T>(
 /// Read-only character snapshot (session copy preferred).
 fn read_character(db: &Db, connections: &SharedConnections, char_name: &str) -> Option<CharacterData> {
     {
-        let guard = connections.lock().unwrap();
+        let guard = connections.lock();
         for (_id, session) in guard.iter() {
             if let Some(ref ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(char_name) {
@@ -107,7 +107,7 @@ fn read_character(db: &Db, connections: &SharedConnections, char_name: &str) -> 
 
 /// Send a line to an online player by name (no-op if offline).
 pub fn send_to_player(connections: &SharedConnections, char_name: &str, msg: &str) {
-    let guard = connections.lock().unwrap();
+    let guard = connections.lock();
     for (_id, session) in guard.iter() {
         if let Some(ref ch) = session.character {
             if ch.name.eq_ignore_ascii_case(char_name) {
@@ -1242,8 +1242,9 @@ fn register_builder_fns(engine: &mut Engine, db: Arc<Db>, _connections: SharedCo
 mod tests {
     use super::*;
     use crate::{BlessingGrant, MobileData};
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn base_char(name: &str) -> CharacterData {
         let mut c: CharacterData = serde_json::from_value(serde_json::json!({
@@ -1287,7 +1288,7 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch.clone());
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         rx_client
     }
 

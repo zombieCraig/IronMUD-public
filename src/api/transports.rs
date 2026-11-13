@@ -1,5 +1,6 @@
 //! Transport CRUD endpoints
 
+use crate::api::validate::{NAME_MAX, VNUM_MAX, check_opt_len, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, State},
@@ -136,10 +137,7 @@ async fn list_transports(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let transports = state
-        .db
-        .list_all_transports()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let transports = state.db.list_all_transports()?;
 
     Ok(Json(TransportsListResponse {
         success: true,
@@ -171,6 +169,8 @@ async fn create_transport(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<CreateTransportRequest>,
 ) -> Result<Json<TransportResponse>, ApiError> {
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_opt_len("vnum", &req.vnum, VNUM_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -187,11 +187,9 @@ async fn create_transport(
     let interior_room_id = Uuid::parse_str(&req.interior_room_id)
         .map_err(|_| ApiError::InvalidInput("Invalid interior_room_id UUID format".into()))?;
 
-    let _room = state
-        .db
-        .get_room_data(&interior_room_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::NotFound(format!("Interior room '{}' not found", req.interior_room_id)))?;
+    // The transport rewrites the interior's exits as it moves, so the
+    // caller must be able to edit that room.
+    super::auth::authorize_room(&state.db, &user, &interior_room_id)?;
 
     // Check vnum uniqueness
     if let Some(ref vnum) = req.vnum {
@@ -215,10 +213,7 @@ async fn create_transport(
     transport.travel_time_secs = req.travel_time_secs;
     transport.schedule = schedule;
 
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     notify_builders(
         &state.connections,
@@ -238,11 +233,13 @@ async fn update_transport(
     Path(id): Path<String>,
     Json(req): Json<UpdateTransportRequest>,
 ) -> Result<Json<TransportResponse>, ApiError> {
+    check_opt_len("name", &req.name, NAME_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
     let mut transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
 
     if let Some(ref name) = req.name {
         transport.name = name.clone();
@@ -306,10 +303,7 @@ async fn update_transport(
         }
     }
 
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     notify_builders(
         &state.connections,
@@ -333,6 +327,7 @@ async fn delete_transport(
     }
 
     let transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
     let transport_name = transport.name.clone();
 
     // Clean up exits if transport is currently connected to a stop
@@ -350,10 +345,7 @@ async fn delete_transport(
         }
     }
 
-    state
-        .db
-        .delete_transport(transport.id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_transport(transport.id)?;
 
     notify_builders(
         &state.connections,
@@ -373,21 +365,22 @@ async fn add_stop(
     Path(id): Path<String>,
     Json(req): Json<AddStopRequest>,
 ) -> Result<Json<TransportResponse>, ApiError> {
+    check_text_len("name", &req.name, NAME_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
     let mut transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
 
     // Validate room exists
     let room_id =
         Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state
-        .db
-        .get_room_data(&room_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
+    // Arriving at a stop writes an exit into the stop room: the caller must
+    // be able to edit it, and must not clobber an exit that's already there.
+    let room = super::auth::authorize_room(&state.db, &user, &room_id)?;
+    check_stop_exit_free(&room, &req.exit_direction, transport.interior_room_id)?;
 
     let stop = TransportStop {
         room_id,
@@ -397,10 +390,7 @@ async fn add_stop(
 
     transport.stops.push(stop);
 
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     notify_builders(
         &state.connections,
@@ -427,23 +417,15 @@ async fn remove_stop(
     }
 
     let mut transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
 
     if index >= transport.stops.len() {
         return Err(ApiError::NotFound(format!("Stop index {} not found", index)));
     }
 
-    let removed_name = transport.stops[index].name.clone();
-    transport.stops.remove(index);
+    let removed_name = transport.remove_stop(index).map(|s| s.name).unwrap_or_default();
 
-    // Adjust current_stop_index if needed
-    if transport.current_stop_index >= transport.stops.len() && !transport.stops.is_empty() {
-        transport.current_stop_index = transport.stops.len() - 1;
-    }
-
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     notify_builders(
         &state.connections,
@@ -471,6 +453,7 @@ async fn connect_transport(
     }
 
     let mut transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
 
     if req.stop_index >= transport.stops.len() {
         return Err(ApiError::InvalidInput(format!(
@@ -483,6 +466,8 @@ async fn connect_transport(
     let stop = &transport.stops[req.stop_index];
     let stop_room_id = stop.room_id;
     let exit_direction = stop.exit_direction.clone();
+    let stop_room = super::auth::authorize_room(&state.db, &user, &stop_room_id)?;
+    check_stop_exit_free(&stop_room, &exit_direction, transport.interior_room_id)?;
 
     // Create exit from stop room to vehicle interior
     state
@@ -508,10 +493,7 @@ async fn connect_transport(
         let _ = state.db.save_room_data(room);
     }
 
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     let stop_name = transport.stops[req.stop_index].name.clone();
     notify_builders(
@@ -540,6 +522,7 @@ async fn travel_transport(
     }
 
     let mut transport = find_transport(&state, &id)?;
+    authorize_transport(&state, &user, &transport)?;
 
     // Verify transport is on-demand
     if !matches!(transport.schedule, TransportSchedule::OnDemand) {
@@ -587,10 +570,7 @@ async fn travel_transport(
     transport.state = TransportState::Moving;
     transport.last_state_change = now_secs();
 
-    state
-        .db
-        .save_transport(&transport)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_transport(&transport)?;
 
     let dest_name = transport.stops[req.destination_index].name.clone();
     notify_builders(
@@ -608,14 +588,42 @@ async fn travel_transport(
 }
 
 /// Helper: find transport by UUID or vnum
+/// A transport is governed by its interior room: whoever may edit that room
+/// may manage the transport.
+fn authorize_transport(state: &ApiState, user: &AuthenticatedUser, transport: &TransportData) -> Result<(), ApiError> {
+    super::auth::authorize_room(&state.db, user, &transport.interior_room_id).map(|_| ())
+}
+
+/// Refuse a stop whose exit already leads somewhere other than this
+/// transport's interior. Directions are the standard six, `out`, or a
+/// custom exit name (e.g. `elevator`).
+fn check_stop_exit_free(room: &crate::RoomData, direction: &str, interior: Uuid) -> Result<(), ApiError> {
+    let dir = direction.trim().to_lowercase();
+    if dir.is_empty() {
+        return Err(ApiError::InvalidInput("exit_direction is required".into()));
+    }
+    let existing = match dir.as_str() {
+        "north" => room.exits.north,
+        "south" => room.exits.south,
+        "east" => room.exits.east,
+        "west" => room.exits.west,
+        "up" => room.exits.up,
+        "down" => room.exits.down,
+        "out" => room.exits.out,
+        other => room.exits.custom.get(other).copied(),
+    };
+    match existing {
+        Some(to) if to != interior => Err(ApiError::Conflict(format!(
+            "Room already has a '{dir}' exit; remove it before using that direction for a stop"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 fn find_transport(state: &Arc<ApiState>, id: &str) -> Result<TransportData, ApiError> {
     // Try UUID first
     if let Ok(uuid) = Uuid::parse_str(id) {
-        if let Some(transport) = state
-            .db
-            .get_transport(uuid)
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-        {
+        if let Some(transport) = state.db.get_transport(uuid)? {
             return Ok(transport);
         }
     }
@@ -623,7 +631,6 @@ fn find_transport(state: &Arc<ApiState>, id: &str) -> Result<TransportData, ApiE
     // Fall back to vnum lookup
     state
         .db
-        .get_transport_by_vnum(id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_transport_by_vnum(id)?
         .ok_or_else(|| ApiError::NotFound(format!("Transport '{}' not found", id)))
 }

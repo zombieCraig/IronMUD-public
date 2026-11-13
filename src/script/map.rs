@@ -588,10 +588,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Err(_) => return String::new(),
                 };
                 let (player_name, show_legend, colors_enabled, ascii_only) = {
-                    let conns = match connections.lock() {
-                        Ok(g) => g,
-                        Err(_) => return String::new(),
-                    };
+                    let conns = connections.lock();
                     match conns.get(&conn_uuid) {
                         Some(s) => {
                             let (name, ascii_only) = match s.character.as_ref() {
@@ -612,7 +609,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     ascii_only,
                 );
                 if !rendered.is_empty() && show_legend {
-                    if let Ok(mut conns) = connections.lock() {
+                    {
+                        let mut conns = connections.lock();
                         if let Some(session) = conns.get_mut(&conn_uuid) {
                             session.map_legend_shown = true;
                         }
@@ -662,10 +660,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let conns = match connections.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
+            let conns = connections.lock();
             conns
                 .get(&conn_uuid)
                 .and_then(|s| s.character.as_ref().map(|c| c.automap_enabled))
@@ -685,10 +680,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Err(_) => return false,
                 };
                 let player_name = {
-                    let conns = match connections.lock() {
-                        Ok(g) => g,
-                        Err(_) => return false,
-                    };
+                    let conns = connections.lock();
                     match conns
                         .get(&conn_uuid)
                         .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -705,7 +697,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if db.save_character_data(ch.clone()).is_err() {
                     return false;
                 }
-                if let Ok(mut conns) = connections.lock() {
+                {
+                    let mut conns = connections.lock();
                     if let Some(session) = conns.get_mut(&conn_uuid) {
                         session.character = Some(ch);
                     }
@@ -723,10 +716,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return AUTOMAP_DEFAULT_RADIUS as i64,
             };
-            let conns = match connections.lock() {
-                Ok(g) => g,
-                Err(_) => return AUTOMAP_DEFAULT_RADIUS as i64,
-            };
+            let conns = connections.lock();
             conns
                 .get(&conn_uuid)
                 .and_then(|s| s.character.as_ref().map(|c| c.automap_radius as i64))
@@ -747,10 +737,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Err(_) => return false,
                 };
                 let player_name = {
-                    let conns = match connections.lock() {
-                        Ok(g) => g,
-                        Err(_) => return false,
-                    };
+                    let conns = connections.lock();
                     match conns
                         .get(&conn_uuid)
                         .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -768,7 +755,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if db.save_character_data(ch.clone()).is_err() {
                     return false;
                 }
-                if let Ok(mut conns) = connections.lock() {
+                {
+                    let mut conns = connections.lock();
                     if let Some(session) = conns.get_mut(&conn_uuid) {
                         session.character = Some(ch);
                     }
@@ -786,10 +774,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let conns = match connections.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
+            let conns = connections.lock();
             conns
                 .get(&conn_uuid)
                 .and_then(|s| s.character.as_ref().map(|c| c.ascii_map))
@@ -807,10 +792,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Err(_) => return false,
             };
             let player_name = {
-                let conns = match connections.lock() {
-                    Ok(g) => g,
-                    Err(_) => return false,
-                };
+                let conns = connections.lock();
                 match conns
                     .get(&conn_uuid)
                     .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
@@ -827,7 +809,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if db.save_character_data(ch.clone()).is_err() {
                 return false;
             }
-            if let Ok(mut conns) = connections.lock() {
+            {
+                let mut conns = connections.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.character = Some(ch);
                 }

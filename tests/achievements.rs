@@ -13,9 +13,10 @@ use ironmud::types::{
     ItemData, ItemLocation,
 };
 use ironmud::{SharedConnections, SharedState, World, db::Db, script};
+use parking_lot::Mutex;
 use rhai::Engine;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tempfile;
 
 fn make_def_counter(key: &str, name: &str, counter: &str, threshold: u32, title: &str) -> AchievementDef {
@@ -107,7 +108,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         world_report: Default::default(),
         build_scores: Default::default(),
         audit_ctx: Default::default(),
-        engine: Engine::new(),
+        engine: std::sync::Arc::new(Engine::new()),
         db,
         connections: connections.clone(),
         scripts: HashMap::new(),
@@ -329,7 +330,7 @@ fn create_achievement_syncs_world_map_and_defaults_hidden_true() {
         .expect("eval create");
     assert_eq!(err, "", "create_achievement returned error: {}", err);
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let def = world
         .achievement_definitions
         .get("hero_a")
@@ -388,7 +389,7 @@ fn counter_criterion_updates_world_index() {
         .expect("set counter");
     assert_eq!(err, "");
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let def = world.achievement_definitions.get("five_kills").unwrap();
     match &def.criterion {
         AchievementCriterion::Counter { counter, threshold } => {
@@ -419,7 +420,7 @@ fn delete_achievement_removes_from_world_and_index() {
     let ok: bool = engine.eval(r#"delete_achievement("removable")"#).expect("delete");
     assert!(ok);
 
-    let world = state.lock().unwrap();
+    let world = state.lock();
     assert!(!world.achievement_definitions.contains_key("removable"));
     // Counter index must drop the now-orphaned bucket entry.
     let bucket = world.achievement_index_by_counter.get("ctr");
@@ -440,7 +441,7 @@ fn set_hidden_persists_through_world_map() {
         .eval(r#"set_achievement_hidden("toggle_me", false)"#)
         .expect("set hidden");
     assert_eq!(err, "");
-    let world = state.lock().unwrap();
+    let world = state.lock();
     assert!(!world.achievement_definitions.get("toggle_me").unwrap().hidden);
 }
 

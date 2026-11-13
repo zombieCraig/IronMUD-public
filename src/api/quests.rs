@@ -268,7 +268,10 @@ fn convert_objective(req: &ObjectiveRequest) -> Result<QuestObjective, ApiError>
 
 fn convert_reward(req: &RewardRequest) -> Result<QuestReward, ApiError> {
     match req {
-        RewardRequest::Gold { amount } => Ok(QuestReward::Gold { amount: *amount }),
+        RewardRequest::Gold { amount } => {
+            crate::purse::check_reward_gold(*amount).map_err(ApiError::InvalidInput)?;
+            Ok(QuestReward::Gold { amount: *amount })
+        }
         RewardRequest::Item { vnum, qty } => {
             if vnum.trim().is_empty() {
                 return Err(ApiError::InvalidInput("Item reward vnum required".into()));
@@ -356,10 +359,7 @@ async fn list_quests(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let quests = state
-        .db
-        .list_all_quests()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let quests = state.db.list_all_quests()?;
     Ok(Json(QuestListResponse {
         success: true,
         data: quests,
@@ -376,8 +376,7 @@ async fn get_quest(
     }
     let quest = state
         .db
-        .get_quest_data(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_quest_data(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Quest '{}' not found", vnum)))?;
     Ok(Json(QuestResponse {
         success: true,
@@ -445,10 +444,7 @@ async fn create_quest(
 
     // Attribution: see src/attribution.rs.
     quest.stamp_created(&user.api_key.owner_character);
-    state
-        .db
-        .save_quest_data(&quest)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_quest_data(&quest)?;
 
     notify_builders(
         &state.connections,
@@ -473,8 +469,7 @@ async fn update_quest(
 
     let mut quest = state
         .db
-        .get_quest_data(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_quest_data(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Quest '{}' not found", vnum)))?;
 
     if let Some(name) = req.name {
@@ -529,10 +524,7 @@ async fn update_quest(
 
     // Attribution: see src/attribution.rs.
     quest.stamp_edited(&user.api_key.owner_character);
-    state
-        .db
-        .save_quest_data(&quest)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_quest_data(&quest)?;
 
     notify_builders(
         &state.connections,
@@ -555,13 +547,9 @@ async fn delete_quest(
     }
     let quest = state
         .db
-        .get_quest_data(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_quest_data(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Quest '{}' not found", vnum)))?;
-    state
-        .db
-        .delete_quest(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_quest(&vnum)?;
     notify_builders(
         &state.connections,
         &format!("[API] Quest '{}' deleted by {}", quest.name, user.api_key.name),

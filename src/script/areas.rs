@@ -47,6 +47,56 @@ pub fn check_build_mode(db: &Db, char_name: &str, room_id: &uuid::Uuid) -> bool 
     }
 }
 
+/// In-game area edit permission, backing the Rhai `can_edit_area`.
+///
+/// Fails closed: the character must exist and be a builder or admin, and a
+/// malformed area id is refused. Admins pass everywhere. A well-formed id for
+/// an area that no longer exists (a room orphaned by an area delete) is
+/// treated like an owner-less area: any builder may edit it.
+pub fn character_can_edit_area(db: &Db, area_id: &str, char_name: &str) -> bool {
+    let character = match db.get_character_data(char_name) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    if character.is_admin {
+        return true;
+    }
+    if !character.is_builder {
+        return false;
+    }
+    let Ok(uuid) = uuid::Uuid::parse_str(area_id) else {
+        return false;
+    };
+    match db.get_area_data(&uuid) {
+        Ok(Some(area)) => crate::api::auth::author_can_edit_area(char_name, &area),
+        Ok(None) => true,
+        Err(_) => false,
+    }
+}
+
+/// In-game area governance (owner, permission level, trustees, caps,
+/// delete), backing the Rhai `can_govern_area`. Admins always; otherwise the
+/// owner, or for an owner-less area anyone [`character_can_edit_area`]
+/// allows.
+pub fn character_can_govern_area(db: &Db, area_id: &str, char_name: &str) -> bool {
+    if !character_can_edit_area(db, area_id, char_name) {
+        return false;
+    }
+    if matches!(db.get_character_data(char_name), Ok(Some(c)) if c.is_admin) {
+        return true;
+    }
+    let Ok(uuid) = uuid::Uuid::parse_str(area_id) else {
+        return false;
+    };
+    match db.get_area_data(&uuid) {
+        Ok(Some(area)) => match area.owner.as_deref() {
+            Some(owner) => owner.eq_ignore_ascii_case(char_name),
+            None => true,
+        },
+        _ => false,
+    }
+}
+
 /// Register area-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // ========== Area Functions ==========
@@ -351,36 +401,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // Checks if a character has permission to edit the area
     let cloned_db = db.clone();
     engine.register_fn("can_edit_area", move |area_id: String, char_name: String| {
-        // Admins can always edit any area
-        if let Ok(Some(character)) = cloned_db.get_character_data(&char_name) {
-            if character.is_admin {
-                return true;
-            }
-        }
+        character_can_edit_area(&cloned_db, &area_id, &char_name)
+    });
 
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
-                // No owner = any builder can edit (caller should check is_builder)
-                if area.owner.is_none() {
-                    return true;
-                }
-
-                let owner = area.owner.as_ref().unwrap();
-
-                match area.permission_level {
-                    AreaPermission::OwnerOnly => owner.eq_ignore_ascii_case(&char_name),
-                    AreaPermission::Trusted => {
-                        owner.eq_ignore_ascii_case(&char_name)
-                            || area.trusted_builders.iter().any(|t| t.eq_ignore_ascii_case(&char_name))
-                    }
-                    AreaPermission::AllBuilders => true,
-                }
-            } else {
-                true // Area not found = allow (let other checks handle it)
-            }
-        } else {
-            true // Invalid ID = allow
-        }
+    // can_govern_area(area_id, character_name) -> bool
+    // Owner / permission / trustee / cap changes and deletion: owner or admin.
+    let cloned_db = db.clone();
+    engine.register_fn("can_govern_area", move |area_id: String, char_name: String| {
+        character_can_govern_area(&cloned_db, &area_id, &char_name)
     });
 
     // set_area_max(area_id, kind, n) -> bool. n <= 0 clears the cap (None).
@@ -1820,5 +1848,94 @@ fn default_sim() -> crate::SimulationConfig {
         energy_decay_rate: 0,
         comfort_decay_rate: 0,
         low_gold_threshold: 10,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CharacterData;
+
+    fn open_temp() -> (Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db = Db::open(temp.path()).expect("open db");
+        (db, temp)
+    }
+
+    fn save_char(db: &Db, name: &str, builder: bool, admin: bool) {
+        let mut c: CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name,
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        c.is_builder = builder;
+        c.is_admin = admin;
+        db.save_character_data(c).expect("save character");
+    }
+
+    fn save_owned_area(db: &Db, owner: &str) -> uuid::Uuid {
+        let mut area: AreaData = serde_json::from_value(serde_json::json!({
+            "id": uuid::Uuid::new_v4(),
+            "name": "Test Area",
+            "prefix": "test",
+        }))
+        .expect("build area");
+        area.owner = Some(owner.to_string());
+        area.permission_level = AreaPermission::OwnerOnly;
+        let id = area.id;
+        db.save_area_data(area).expect("save area");
+        id
+    }
+
+    #[test]
+    fn can_edit_area_fails_closed() {
+        let (db, _t) = open_temp();
+        save_char(&db, "player", false, false);
+        save_char(&db, "builder", true, false);
+        save_char(&db, "owner", true, false);
+        save_char(&db, "admin", false, true);
+        let owned = save_owned_area(&db, "owner").to_string();
+        let missing = uuid::Uuid::new_v4().to_string();
+
+        // Malformed ids used to be allowed for everyone.
+        for name in ["player", "builder", "owner"] {
+            assert!(!character_can_edit_area(&db, "", name), "{name} with empty id");
+            assert!(!character_can_edit_area(&db, "not-a-uuid", name), "{name} with bad id");
+        }
+        // Non-builders never pass, even for a missing area.
+        assert!(!character_can_edit_area(&db, &missing, "player"));
+        assert!(!character_can_edit_area(&db, &owned, "player"));
+        // Unknown characters never pass.
+        assert!(!character_can_edit_area(&db, &missing, "nobody"));
+        // Ownership is honoured for builders.
+        assert!(!character_can_edit_area(&db, &owned, "builder"));
+        assert!(character_can_edit_area(&db, &owned, "owner"));
+        // A builder may still edit rooms orphaned by an area delete.
+        assert!(character_can_edit_area(&db, &missing, "builder"));
+        // Admins pass everywhere.
+        assert!(character_can_edit_area(&db, &owned, "admin"));
+        assert!(character_can_edit_area(&db, "garbage", "admin"));
+    }
+
+    #[test]
+    fn only_owner_or_admin_governs_an_owned_area() {
+        let (db, _t) = open_temp();
+        save_char(&db, "owner", true, false);
+        save_char(&db, "trustee", true, false);
+        save_char(&db, "admin", false, true);
+        save_char(&db, "player", false, false);
+        let id = save_owned_area(&db, "owner");
+        let mut area = db.get_area_data(&id).unwrap().unwrap();
+        area.permission_level = AreaPermission::Trusted;
+        area.trusted_builders = vec!["trustee".to_string()];
+        db.save_area_data(area).unwrap();
+        let id = id.to_string();
+
+        assert!(character_can_edit_area(&db, &id, "trustee"), "trustee edits content");
+        assert!(!character_can_govern_area(&db, &id, "trustee"), "but doesn't govern");
+        assert!(character_can_govern_area(&db, &id, "owner"));
+        assert!(character_can_govern_area(&db, &id, "admin"));
+        assert!(!character_can_govern_area(&db, &id, "player"));
     }
 }

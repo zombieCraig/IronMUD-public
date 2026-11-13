@@ -38,12 +38,12 @@ export const spawnPointToolDefinitions = [
         max_count: {
           type: "number",
           default: 1,
-          description: "Maximum simultaneous instances",
+          description: "Maximum simultaneous instances (1-50)",
         },
         respawn_interval_secs: {
           type: "number",
           default: 300,
-          description: "Seconds between respawns",
+          description: "Seconds between respawns (minimum 30)",
         },
         enabled: { type: "boolean", default: true },
         bury_on_spawn: {
@@ -67,8 +67,8 @@ export const spawnPointToolDefinitions = [
       type: "object",
       properties: {
         id: { type: "string", description: "Spawn point UUID" },
-        max_count: { type: "number" },
-        respawn_interval_secs: { type: "number" },
+        max_count: { type: "number", description: "Maximum simultaneous instances (1-50)" },
+        respawn_interval_secs: { type: "number", description: "Seconds between respawns (minimum 30)" },
         enabled: { type: "boolean" },
         bury_on_spawn: {
           type: "boolean",

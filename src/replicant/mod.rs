@@ -162,10 +162,7 @@ pub fn comfort_replicant_by_name(db: &db::Db, connections: &SharedConnections, t
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let mut conns = match connections.lock() {
-        Ok(g) => g,
-        Err(_) => return ComfortOutcome::NotApplicable,
-    };
+    let mut conns = connections.lock();
     let target_lower = target_name.to_lowercase();
     let ch = match conns
         .values_mut()
@@ -239,7 +236,7 @@ pub fn process_resolve_tick(db: &db::Db, connections: &SharedConnections) -> Res
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     for (_conn_id, session) in conns.iter_mut() {
         let ch = match session.character.as_mut() {
             Some(c) => c,

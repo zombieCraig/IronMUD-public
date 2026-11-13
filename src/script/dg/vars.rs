@@ -25,12 +25,29 @@ use super::{ActorRef, EvalCtx, SelfKind};
 /// is resolved, so `gold(-%random.50%)` first becomes `gold(-25)` and is
 /// then dispatched as a call form.
 pub fn substitute(s: &str, ctx: &EvalCtx, state: &State) -> String {
+    substitute_at(s, ctx, state, 0)
+}
+
+/// Longest string [`substitute`] produces, and so the largest value any
+/// DG variable can hold. Without it `set x %x%%x%` in a loop doubles a
+/// string to gigabytes and takes the server down.
+pub const MAX_VALUE_BYTES: usize = 64 * 1024;
+
+/// Deepest nested `%a(%b(%c..)%)%` interpolation [`substitute`] expands;
+/// anything deeper is left as literal text.
+pub const MAX_SUBST_DEPTH: usize = 32;
+
+fn substitute_at(s: &str, ctx: &EvalCtx, state: &State, depth: usize) -> String {
     let bytes = s.as_bytes();
-    let mut out = String::with_capacity(s.len());
+    let mut out = String::with_capacity(s.len().min(MAX_VALUE_BYTES));
     let mut i = 0;
     while i < bytes.len() {
+        if out.len() > MAX_VALUE_BYTES {
+            truncate_to_char_boundary(&mut out, MAX_VALUE_BYTES);
+            break;
+        }
         if bytes[i] != b'%' {
-            let ch_len = utf8_char_len(bytes[i]);
+            let ch_len = utf8_char_len(bytes[i]).min(bytes.len() - i);
             out.push_str(&s[i..i + ch_len]);
             i += ch_len;
             continue;
@@ -45,10 +62,15 @@ pub fn substitute(s: &str, ctx: &EvalCtx, state: &State) -> String {
                     // `%%` → literal `%`.
                     out.push('%');
                 } else if raw.as_bytes().contains(&b'%') {
-                    // Nested form: recursively substitute the inner
-                    // %vars% first, then resolve the outer.
-                    let inner = substitute(raw, ctx, state);
-                    out.push_str(&resolve(&inner, ctx, state));
+                    if depth >= MAX_SUBST_DEPTH {
+                        // Too deep: emit the interpolation verbatim.
+                        out.push_str(&s[i..=j]);
+                    } else {
+                        // Nested form: recursively substitute the inner
+                        // %vars% first, then resolve the outer.
+                        let inner = substitute_at(raw, ctx, state, depth + 1);
+                        out.push_str(&resolve(&inner, ctx, state));
+                    }
                 } else {
                     out.push_str(&resolve(raw, ctx, state));
                 }
@@ -60,7 +82,18 @@ pub fn substitute(s: &str, ctx: &EvalCtx, state: &State) -> String {
             }
         }
     }
+    if out.len() > MAX_VALUE_BYTES {
+        truncate_to_char_boundary(&mut out, MAX_VALUE_BYTES);
+    }
     out
+}
+
+fn truncate_to_char_boundary(s: &mut String, max: usize) {
+    let mut cut = max.min(s.len());
+    while !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    s.truncate(cut);
 }
 
 /// Return the index of the closing `%` for an interpolation that opened
@@ -1165,7 +1198,7 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         "name" => ch.name.clone(),
         "level" => ch.level.to_string(),
         "hitp" | "hp" => ch.hp.to_string(),
-        "maxhp" => ch.max_hp.to_string(),
+        "maxhp" => ch.effective_max_hp().to_string(),
         "mana" => ch.mana.to_string(),
         "maxmana" => ch.max_mana.to_string(),
         "move" => ch.stamina.to_string(),
@@ -1179,7 +1212,7 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         // Prefer `%actor.morality%` / `%actor.morality_tier%` in new scripts.
         "align" | "alignment" | "morality" => ch.morality.to_string(),
         "morality_tier" => crate::morality::MoralityTier::from_value(ch.morality).key().to_string(),
-        "maxhitp" => ch.max_hp.to_string(),
+        "maxhitp" => ch.effective_max_hp().to_string(),
         "str" | "strength" => ch.stat_str.to_string(),
         "dex" | "dexterity" => ch.stat_dex.to_string(),
         "con" | "constitution" => ch.stat_con.to_string(),
@@ -1869,45 +1902,70 @@ fn mobile_has_item_with_vnum(ctx: &EvalCtx, mobile_id: &uuid::Uuid, _owner_id: &
         .any(|i| i.vnum.as_deref().map(|v| v.eq_ignore_ascii_case(vnum)).unwrap_or(false))
 }
 
+/// `%actor.<fn>(N)%` on a player.
+///
+/// Gold goes through `purse::add_gold` (session-aware, refuses overflow and
+/// overdraft by clamping the debit to what the player holds); the rest go
+/// through `apply_to_character`, so an online player's session copy is the
+/// one changed. A DB-only write is reverted by the next regen-tick flush.
+/// All arithmetic saturates.
+///
+/// Gold is gated by the opcode permission check: a trigger whose author may
+/// not act in the host's area can't mint or drain gold.
 fn mutate_character(ctx: &EvalCtx, name: &str, fn_name: &str, n: i32) -> String {
-    let Ok(Some(mut ch)) = ctx.db.get_character_data(name) else {
-        return String::new();
-    };
-    let new_val = match fn_name {
-        "gold" => {
-            ch.gold = (ch.gold + n).max(0);
-            ch.gold
+    if fn_name == "gold" {
+        if !ctx.opcode_authorized("gold", None) {
+            return String::new();
         }
-        "hitp" | "hp" => {
-            ch.hp = (ch.hp + n).clamp(0, ch.max_hp);
-            ch.hp
+        let current = character_gold(ctx, name);
+        // Clamp a debit to what's there (DG semantics: gold floors at 0).
+        let delta = (n as i64).max(-current);
+        if delta != 0 {
+            crate::purse::add_gold(&ctx.db, &ctx.connections, &ctx.state, name, delta);
         }
-        "move" => {
-            ch.stamina = (ch.stamina + n).clamp(0, ch.max_stamina);
-            ch.stamina
-        }
-        "drunk" => {
-            ch.drunk_level = (ch.drunk_level + n).clamp(0, 100);
-            ch.drunk_level
-        }
-        "hunger" => {
-            ch.hunger = (ch.hunger + n).clamp(0, ch.max_hunger);
-            ch.hunger
-        }
-        "thirst" => {
-            ch.thirst = (ch.thirst + n).clamp(0, ch.max_thirst);
-            ch.thirst
-        }
-        "exp" => {
-            // Players have no top-level `exp` field; treat as no-op for
-            // now and return 0. (Phase 6 candidate: thread XP through
-            // ProgressionState if we end up needing it.)
-            0
-        }
-        _ => return String::new(),
-    };
-    let _ = ctx.db.save_character_data(ch);
-    new_val.to_string()
+        return character_gold(ctx, name).to_string();
+    }
+    let mut out = None;
+    crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, name, |ch| {
+        let v = match fn_name {
+            "hitp" | "hp" => {
+                ch.hp = ch.hp.saturating_add(n).clamp(0, ch.effective_max_hp());
+                ch.hp
+            }
+            "move" => {
+                ch.stamina = ch.stamina.saturating_add(n).clamp(0, ch.max_stamina);
+                ch.stamina
+            }
+            "drunk" => {
+                ch.drunk_level = ch.drunk_level.saturating_add(n).clamp(0, 100);
+                ch.drunk_level
+            }
+            "hunger" => {
+                ch.hunger = ch.hunger.saturating_add(n).clamp(0, ch.max_hunger);
+                ch.hunger
+            }
+            "thirst" => {
+                ch.thirst = ch.thirst.saturating_add(n).clamp(0, ch.max_thirst);
+                ch.thirst
+            }
+            // Players have no top-level `exp` field; no-op returning 0.
+            "exp" => {
+                out = Some(0);
+                return false;
+            }
+            _ => return false,
+        };
+        out = Some(v);
+        true
+    });
+    out.map(|v| v.to_string()).unwrap_or_default()
+}
+
+/// A player's gold, session first.
+fn character_gold(ctx: &EvalCtx, name: &str) -> i64 {
+    crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, name, |_| false)
+        .map(|c| c.gold as i64)
+        .unwrap_or(0)
 }
 
 fn mutate_mobile(ctx: &EvalCtx, mobile_id: &uuid::Uuid, fn_name: &str, n: i32) -> String {
@@ -1916,15 +1974,15 @@ fn mutate_mobile(ctx: &EvalCtx, mobile_id: &uuid::Uuid, fn_name: &str, n: i32) -
     };
     let new_val = match fn_name {
         "gold" => {
-            mob.gold = (mob.gold + n).max(0);
+            mob.gold = mob.gold.saturating_add(n).max(0);
             mob.gold
         }
         "hitp" | "hp" => {
-            mob.current_hp = (mob.current_hp + n).clamp(0, mob.max_hp);
+            mob.current_hp = mob.current_hp.saturating_add(n).clamp(0, mob.max_hp);
             mob.current_hp
         }
         "move" => {
-            mob.current_stamina = (mob.current_stamina + n).clamp(0, mob.max_stamina);
+            mob.current_stamina = mob.current_stamina.saturating_add(n).clamp(0, mob.max_stamina);
             mob.current_stamina
         }
         // Mobs don't carry XP — no-op.

@@ -16,6 +16,35 @@ pub struct AuthenticatedUser {
     pub api_key: ApiKey,
 }
 
+/// Longest bearer token accepted. Current keys are ~80 bytes; anything far
+/// bigger is junk and is refused before any hashing.
+const MAX_TOKEN_LEN: usize = 256;
+
+/// Concurrent legacy (Argon2) key verifications. Legacy tokens are the only
+/// expensive path; capping them keeps a flood of bad non-`imk_` tokens from
+/// pinning the CPU, while current-format keys never wait on this.
+const LEGACY_VERIFY_CONCURRENCY: usize = 2;
+
+fn legacy_verify_permits() -> &'static tokio::sync::Semaphore {
+    static SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    SEM.get_or_init(|| tokio::sync::Semaphore::new(LEGACY_VERIFY_CONCURRENCY))
+}
+
+/// What a key may actually do right now: its granted permissions, capped by
+/// its owner's *current* role, the same gate the in-game editors apply
+/// (`access: builder` in commands.json). Write needs a builder or admin
+/// owner; admin needs an admin owner. A key whose owner was demoted or
+/// deleted drops to read-only instead of keeping the powers it was issued
+/// with.
+pub fn effective_permissions(db: &crate::db::Db, key: &crate::ApiKey) -> crate::ApiPermissions {
+    let mut perms = key.permissions.clone();
+    let owner = db.get_character_data(&key.owner_character).ok().flatten();
+    let (is_builder, is_admin) = owner.map(|c| (c.is_builder, c.is_admin)).unwrap_or((false, false));
+    perms.write &= is_builder || is_admin;
+    perms.admin &= is_admin;
+    perms
+}
+
 /// Authentication middleware that validates Bearer tokens
 pub async fn auth_middleware(
     State(state): State<Arc<ApiState>>,
@@ -28,30 +57,66 @@ pub async fn auth_middleware(
         .and_then(|h| h.to_str().ok())
         .ok_or(ApiError::Unauthorized)?;
 
-    if !auth_header.starts_with("Bearer ") {
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or(ApiError::Unauthorized)?
+        .to_string();
+    if token.is_empty() || token.len() > MAX_TOKEN_LEN {
         return Err(ApiError::Unauthorized);
     }
 
-    let token = &auth_header[7..];
+    // Legacy tokens may run Argon2; hold a permit for the whole lookup.
+    let _permit = if crate::api_key_auth::is_current_format(&token) {
+        None
+    } else {
+        Some(
+            legacy_verify_permits()
+                .acquire()
+                .await
+                .map_err(|e| ApiError::Internal(e.to_string()))?,
+        )
+    };
 
-    // Look up the API key by verifying against stored hashes
-    let api_key = state
-        .db
-        .find_api_key_by_raw_key(token)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or(ApiError::Unauthorized)?;
+    // Hashing and sled reads are blocking work: keep them off the runtime.
+    let db = state.db.clone();
+    let (api_key, legacy) = tokio::task::spawn_blocking(move || {
+        db.authenticate_api_key(&token).map(|found| {
+            found.map(|(mut key, legacy)| {
+                key.permissions = effective_permissions(&db, &key);
+                (key, legacy)
+            })
+        })
+    })
+    .await
+    .map_err(|e| ApiError::Internal(e.to_string()))??
+    .ok_or(ApiError::Unauthorized)?;
+    drop(_permit);
 
     if !api_key.enabled {
         return Err(ApiError::Forbidden("API key is disabled".into()));
+    }
+    if legacy {
+        crate::api_key_auth::warn_legacy_use(&api_key);
     }
 
     // Update last_used timestamp
     let _ = state.db.update_api_key_last_used(&api_key.id);
 
+    let key_id = api_key.id;
     let user = AuthenticatedUser { api_key };
     request.extensions_mut().insert(user);
 
-    Ok(next.run(request).await)
+    let mut response = next.run(request).await;
+    if legacy {
+        let headers = response.headers_mut();
+        headers.insert("deprecation", axum::http::HeaderValue::from_static("true"));
+        if let Ok(v) = axum::http::HeaderValue::from_str(&format!(
+            "299 - \"Legacy API key format is deprecated; rotate with 'ironmud-admin api-key rotate {key_id}'\""
+        )) {
+            headers.insert(axum::http::header::WARNING, v);
+        }
+    }
+    Ok(response)
 }
 
 /// Check if a user can read data
@@ -84,8 +149,7 @@ pub fn parse_and_authorize_area(
     let uuid =
         uuid::Uuid::parse_str(raw.trim()).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
     let area = db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", uuid)))?;
     if !can_edit_area(user, &area) {
         return Err(ApiError::Forbidden(
@@ -118,20 +182,26 @@ pub fn infer_area_from_vnum(db: &crate::db::Db, user: &AuthenticatedUser, vnum: 
     can_edit_area(user, &area).then_some(area.id)
 }
 
-/// Permission gate for mutating an existing prototype that may have an
-/// owning area. Orphans (None) are editable by any builder; stamped
-/// prototypes require `can_edit_area` rights. Returns Err(Forbidden)
-/// when the caller is not allowed.
+/// Permission gate for mutating an existing entity that may have an owning
+/// area. Requires a write key; orphans (None) and entities whose area was
+/// deleted are then editable by any writer; stamped entities require
+/// `can_edit_area` rights. Returns Err(Forbidden) when the caller is not
+/// allowed.
 pub fn authorize_existing_area(
     db: &crate::db::Db,
     user: &AuthenticatedUser,
     area_id: Option<uuid::Uuid>,
 ) -> Result<(), super::error::ApiError> {
     use super::error::ApiError;
+    // Every caller is a mutation: a read-only key never passes, whatever
+    // the area situation (orphan, dangling or real).
+    if !can_write(user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
     let Some(uuid) = area_id else {
         return Ok(());
     };
-    let area = match db.get_area_data(&uuid).map_err(|e| ApiError::Internal(e.to_string()))? {
+    let area = match db.get_area_data(&uuid)? {
         Some(a) => a,
         // Dangling area_id (the area was deleted out from under the
         // prototype): treat as orphan and allow.
@@ -139,17 +209,33 @@ pub fn authorize_existing_area(
     };
     if !can_edit_area(user, &area) {
         return Err(ApiError::Forbidden(
-            "You don't have permission to edit prototypes owned by this area".into(),
+            "You don't have permission to edit content owned by this area".into(),
         ));
     }
     Ok(())
 }
 
-/// Name-based area permission check used by non-API call sites
-/// (DG opcode gate, in-game scripts, etc.). Mirrors `can_edit_area`'s
-/// area-permission semantics but skips the API-key admin/write bits
-/// since callers already have a character context. Owner-less areas
-/// are open to any builder.
+/// Load room `room_id` and check the caller may modify it
+/// ([`authorize_existing_area`] on its area).
+pub fn authorize_room(
+    db: &crate::db::Db,
+    user: &AuthenticatedUser,
+    room_id: &uuid::Uuid,
+) -> Result<crate::RoomData, super::error::ApiError> {
+    use super::error::ApiError;
+    let room = db
+        .get_room_data(room_id)?
+        .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", room_id)))?;
+    authorize_existing_area(db, user, room.area_id)?;
+    Ok(room)
+}
+
+/// The one area-edit rule, shared by the API ([`can_edit_area`]), the game
+/// (`script::areas::character_can_edit_area`, Rhai `can_edit_area`) and the
+/// DG opcode gate. Names compare case-insensitively. Owner-less areas are
+/// open to any builder whatever their permission level. Missing areas and
+/// orphan (area-less) content are each caller's call, and all of them
+/// treat both as editable by any builder.
 ///
 /// Note: this does NOT check `is_admin` on the named character. The
 /// DG gate and Rhai-side paths handle admin bypass before calling
@@ -172,6 +258,22 @@ pub fn author_can_edit_area(character_name: &str, area: &AreaData) -> bool {
     }
 }
 
+/// Governance of an area — owner, permission level, trustees, quotas,
+/// deletion — belongs to its owner (or an admin key), not to everyone who
+/// may edit its content. An owner-less area is governed like it's edited.
+pub fn can_govern_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
+    if user.api_key.permissions.admin {
+        return true;
+    }
+    if !user.api_key.permissions.write {
+        return false;
+    }
+    match area.owner.as_deref() {
+        Some(owner) => owner.eq_ignore_ascii_case(&user.api_key.owner_character),
+        None => can_edit_area(user, area),
+    }
+}
+
 /// Check if a user can edit an area based on area permissions
 pub fn can_edit_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
     // Admin keys bypass all permission checks
@@ -184,19 +286,8 @@ pub fn can_edit_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
         return false;
     }
 
-    let character_name = &user.api_key.owner_character;
-
-    match area.permission_level {
-        AreaPermission::AllBuilders => true,
-        AreaPermission::OwnerOnly => area.owner.as_ref() == Some(character_name),
-        AreaPermission::Trusted => {
-            area.owner.as_ref() == Some(character_name)
-                || area
-                    .trusted_builders
-                    .iter()
-                    .any(|b| b.to_lowercase() == character_name.to_lowercase())
-        }
-    }
+    // Same rule the game and DG apply to the key's owner character.
+    author_can_edit_area(&user.api_key.owner_character, area)
 }
 
 #[cfg(test)]
@@ -222,6 +313,7 @@ mod tests {
                     read: true,
                     write,
                     admin,
+                    player_logs: None,
                 },
                 created_at: 0,
                 last_used_at: None,
@@ -295,5 +387,36 @@ mod tests {
         let bob = user_for("bob", true, false);
         // Random UUID that has no area row — historically treated as orphan.
         assert!(authorize_existing_area(&db, &bob, Some(Uuid::new_v4())).is_ok());
+    }
+
+    /// The API applies the same area rule as the game and DG
+    /// (`author_can_edit_area`): owner names compare case-insensitively and
+    /// an owner-less area is open to any builder whatever its level.
+    #[test]
+    fn api_and_game_agree_on_the_area_rule() {
+        let (db, _temp) = open_temp_db("one_rule");
+        let owned = save_area(&db, Some("Alice"), AreaPermission::OwnerOnly);
+        let ownerless = save_area(&db, None, AreaPermission::OwnerOnly);
+        let owned = db.get_area_data(&owned).unwrap().unwrap();
+        let ownerless = db.get_area_data(&ownerless).unwrap().unwrap();
+
+        for (who, area) in [
+            ("alice", &owned),
+            ("ALICE", &owned),
+            ("bob", &owned),
+            ("bob", &ownerless),
+        ] {
+            assert_eq!(
+                can_edit_area(&user_for(who, true, false), area),
+                author_can_edit_area(who, area),
+                "{who} on {:?}",
+                area.owner
+            );
+        }
+        assert!(can_edit_area(&user_for("alice", true, false), &owned));
+        assert!(can_edit_area(&user_for("bob", true, false), &ownerless));
+        assert!(!can_edit_area(&user_for("bob", true, false), &owned));
+        // A read-only key never edits, even where the rule would allow.
+        assert!(!can_edit_area(&user_for("alice", false, false), &owned));
     }
 }

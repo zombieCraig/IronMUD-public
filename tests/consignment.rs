@@ -7,8 +7,9 @@
 //! broker instances, and whether an unsold listing ends up somewhere a player
 //! can still reach it.
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use ironmud::db::Db;
 use ironmud::types::{ConsignmentListing, ItemData, ItemLocation, MobileData};
@@ -80,9 +81,6 @@ fn listing_for(db: &Db, item: &ItemData, seller: &str, broker_vnum: &str, price:
     let mut held = item.clone();
     held.location = ItemLocation::Container(listing.id);
     db.save_item_data(held).expect("move item to limbo");
-    let id = listing.id;
-    db.update_character(seller, |c| c.consignment_ids.push(id))
-        .expect("record on seller");
     listing
 }
 
@@ -147,7 +145,6 @@ fn a_sale_banks_the_price_minus_commission_and_moves_the_item() {
         seller.gold, 0,
         "carried gold is untouched — they were not standing there"
     );
-    assert!(seller.consignment_ids.is_empty(), "the listing is off their books");
 
     let sold = db.get_item_data(&item.id).unwrap().unwrap();
     assert!(
@@ -369,7 +366,6 @@ fn an_expired_listing_lands_in_escrow_rather_than_being_destroyed() {
         "the listing is gone"
     );
     let seller = db.get_character_data("seller").unwrap().unwrap();
-    assert!(seller.consignment_ids.is_empty());
     assert_eq!(seller.escrow_ids.len(), 1, "and it became an escrow row");
 
     let escrow = db.get_escrow(&seller.escrow_ids[0]).unwrap().unwrap();
@@ -378,6 +374,27 @@ fn an_expired_listing_lands_in_escrow_rather_than_being_destroyed() {
         db.get_item_data(&item.id).unwrap().is_some(),
         "the item still exists — expiry is not a deletion"
     );
+}
+
+/// Expiry records the escrow on the seller session-first: a DB-only write
+/// was lost the moment an online seller's session flushed.
+#[test]
+fn an_online_sellers_escrow_survives_the_session_flush() {
+    let (db, _t) = temp_db("expiry_online");
+    character(&db, "seller", 0);
+    broker(&db, "broker:1", 10);
+    let item = item_in_inventory(&db, "seller", "Sword", 400);
+    let mut listing = listing_for(&db, &item, "seller", "broker:1", 400);
+    listing.expires_at = now() - 1;
+    db.save_consignment(&listing).expect("backdate");
+
+    let conns = connections();
+    online(&conns, &db, &["seller"]);
+    ironmud::consignment::process_expired_consignments(&db, &conns, now()).expect("expiry runs");
+    flush_sessions(&conns, &db);
+
+    let seller = db.get_character_data("seller").unwrap().unwrap();
+    assert_eq!(seller.escrow_ids.len(), 1, "the escrow id outlived the flush");
 }
 
 /// `consignments take <n>` parses its subcommand with `starts_with`, which is
@@ -429,7 +446,7 @@ fn online(conns: &ironmud::SharedConnections, db: &Db, names: &[&str]) {
         let (tx_input, rx_in) = tokio::sync::mpsc::channel::<ironmud::InputEvent>(1);
         let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch);
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         std::mem::forget((rx, rx_in));
     }
 }
@@ -437,7 +454,7 @@ fn online(conns: &ironmud::SharedConnections, db: &Db, names: &[&str]) {
 /// Copy every online session back to the database, exactly as the thirst,
 /// hunger and regen ticks do about once a minute.
 fn flush_sessions(conns: &ironmud::SharedConnections, db: &Db) {
-    let guard = conns.lock().unwrap();
+    let guard = conns.lock();
     for s in guard.values() {
         if let Some(ref c) = s.character {
             db.save_character_data(c.clone()).expect("flush");
@@ -486,7 +503,7 @@ fn a_sale_between_two_online_players_actually_moves_the_money() {
     // The session copies are what the rest of the game reads, so they are what
     // the assertions have to look at.
     let session_of = |name: &str| -> ironmud::CharacterData {
-        let guard = conns.lock().unwrap();
+        let guard = conns.lock();
         guard
             .values()
             .find_map(|s| {
@@ -621,7 +638,7 @@ fn the_shelf_continues_the_shop_page_numbering() {
 
     let sink = captured.clone();
     engine.register_fn("send_client_message", move |_id: String, msg: String| {
-        sink.lock().unwrap().push(msg);
+        sink.lock().push(msg);
     });
     engine.register_fn("broadcast_to_room", |_r: String, _m: String, _e: String| {});
     engine.register_fn("try_parse_int", |s: String| -> rhai::Dynamic {
@@ -682,7 +699,7 @@ fn the_shelf_continues_the_shop_page_numbering() {
     assert!(
         db.get_consignment(&second_listing.id).unwrap().is_none(),
         "number 5 bought the second row: {:?}",
-        captured.lock().unwrap()
+        captured.lock()
     );
     let bought = db.get_item_data(&second.id).unwrap().unwrap();
     assert!(
@@ -729,4 +746,58 @@ fn the_shelf_is_ordered_oldest_first() {
 
     let order: Vec<String> = shelf.into_iter().map(|d| d.cast::<String>()).collect();
     assert_eq!(order, names, "oldest listing first, every time");
+}
+
+/// Regression: the listing row used to be deleted LAST, so concurrent buyers
+/// were all charged and the seller paid once per buyer. The row is now the
+/// claim: exactly one buyer wins, the rest are refused and keep their gold.
+#[test]
+fn concurrent_buyers_cannot_both_buy_one_listing() {
+    let (db, _t) = temp_db("race");
+    let conns = connections();
+    let state = ironmud::World::minimal_shared((*db).clone(), conns.clone());
+
+    const BUYERS: usize = 8;
+    character(&db, "seller", 0);
+    for i in 0..BUYERS {
+        character(&db, &format!("buyer{i}"), 1000);
+    }
+    let _instance = broker(&db, "broker:1", 10);
+    let item = item_in_inventory(&db, "seller", "Sword", 400);
+    let listing = listing_for(&db, &item, "seller", "broker:1", 400);
+
+    let mut engine = rhai::Engine::new();
+    ironmud::script::consignment::register(&mut engine, db.clone(), conns.clone(), state.clone());
+    let engine = Arc::new(engine);
+    let ast = Arc::new(
+        engine
+            .compile("fn attempt(who, id) { buy_consignment(who, id) }")
+            .expect("compile"),
+    );
+
+    let barrier = Arc::new(std::sync::Barrier::new(BUYERS));
+    let handles: Vec<_> = (0..BUYERS)
+        .map(|i| {
+            let (engine, ast, barrier) = (engine.clone(), ast.clone(), barrier.clone());
+            let id = listing.id.to_string();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let out: rhai::Map = engine
+                    .call_fn(&mut rhai::Scope::new(), &ast, "attempt", (format!("buyer{i}"), id))
+                    .expect("callable");
+                out["ok"].clone().cast::<bool>()
+            })
+        })
+        .collect();
+    let wins = handles.into_iter().map(|h| h.join().unwrap()).filter(|ok| *ok).count();
+    assert_eq!(wins, 1, "exactly one buyer gets the item");
+
+    let total_gold: i32 = (0..BUYERS)
+        .map(|i| db.get_character_data(&format!("buyer{i}")).unwrap().unwrap().gold)
+        .sum();
+    assert_eq!(total_gold, (BUYERS as i32) * 1000 - 400, "only the winner paid");
+
+    let seller = db.get_character_data("seller").unwrap().unwrap();
+    assert_eq!(seller.bank_gold, 360, "seller paid once");
+    assert!(db.get_consignment(&listing.id).unwrap().is_none());
 }

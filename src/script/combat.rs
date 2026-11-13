@@ -272,7 +272,7 @@ mod luck_tests {
 }
 
 /// Register combat-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConnections, state: crate::SharedState) {
     // ========== Type Registrations ==========
 
     // Register CombatTargetType enum
@@ -2570,7 +2570,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 weapon_skill: None,
                 on_hit_effects: Vec::new(),
                 // Container fields - corpses are containers
-                container_contents: vec![],
                 container_max_items: 1000,
                 container_max_weight: 10000,
                 container_closed: false,
@@ -2674,27 +2673,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 return false;
             }
 
-            let mut corpse = match cloned_db.get_item_data(&corpse_uuid) {
-                Ok(Some(c)) => c,
-                _ => return false,
-            };
+            if !matches!(cloned_db.get_item_data(&corpse_uuid), Ok(Some(_))) {
+                return false;
+            }
 
             // Move each item from inventory to corpse container (source of truth is ItemLocation::Inventory)
             if let Ok(inventory_items) = cloned_db.get_items_in_inventory(&char_name) {
                 for item in inventory_items {
-                    let item_id = item.id;
                     let mut updated_item = item;
                     updated_item.location = ItemLocation::Container(corpse_uuid);
                     if let Err(_) = cloned_db.save_item_data(updated_item) {
                         continue;
                     }
-                    corpse.container_contents.push(item_id);
                 }
-            }
-
-            // Save corpse with updated contents
-            if let Err(_) = cloned_db.save_item_data(corpse) {
-                return false;
             }
 
             true
@@ -2718,25 +2709,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 Err(_) => return false,
             };
 
-            let mut corpse = match cloned_db.get_item_data(&corpse_uuid) {
-                Ok(Some(c)) => c,
-                _ => return false,
-            };
+            if !matches!(cloned_db.get_item_data(&corpse_uuid), Ok(Some(_))) {
+                return false;
+            }
 
             // Move each equipped item to corpse container
             for item in equipped_items {
-                let item_id = item.id;
                 let mut updated_item = item;
                 updated_item.location = ItemLocation::Container(corpse_uuid);
                 if let Err(_) = cloned_db.save_item_data(updated_item) {
                     continue;
                 }
-                corpse.container_contents.push(item_id);
-            }
-
-            // Save corpse with updated contents
-            if let Err(_) = cloned_db.save_item_data(corpse) {
-                return false;
             }
 
             true
@@ -2759,41 +2742,36 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 Err(_) => return false,
             };
 
-            let mut corpse = match cloned_db.get_item_data(&corpse_uuid) {
-                Ok(Some(c)) => c,
-                _ => return false,
-            };
+            if !matches!(cloned_db.get_item_data(&corpse_uuid), Ok(Some(_))) {
+                return false;
+            }
 
             // Transfer inventory items
             if let Ok(inventory_items) = cloned_db.get_items_in_mobile_inventory(&mobile_uuid) {
                 for item in inventory_items {
-                    let item_id = item.id;
                     let mut updated_item = item;
                     updated_item.flags.death_only = false;
                     updated_item.location = ItemLocation::Container(corpse_uuid);
                     if cloned_db.save_item_data(updated_item).is_err() {
                         continue;
                     }
-                    corpse.container_contents.push(item_id);
                 }
             }
 
             // Transfer equipped items
             if let Ok(equipped_items) = cloned_db.get_items_equipped_on_mobile(&mobile_uuid) {
                 for item in equipped_items {
-                    let item_id = item.id;
                     let mut updated_item = item;
                     updated_item.flags.death_only = false;
                     updated_item.location = ItemLocation::Container(corpse_uuid);
                     if cloned_db.save_item_data(updated_item).is_err() {
                         continue;
                     }
-                    corpse.container_contents.push(item_id);
                 }
             }
 
-            // Save corpse with updated contents
-            cloned_db.save_item_data(corpse).is_ok()
+            // Contents are the items located in the corpse; nothing to save on it.
+            true
         },
     );
 
@@ -2806,17 +2784,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             Err(_) => return false,
         };
 
-        let mut corpse = match cloned_db.get_item_data(&corpse_uuid) {
-            Ok(Some(c)) => c,
-            _ => return false,
-        };
-
         // Single source of truth for the drop math (shared with the
         // combat-tick death path in process_mobile_death).
         let amount = crate::corpse::mobile_gold_with_variance(gold);
 
-        corpse.flags.corpse_gold = amount;
-        cloned_db.save_item_data(corpse).is_ok()
+        matches!(
+            cloned_db.update_item(&corpse_uuid, |c| c.flags.corpse_gold = amount),
+            Ok(Some(_))
+        )
     });
 
     // transfer_gold_to_corpse(char_name, corpse_id) -> bool
@@ -2871,31 +2846,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     });
 
     // take_corpse_gold(corpse_id, char_name) -> i64
-    // Takes all gold from corpse and gives to character, returns amount taken
+    // Takes all gold from corpse and gives to character, returns amount taken.
+    //
+    // Claim-first: the corpse's gold is zeroed with a CAS and only the value
+    // we actually zeroed is credited, so two looters can't both be paid. The
+    // credit goes through the purse chokepoint (session-first, high-water,
+    // gold.earned) rather than writing the DB copy of an online player.
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn("take_corpse_gold", move |corpse_id: String, char_name: String| -> i64 {
-        let corpse_uuid = match Uuid::parse_str(&corpse_id) {
-            Ok(u) => u,
-            Err(_) => return 0,
-        };
-
-        let gold = if let Ok(Some(mut corpse)) = cloned_db.get_item_data(&corpse_uuid) {
-            let g = corpse.flags.corpse_gold;
-            corpse.flags.corpse_gold = 0;
-            let _ = cloned_db.save_item_data(corpse);
-            g
-        } else {
+        let Ok(corpse_uuid) = Uuid::parse_str(&corpse_id) else {
             return 0;
         };
-
-        if gold > 0 {
-            if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
-                char.gold += gold as i32; // Cast i64 to i32
-                let _ = cloned_db.save_character_data(char);
-            }
+        let mut claimed: i64 = 0;
+        let updated = cloned_db.update_item(&corpse_uuid, |corpse| {
+            // Re-run on CAS retry: always reflect the latest record.
+            claimed = corpse.flags.corpse_gold;
+            corpse.flags.corpse_gold = 0;
+        });
+        if !matches!(updated, Ok(Some(_))) || claimed <= 0 {
+            return 0;
         }
-
-        gold
+        if crate::purse::add_gold(&cloned_db, &cloned_conns, &cloned_state, &char_name, claimed) {
+            claimed
+        } else {
+            // Credit refused (unknown character, or past the purse cap): put
+            // the gold back rather than destroying it.
+            let _ = cloned_db.update_item(&corpse_uuid, |corpse| {
+                corpse.flags.corpse_gold = corpse.flags.corpse_gold.saturating_add(claimed);
+            });
+            0
+        }
     });
 
     // ========== Death Processing Functions ==========
@@ -3045,10 +3027,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             Err(_) => return false,
         };
 
-        if let Ok(Some(corpse)) = cloned_db.get_item_data(&corpse_uuid) {
-            // Delete all items in the corpse
-            for item_id in &corpse.container_contents {
-                let _ = cloned_db.delete_item(item_id);
+        if let Ok(Some(_corpse)) = cloned_db.get_item_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not what was looted).
+            for item in cloned_db.get_items_in_container(&corpse_uuid).unwrap_or_default() {
+                let _ = cloned_db.delete_item(&item.id);
             }
 
             // Delete the corpse itself
@@ -3308,28 +3290,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // ========== Wound Gameplay Effect Functions ==========
 
-    // get_effective_max_hp(char_name) -> i64
-    // Returns max HP after torso wound penalty
-    let cloned_db = db.clone();
-    engine.register_fn("get_effective_max_hp", move |char_name: String| -> i64 {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(character)) => {
-                let torso_penalty = character
-                    .wounds
-                    .iter()
-                    .filter(|w| w.body_part == BodyPart::Torso)
-                    .map(|w| w.level.penalty())
-                    .max()
-                    .unwrap_or(0);
-                if torso_penalty > 0 {
-                    (character.max_hp as i64 * (100 - torso_penalty) as i64 / 100).max(1)
-                } else {
-                    character.max_hp as i64
-                }
-            }
-            _ => 0,
-        }
-    });
+    // get_effective_max_hp lives in characters.rs (buffs + torso penalty).
 
     // get_arm_wound_penalty(char_name, side) -> i64
     // Returns max penalty from arm+hand wounds on "left" or "right" side

@@ -46,7 +46,8 @@ fn now_secs() -> i64 {
 /// needs the same "message a player you only have the name of" primitive for
 /// its tier-shift announcement.
 pub fn send_to_player(connections: &SharedConnections, name: &str, message: &str) {
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for (_, session) in conns.iter() {
             if let Some(ref ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(name) {
@@ -59,7 +60,8 @@ pub fn send_to_player(connections: &SharedConnections, name: &str, message: &str
 }
 
 fn sync_to_session(connections: &SharedConnections, ch: &CharacterData) {
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for (_, session) in conns.iter_mut() {
             if let Some(ref existing) = session.character {
                 if existing.name.eq_ignore_ascii_case(&ch.name) {
@@ -103,7 +105,8 @@ pub fn apply_to_character<F>(
 where
     F: FnOnce(&mut CharacterData) -> bool,
 {
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for (_, session) in conns.iter_mut() {
             if let Some(ref mut ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(player_name) {
@@ -154,10 +157,7 @@ pub fn award_core(
     let key_lc = key.to_lowercase();
 
     let def: AchievementDef = {
-        let world = match state.lock() {
-            Ok(w) => w,
-            Err(_) => return false,
-        };
+        let world = state.lock();
         match world.achievement_definitions.get(&key_lc) {
             Some(d) => d.clone(),
             None => {
@@ -345,7 +345,7 @@ fn deliver_item_reward(db: &Db, connections: &SharedConnections, player_name: &s
 /// no definition is loaded, so callers can print the raw key rather than
 /// nothing.
 pub fn describe(state: &SharedState, key: &str) -> Option<String> {
-    let world = state.lock().ok()?;
+    let world = state.lock();
     world
         .achievement_definitions
         .get(&key.to_lowercase())
@@ -397,8 +397,9 @@ fn award_counter_thresholds(
     key_lc: &str,
     value: u32,
 ) {
-    let candidates: Vec<(String, u32)> = match state.lock() {
-        Ok(world) => world
+    let candidates: Vec<(String, u32)> = {
+        let world = state.lock();
+        world
             .achievement_index_by_counter
             .get(key_lc)
             .cloned()
@@ -413,8 +414,7 @@ fn award_counter_thresholds(
                     }
                 })
             })
-            .collect(),
-        Err(_) => return,
+            .collect()
     };
 
     for (key, threshold) in candidates {
@@ -527,8 +527,9 @@ pub fn notify_event_core(
         return;
     }
 
-    let candidate_keys: Vec<String> = match state.lock() {
-        Ok(world) => world
+    let candidate_keys: Vec<String> = {
+        let world = state.lock();
+        world
             .achievement_definitions
             .iter()
             .filter_map(|(k, d)| match (&d.criterion, event_kind) {
@@ -560,8 +561,7 @@ pub fn notify_event_core(
                 }
                 _ => None,
             })
-            .collect(),
-        Err(_) => return,
+            .collect()
     };
 
     for key in candidate_keys {
@@ -773,10 +773,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let state = state.clone();
         engine.register_fn("get_achievement_def", move |key: String| -> Dynamic {
-            let world = match state.lock() {
-                Ok(w) => w,
-                Err(_) => return Dynamic::UNIT,
-            };
+            let world = state.lock();
             match world.achievement_definitions.get(&key.to_lowercase()) {
                 Some(def) => Dynamic::from(achievement_to_map(def)),
                 None => Dynamic::UNIT,
@@ -793,10 +790,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(c)) => c,
                 _ => return Array::new(),
             };
-            let world = match state.lock() {
-                Ok(w) => w,
-                Err(_) => return Array::new(),
-            };
+            let world = state.lock();
 
             let mut out: Vec<Map> = Vec::new();
             for (key, def) in &world.achievement_definitions {
@@ -849,10 +843,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Some(k) => k,
                 None => return String::new(),
             };
-            let world = match state.lock() {
-                Ok(w) => w,
-                Err(_) => return String::new(),
-            };
+            let world = state.lock();
             world
                 .achievement_definitions
                 .get(&key)
@@ -901,10 +892,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let state = state.clone();
         engine.register_fn("list_achievement_defs", move || -> Array {
-            let world = match state.lock() {
-                Ok(w) => w,
-                Err(_) => return Array::new(),
-            };
+            let world = state.lock();
             let mut out: Vec<Map> = Vec::new();
             for def in world.achievement_definitions.values() {
                 out.push(achievement_to_map(def));
@@ -1047,6 +1035,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let db = db.clone();
         let state = state.clone();
         engine.register_fn("set_achievement_reward_gold", move |key: String, gold: i64| -> String {
+            if gold > 0 {
+                if let Err(why) = crate::purse::check_reward_gold(gold) {
+                    return why;
+                }
+            }
             update_def(&db, &state, &key, |d| {
                 d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) }
             })
@@ -1222,14 +1215,14 @@ where
 /// counter notify path) see the update without requiring a restart. Also
 /// refreshes the counter index from scratch — the dataset is small.
 pub fn sync_world_after_save(state: &SharedState, def: AchievementDef) {
-    let Ok(mut world) = state.lock() else { return };
+    let mut world = state.lock();
     let key = def.key.to_lowercase();
     world.achievement_definitions.insert(key, def);
     world.achievement_index_by_counter = rebuild_counter_index(&world.achievement_definitions);
 }
 
 pub fn sync_world_after_delete(state: &SharedState, key: &str) {
-    let Ok(mut world) = state.lock() else { return };
+    let mut world = state.lock();
     let key_lc = key.to_lowercase();
     world.achievement_definitions.remove(&key_lc);
     world.achievement_index_by_counter = rebuild_counter_index(&world.achievement_definitions);

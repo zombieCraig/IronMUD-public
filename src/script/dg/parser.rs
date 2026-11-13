@@ -82,9 +82,18 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Deepest `if`/`while`/`switch` nesting a script may use. Stock tbamud
+/// nests at most ~6 levels; the cap keeps a hostile script from blowing
+/// the stack in the recursive parser and evaluator.
+pub const MAX_NEST_DEPTH: usize = 32;
+
 pub fn parse(body: &str) -> Result<Block, ParseError> {
     let lines: Vec<&str> = body.lines().collect();
-    let mut p = Parser { lines: &lines, idx: 0 };
+    let mut p = Parser {
+        lines: &lines,
+        idx: 0,
+        depth: 0,
+    };
     let block = p.parse_block(BlockEnd::Eof)?;
     Ok(block)
 }
@@ -106,6 +115,8 @@ enum BlockEnd {
 struct Parser<'a> {
     lines: &'a [&'a str],
     idx: usize,
+    /// Current block nesting depth, bounded by [`MAX_NEST_DEPTH`].
+    depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -115,6 +126,20 @@ impl<'a> Parser<'a> {
 
     fn line_no(&self) -> usize {
         self.idx + 1
+    }
+
+    /// Parse a nested block construct, enforcing [`MAX_NEST_DEPTH`].
+    fn nested(&mut self, f: fn(&mut Self) -> Result<Stmt, ParseError>) -> Result<Stmt, ParseError> {
+        if self.depth >= MAX_NEST_DEPTH {
+            return Err(ParseError {
+                line: self.line_no(),
+                msg: format!("blocks nested deeper than {MAX_NEST_DEPTH} levels"),
+            });
+        }
+        self.depth += 1;
+        let r = f(self);
+        self.depth -= 1;
+        r
     }
 
     fn parse_block(&mut self, end: BlockEnd) -> Result<Block, ParseError> {
@@ -169,9 +194,9 @@ impl<'a> Parser<'a> {
 
             // Statement dispatch.
             match lk.as_str() {
-                "if" => out.push(self.parse_if()?),
-                "while" => out.push(self.parse_while()?),
-                "switch" => out.push(self.parse_switch()?),
+                "if" => out.push(self.nested(Self::parse_if)?),
+                "while" => out.push(self.nested(Self::parse_while)?),
+                "switch" => out.push(self.nested(Self::parse_switch)?),
                 "set" => out.push(self.parse_set()?),
                 "eval" => out.push(self.parse_eval()?),
                 "halt" => {

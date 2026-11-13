@@ -38,7 +38,10 @@ fn run_command(args, connection_id) {
     }
 
     // Attach: move attachment into weapon container
-    move_item_to_container(attachment.id, weapon.id);
+    if !move_item_to_container(attachment.id, weapon.id) {
+        send_client_message(connection_id, "You can't fit " + attachment.name + " to " + weapon.name + ".");
+        return;
+    }
     send_client_message(connection_id, "You attach " + attachment.name + " to " + weapon.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " attaches something to " + weapon.name + ".", char.name);
 }

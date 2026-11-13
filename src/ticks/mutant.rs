@@ -21,9 +21,9 @@ pub async fn run_mutation_tick(db: db::Db, connections: SharedConnections, state
         crate::ticks::heartbeat::beat("mutation");
         // Clone the definitions out of a short World lock; never hold the
         // World and Connections locks together.
-        let defs = match state.lock() {
-            Ok(w) => w.mutation_definitions.clone(),
-            Err(_) => continue,
+        let defs = {
+            let w = state.lock();
+            w.mutation_definitions.clone()
         };
         if let Err(e) = process_mutation_tick(&db, &connections, &defs) {
             error!("Mutation tick error: {}", e);

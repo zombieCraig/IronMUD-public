@@ -47,6 +47,8 @@ The prefix is used for room vnums (e.g., `forest:entrance`).
 | `untrust` | `aedit <id> untrust <name>` | Remove trusted builder |
 | `trustees` | `aedit <id> trustees` | List trusted builders |
 
+`owner`, `permission`, `trust`, `untrust`, `caps set/clear`, and `adelete` are **governance**: only the area's owner or an admin can use them on an owned area. Trusted builders, and everyone in an `all_builders` area, can edit the area's content but not who controls it. An owner-less area can be governed by any builder who can edit it. The same rule applies over the REST API and MCP, where admin keys pass.
+
 ### Combat Zone & Flags
 
 | Subcommand | Usage | Description |
@@ -144,7 +146,11 @@ Migrants need somewhere to live. Mark rooms as `liveable` and set their `capacit
 |-------|--------------|
 | `owner_only` | Only the area owner |
 | `trusted` | Owner and trusted builders |
-| `all_builders` | Any builder (default) |
+| `all_builders` | Any builder (default for `acreate`) |
+
+Areas created through the REST API / MCP default to `owner_only`, owned by the API key's character.
+
+One rule covers the editors, the REST API / MCP and DG scripts: owner and trustee names are case-insensitive, an area with **no owner** is open to any builder whatever its level, and content with no area (or whose area was deleted) is editable by any builder. Admins pass everywhere. Besides the editors, `areset` and the spawn commands (`mspawn`, `ospawn`, `gspawn`) need edit rights on the area: the area being reset, or the area of the room you are standing in.
 
 ```
 > aedit forest permission trusted

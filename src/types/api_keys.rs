@@ -15,6 +15,18 @@ pub struct ApiPermissions {
     /// Bypass area permission checks
     #[serde(default)]
     pub admin: bool,
+    /// Read player activity logs (everything players typed, including
+    /// tells). Needs `admin` too. `None` on keys created before this scope
+    /// existed: they keep the access their `admin` flag gave them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player_logs: Option<bool>,
+}
+
+impl ApiPermissions {
+    /// Whether this key may read player logs.
+    pub fn can_read_player_logs(&self) -> bool {
+        self.admin && self.player_logs.unwrap_or(true)
+    }
 }
 
 /// API key for REST API authentication

@@ -155,7 +155,7 @@ fn elevate_trigger(host_kind, host_id, rest, connection_id) {
         send_client_message(connection_id, "Usage: trigger dg elevate <index> [on|off]  (admin only)");
         return;
     }
-    let actor = get_character_data(connection_id);
+    let actor = get_player_character(connection_id);
     if actor == () || !actor.is_admin {
         send_client_message(connection_id, "Only admins can elevate DG triggers.");
         return;
@@ -373,7 +373,9 @@ fn proto_retype(rest, connection_id) {
         flags += rest[i];
         i += 1;
     }
-    let result = dg_proto_set_flags(vnum, flags);
+    let actor = get_player_character(connection_id);
+    if actor == () { return; }
+    let result = dg_proto_set_flags(vnum, flags, actor.name);
     if result["ok"] {
         let n = result["refreshed"];
         send_client_message(connection_id,
@@ -396,13 +398,17 @@ fn proto_edit(rest, connection_id) {
 
 fn proto_delete(rest, connection_id) {
     if rest.len() < 1 { send_client_message(connection_id, "Usage: trigger dg proto delete <vnum>"); return; }
-    let actor = get_character_data(connection_id);
+    let actor = get_player_character(connection_id);
     if actor == () || !actor.is_admin {
         send_client_message(connection_id, "Only admins can delete DG prototypes.");
         return;
     }
     let vnum = rest[0];
-    let orphaned = dg_proto_delete(vnum);
+    let orphaned = dg_proto_delete(vnum, actor.name);
+    if orphaned == -2 {
+        send_client_message(connection_id, "You can't edit every area that proto '" + vnum + "' is attached in.");
+        return;
+    }
     if orphaned < 0 {
         send_client_message(connection_id, "No proto with vnum '" + vnum + "'.");
         return;

@@ -13,7 +13,7 @@ use rhai::{Dynamic, Engine};
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: crate::SharedState) {
     // ========== Shared bank ==========
 
     // account_shared_bank_gold(account_id) -> i64
@@ -48,10 +48,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // transfer_pocket_to_shared_bank(char_name, amount) -> bool
     //   Debits the character's pocket gold; credits the account's shared pile.
-    //   Refuses non-positive amounts and insufficient pocket gold. Syncs the
-    //   live session's pocket gold mirror after a successful save.
+    //   Refuses non-positive amounts and insufficient pocket gold.
+    //
+    //   Both legs are atomic on their own: the pocket goes through `purse`
+    //   (session-first; refuses an overdraft) and the shared pile through a
+    //   CAS in `add_shared_bank_gold`. Debit first, refund if the credit fails.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "transfer_pocket_to_shared_bank",
         move |char_name: String, amount: i64| -> bool {
@@ -59,52 +63,31 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return false;
             }
             let lower = char_name.to_lowercase();
-            let mut character = match cloned_db.get_character_data(&lower) {
-                Ok(Some(c)) => c,
-                _ => return false,
+            let Some(account_id) = find_account_id(&cloned_db, &lower) else {
+                return false;
             };
-            if (character.gold as i64) < amount {
+            if !crate::purse::add_gold(&cloned_db, &cloned_conns, &cloned_state, &lower, -amount) {
                 return false;
             }
-            let account_id = match find_account_id(&cloned_db, &lower) {
-                Some(id) => id,
-                None => return false,
-            };
-            // Debit pocket first, then credit account. If the credit fails,
-            // we leave the character debited rather than retry — matches the
-            // existing `transfer_to_bank` shape (no two-phase commit).
-            character.gold -= amount as i32;
-            let new_pocket = character.gold;
-            if cloned_db.save_character_data(character).is_err() {
-                return false;
+            if matches!(cloned_db.add_shared_bank_gold(&account_id, amount), Ok(Some(_))) {
+                return true;
             }
-            let credit_ok = matches!(cloned_db.add_shared_bank_gold(&account_id, amount), Ok(Some(_)));
-            if !credit_ok {
-                tracing::error!(
-                    "transfer_pocket_to_shared_bank: pocket debited but shared credit failed for char={} acct={}",
-                    char_name,
-                    account_id
-                );
-                return false;
-            }
-            // Sync live session mirror.
-            if let Ok(mut conns) = cloned_conns.lock() {
-                for (_, session) in conns.iter_mut() {
-                    if let Some(ref mut sc) = session.character {
-                        if sc.name.to_lowercase() == lower {
-                            sc.gold = new_pocket;
-                            break;
-                        }
-                    }
-                }
-            }
-            true
+            tracing::error!(
+                "transfer_pocket_to_shared_bank: shared credit failed for char={} acct={}; refunding pocket",
+                char_name,
+                account_id
+            );
+            let _ = crate::purse::add_gold(&cloned_db, &cloned_conns, &cloned_state, &lower, amount);
+            false
         },
     );
 
     // transfer_shared_bank_to_pocket(char_name, amount) -> bool
+    //   Debits the shared pile (CAS; refuses an overdraft), then credits the
+    //   pocket through `purse`. Refunds the shared pile if the credit fails.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "transfer_shared_bank_to_pocket",
         move |char_name: String, amount: i64| -> bool {
@@ -112,41 +95,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return false;
             }
             let lower = char_name.to_lowercase();
-            let account_id = match find_account_id(&cloned_db, &lower) {
-                Some(id) => id,
-                None => return false,
+            let Some(account_id) = find_account_id(&cloned_db, &lower) else {
+                return false;
             };
-            // Try to debit the shared pile first; if it fails (insufficient
-            // funds), the character is untouched.
-            let debit_ok = matches!(cloned_db.add_shared_bank_gold(&account_id, -amount), Ok(Some(_)));
-            if !debit_ok {
+            if !matches!(cloned_db.add_shared_bank_gold(&account_id, -amount), Ok(Some(_))) {
                 return false;
             }
-            let mut character = match cloned_db.get_character_data(&lower) {
-                Ok(Some(c)) => c,
-                _ => {
-                    // Refund the shared pile to keep totals honest.
-                    let _ = cloned_db.add_shared_bank_gold(&account_id, amount);
-                    return false;
-                }
-            };
-            character.gold = character.gold.saturating_add(amount as i32);
-            let new_pocket = character.gold;
-            if cloned_db.save_character_data(character).is_err() {
-                let _ = cloned_db.add_shared_bank_gold(&account_id, amount);
-                return false;
+            if crate::purse::add_gold(&cloned_db, &cloned_conns, &cloned_state, &lower, amount) {
+                return true;
             }
-            if let Ok(mut conns) = cloned_conns.lock() {
-                for (_, session) in conns.iter_mut() {
-                    if let Some(ref mut sc) = session.character {
-                        if sc.name.to_lowercase() == lower {
-                            sc.gold = new_pocket;
-                            break;
-                        }
-                    }
-                }
-            }
-            true
+            let _ = cloned_db.add_shared_bank_gold(&account_id, amount);
+            false
         },
     );
 
@@ -168,10 +127,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // Lock-and-snapshot pattern: read everything we need from the
             // session under one short lock, then drop before touching the db.
             let snap = {
-                let conns = match cloned_conns.lock() {
-                    Ok(g) => g,
-                    Err(_) => return false,
-                };
+                let conns = cloned_conns.lock();
                 let session = match conns.get(&conn_uuid) {
                     Some(s) => s,
                     None => return false,
@@ -291,7 +247,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return true;
             }
             let d = &account.character_defaults;
-            if let Ok(mut conns) = cloned_conns.lock() {
+            {
+                let mut conns = cloned_conns.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.colors_enabled = d.colors_enabled;
                     session.mxp_enabled = d.mxp_enabled;

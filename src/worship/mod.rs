@@ -42,7 +42,7 @@ pub fn process_worship_tick(db: &Db, connections: &SharedConnections, state: &Sh
     // Snapshot names under the lock, then release it — the capability fns
     // called during escalation take the connections lock themselves.
     let worshipers: Vec<String> = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns
             .values()
             .filter_map(|s| s.character.as_ref())
@@ -162,7 +162,7 @@ fn fire_on_smite(
 }
 
 fn connection_id_for(connections: &SharedConnections, char_name: &str) -> String {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (id, session) in conns.iter() {
         if let Some(ref ch) = session.character {
             if ch.name.eq_ignore_ascii_case(char_name) {
@@ -174,7 +174,7 @@ fn connection_id_for(connections: &SharedConnections, char_name: &str) -> String
 }
 
 fn snapshot_online(connections: &SharedConnections, char_name: &str) -> Option<crate::CharacterData> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for session in conns.values() {
         if let Some(ref ch) = session.character {
             if ch.name.eq_ignore_ascii_case(char_name) {
@@ -189,8 +189,9 @@ fn snapshot_online(connections: &SharedConnections, char_name: &str) -> Option<c
 mod tests {
     use super::*;
     use crate::types::{DeityConfig, EffectType, GameTime, MobileData, WorshipState};
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn open_temp() -> (Db, tempfile::TempDir) {
         let temp = tempfile::tempdir().expect("tempdir");

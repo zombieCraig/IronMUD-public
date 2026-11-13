@@ -72,7 +72,7 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state
 
             // Find all awake players in this room (sleeping players don't see periodic triggers)
             let players_in_room: Vec<_> = {
-                let conns = connections.lock().unwrap();
+                let conns = connections.lock();
                 conns
                     .iter()
                     .filter_map(|(conn_id, session)| {
@@ -122,7 +122,7 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state
 
             // Execute trigger for each player in the room
             let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match ironmud::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(content) => content,
                 Err(e) => {
                     debug!("Periodic trigger script not found: {} - {}", script_path, e);
@@ -131,7 +131,7 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state
             };
 
             // Create a minimal Rhai engine for trigger execution
-            let mut trigger_engine = rhai::Engine::new();
+            let mut trigger_engine = ironmud::script::trigger_sandbox::sandboxed_engine();
 
             // Register basic send function for periodic triggers
             for (conn_id, sender) in &players_in_room {
@@ -153,7 +153,7 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state
                 "broadcast_to_room",
                 move |_rid: String, message: String, _exclude: String| {
                     // Broadcast to all in room
-                    let conns = conns_clone.lock().unwrap();
+                    let conns = conns_clone.lock();
                     for (_, session) in conns.iter() {
                         if let Some(ref char) = session.character {
                             if char.current_room_id == room_id {
@@ -184,12 +184,14 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state
                         let mut context = rhai::Map::new();
                         context.insert("trigger_type".into(), "periodic".into());
 
-                        match trigger_engine.call_fn::<rhai::Dynamic>(
-                            &mut scope,
-                            &ast,
-                            "run_trigger",
-                            (room_id_str.clone(), conn_id_str.clone(), context.clone()),
-                        ) {
+                        match ironmud::script::trigger_sandbox::guard_panic(|| {
+                            trigger_engine.call_fn::<rhai::Dynamic>(
+                                &mut scope,
+                                &ast,
+                                "run_trigger",
+                                (room_id_str.clone(), conn_id_str.clone(), context.clone()),
+                            )
+                        }) {
                             Ok(_) => {
                                 debug!(
                                     "Periodic trigger {} executed for player in room {}",
@@ -260,11 +262,8 @@ fn process_mobile_idle_triggers(
 
     // Build a map of room_id -> list of awake players for rooms with logged-in characters
     // Sleeping players don't see mobile idle actions (emotes, says, etc.)
-    let rooms_with_players: std::collections::HashMap<
-        uuid::Uuid,
-        Vec<(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)>,
-    > = {
-        let conns = connections.lock().unwrap();
+    let rooms_with_players: std::collections::HashMap<uuid::Uuid, Vec<(uuid::Uuid, ironmud::session::ClientSender)>> = {
+        let conns = connections.lock();
         let mut map: std::collections::HashMap<uuid::Uuid, Vec<_>> = std::collections::HashMap::new();
         for (conn_id, session) in conns.iter() {
             if let Some(ref char) = session.character {
@@ -372,11 +371,8 @@ fn process_mobile_always_triggers(
     let all_mobiles = db.list_all_mobiles()?;
 
     // Build a map of rooms with awake players (for template broadcasts)
-    let rooms_with_players: std::collections::HashMap<
-        uuid::Uuid,
-        Vec<(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)>,
-    > = {
-        let conns = connections.lock().unwrap();
+    let rooms_with_players: std::collections::HashMap<uuid::Uuid, Vec<(uuid::Uuid, ironmud::session::ClientSender)>> = {
+        let conns = connections.lock();
         let mut map: std::collections::HashMap<uuid::Uuid, Vec<_>> = std::collections::HashMap::new();
         for (conn_id, session) in conns.iter() {
             if let Some(ref char) = session.character {
@@ -481,7 +477,7 @@ fn execute_mobile_idle_trigger(
     mobile_room_id: Option<uuid::Uuid>,
     trigger: &MobileTrigger,
     mobile: &MobileData,
-    players: &[(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)],
+    players: &[(uuid::Uuid, ironmud::session::ClientSender)],
     db: &db::Db,
     connections: &SharedConnections,
     state: &SharedState,
@@ -514,7 +510,7 @@ fn execute_mobile_idle_trigger(
 
     // Load and execute custom trigger script
     let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-    let script_content = match std::fs::read_to_string(&script_path) {
+    let script_content = match ironmud::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("Failed to load mobile idle trigger script {}: {}", script_path, e);
@@ -523,7 +519,7 @@ fn execute_mobile_idle_trigger(
     };
 
     // Create engine and execute
-    let mut trigger_engine = rhai::Engine::new();
+    let mut trigger_engine = ironmud::script::trigger_sandbox::sandboxed_engine();
 
     // Register broadcast function for idle triggers (uses connections for room lookup)
     let conns_clone = connections.clone();
@@ -531,7 +527,7 @@ fn execute_mobile_idle_trigger(
         "broadcast_to_room",
         move |rid: String, message: String, _exclude: String| {
             if let Ok(room_uuid) = uuid::Uuid::parse_str(&rid) {
-                let conns = conns_clone.lock().unwrap();
+                let conns = conns_clone.lock();
                 for (_, session) in conns.iter() {
                     if let Some(ref char) = session.character {
                         if char.current_room_id == room_uuid {
@@ -651,12 +647,14 @@ fn execute_mobile_idle_trigger(
             context.insert("trigger_type".into(), "idle".into());
             context.insert("mobile_name".into(), mobile_name.to_string().into());
 
-            match trigger_engine.call_fn::<rhai::Dynamic>(
-                &mut scope,
-                &ast,
-                "run_trigger",
-                (mobile_id_str, room_id_str, context),
-            ) {
+            match ironmud::script::trigger_sandbox::guard_panic(|| {
+                trigger_engine.call_fn::<rhai::Dynamic>(
+                    &mut scope,
+                    &ast,
+                    "run_trigger",
+                    (mobile_id_str, room_id_str, context),
+                )
+            }) {
                 Ok(_) => {
                     debug!(
                         "Mobile idle trigger {} executed for {}",
@@ -683,9 +681,9 @@ fn execute_mobile_idle_template(
     template_name: &str,
     args: &[String],
     mobile_name: &str,
-    players: &[(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)],
+    players: &[(uuid::Uuid, ironmud::session::ClientSender)],
 ) {
-    use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let broadcast = |msg: &str| {
         for (_, sender) in players {
@@ -700,9 +698,8 @@ fn execute_mobile_idle_template(
             }
         }
         "say_random" | "idle_random" => {
-            if !args.is_empty() {
-                let idx = rand::thread_rng().gen_range(0..args.len());
-                broadcast(&format!("{} says: \"{}\"", mobile_name, args[idx]));
+            if let Some(line) = args.choose(&mut rand::thread_rng()) {
+                broadcast(&format!("{} says: \"{}\"", mobile_name, line));
             }
         }
         "emote" | "emote_idle" => {
@@ -718,7 +715,7 @@ fn execute_mobile_idle_template(
 
 /// Process fishing bite notifications for players who are currently fishing
 fn process_fishing_bites(connections: &SharedConnections, now: i64) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
         // Skip if not fishing
@@ -812,8 +809,8 @@ mod tests {
         std::mem::forget(rx_input);
         let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch);
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         let state = ironmud::World::minimal_shared(db.clone(), conns.clone());
         (db, temp, conns, state, rx)
     }

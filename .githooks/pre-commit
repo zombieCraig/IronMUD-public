@@ -13,6 +13,16 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Clippy: only lints the codebase explicitly denies fail the commit (e.g.
+# unwrap/indexing in src/ticks — a panic there restarts a whole tick).
+echo "Running cargo clippy (deny-level lints)..."
+cargo clippy --all-targets --quiet 2>&1 | grep -E "^error" -A12
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+  echo ""
+  echo "Clippy reported errors. Commit aborted."
+  exit 1
+fi
+
 # Run cargo audit if installed, fail commit on vulnerabilities.
 if ! command -v cargo-audit &>/dev/null; then
   echo "cargo-audit not installed. Install with: cargo install cargo-audit"

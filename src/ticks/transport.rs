@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use tokio::time::{Duration, interval};
-use tracing::error;
+use tracing::{error, warn};
 
 use ironmud::{
     NPCTravelSchedule, SharedConnections, TransportData, TransportSchedule, TransportState, TransportType, db,
@@ -104,7 +104,9 @@ fn process_npc_transport_at_stop(
     stop_index: usize,
     game_hour: u8,
 ) {
-    let stop = &transport.stops[stop_index];
+    let Some(stop) = transport.stops.get(stop_index) else {
+        return;
+    };
     let stop_room_id = stop.room_id;
     let interior_room_id = transport.interior_room_id;
 
@@ -219,7 +221,17 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
                 let travel_complete_time = transport.last_state_change + transport.travel_time_secs;
                 if now >= travel_complete_time {
                     // Travel complete - arrive at destination
-                    let stop = &transport.stops[transport.current_stop_index];
+                    let Some(stop) = transport.current_stop() else {
+                        warn!(
+                            "Transport '{}' is moving to a stop that no longer exists",
+                            transport.name
+                        );
+                        transport.current_stop_index = 0;
+                        transport.state = TransportState::Stopped;
+                        transport.last_state_change = now;
+                        db.save_transport(&transport)?;
+                        continue;
+                    };
                     let stop_name = stop.name.clone();
                     let stop_room_id = stop.room_id;
                     let exit_direction = stop.exit_direction.clone();
@@ -264,7 +276,9 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
                         let hour = game_time.hour;
                         if transport.is_within_operating_hours(hour) {
                             // Time to depart
-                            let current_stop = &transport.stops[transport.current_stop_index];
+                            let Some(current_stop) = transport.current_stop() else {
+                                continue;
+                            };
                             let current_stop_room_id = current_stop.room_id;
                             let current_exit_dir = current_stop.exit_direction.clone();
 
@@ -282,7 +296,7 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
 
                             // Advance to next stop
                             transport.advance_to_next_stop();
-                            let next_stop_name = transport.stops[transport.current_stop_index].name.clone();
+                            let next_stop_name = transport.current_stop().map(|s| s.name.clone()).unwrap_or_default();
 
                             // Update state
                             transport.state = TransportState::Moving;

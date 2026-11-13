@@ -846,7 +846,7 @@ fn examine_player_identity(other_char) {
 
 fn examine_player_health(other_char) {
     if other_char.max_hp <= 0 { return ""; }
-    return "\n\n" + condition_sentence(other_char.name, other_char.hp, other_char.max_hp);
+    return "\n\n" + condition_sentence(other_char.name, other_char.hp, other_char.effective_max_hp());
 }
 
 fn examine_player_wounds(other_char) {

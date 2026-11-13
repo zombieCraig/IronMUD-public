@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// the database. Called from every setter so the in-memory edit survives
 /// restart via the overlay in `init::data::load_game_data`.
 fn persist_loadout(db: &Db, state: &SharedState, class_id: &str) -> bool {
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let Some(def) = world.class_definitions.get(class_id) else {
         return false;
     };
@@ -29,14 +29,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // class_exists(class_id) -> bool
     let state_clone = state.clone();
     engine.register_fn("class_exists", move |class_id: String| -> bool {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world.class_definitions.contains_key(&class_id)
     });
 
     // list_class_ids() -> Array<String>
     let state_clone = state.clone();
     engine.register_fn("list_class_ids", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut ids: Vec<String> = world.class_definitions.keys().cloned().collect();
         ids.sort();
         ids.into_iter().map(rhai::Dynamic::from).collect()
@@ -45,7 +45,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // get_class_starting_gold(class_id) -> i64
     let state_clone = state.clone();
     engine.register_fn("get_class_starting_gold", move |class_id: String| -> i64 {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .class_definitions
             .get(&class_id)
@@ -56,7 +56,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // get_class_starting_items(class_id) -> Array<String>
     let state_clone = state.clone();
     engine.register_fn("get_class_starting_items", move |class_id: String| -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .class_definitions
             .get(&class_id)
@@ -74,7 +74,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 return false;
             }
             {
-                let mut world = cloned_state.lock().unwrap();
+                let mut world = cloned_state.lock();
                 let Some(def) = world.class_definitions.get_mut(&class_id) else {
                     return false;
                 };
@@ -97,7 +97,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 return false;
             }
             {
-                let mut world = cloned_state.lock().unwrap();
+                let mut world = cloned_state.lock();
                 let Some(def) = world.class_definitions.get_mut(&class_id) else {
                     return false;
                 };
@@ -118,7 +118,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         move |class_id: String, vnum: String| -> bool {
             let vnum_lower = vnum.to_lowercase();
             let removed = {
-                let mut world = cloned_state.lock().unwrap();
+                let mut world = cloned_state.lock();
                 let Some(def) = world.class_definitions.get_mut(&class_id) else {
                     return false;
                 };
@@ -138,7 +138,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     let cloned_state = state.clone();
     engine.register_fn("clear_class_starting_items", move |class_id: String| -> bool {
         {
-            let mut world = cloned_state.lock().unwrap();
+            let mut world = cloned_state.lock();
             let Some(def) = world.class_definitions.get_mut(&class_id) else {
                 return false;
             };

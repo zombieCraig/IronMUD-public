@@ -278,7 +278,7 @@ fn builder_char(db: &Db, name: &str) -> CharacterData {
 
 fn run_tick(db: &Db) {
     let connections: ironmud::SharedConnections =
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
     let state = ironmud::World::minimal_shared(db.clone(), connections.clone());
     build_score::process_build_score_tick(db, &connections, &state, 1234).expect("tick");
 }
@@ -476,7 +476,8 @@ fn editing_a_room_parks_a_grade_snapshot_on_the_session() {
     // `note_grade_before` call in one editor is invisible: the toast simply
     // never appears for that editor and nothing fails.
     use ironmud::{PlayerSession, World};
-    use std::sync::{Arc, Mutex};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
 
     let (db, _t) = fresh_db();
     let a = area(&db, "Home", None);
@@ -491,19 +492,21 @@ fn editing_a_room_parks_a_grade_snapshot_on_the_session() {
     let (in_tx, _in_rx) = tokio::sync::mpsc::channel(8);
     let conn_id = Uuid::new_v4();
     let mut session = PlayerSession::new_for_test(out_tx, in_tx);
-    session.character = Some(
-        serde_json::from_value(json!({
-            "name": "Ana", "password_hash": "", "is_builder": true, "current_room_id": room_id,
-        }))
-        .unwrap(),
-    );
-    connections.lock().unwrap().insert(conn_id, session);
+    let ana: ironmud::CharacterData = serde_json::from_value(json!({
+        "name": "Ana", "password_hash": "", "is_builder": true, "current_room_id": room_id,
+    }))
+    .unwrap();
+    // A logged-in character always exists in the DB too; `can_edit_area`
+    // reads the builder flag from there and refuses unknown characters.
+    db.save_character_data(ana.clone()).unwrap();
+    session.character = Some(ana);
+    connections.lock().insert(conn_id, session);
 
     // A FREE-STANDING engine, deliberately not `world.engine`, and the World
     // lock is never held across `call_fn`.
     //
     // `note_grade_before` reads the cached audit context off `World`, and
-    // `std::sync::Mutex` is not reentrant — running a script while holding the
+    // `parking_lot::Mutex` is not reentrant — running a script while holding the
     // World lock deadlocks. The server avoids this by cloning the AST and
     // dropping the lock before `call_fn`; a test is simpler if it never takes
     // the lock at all. Same trap `tests/attribution.rs` documents.
@@ -526,11 +529,7 @@ fn editing_a_room_parks_a_grade_snapshot_on_the_session() {
     );
     r.expect("redit run_command");
 
-    let pending = connections
-        .lock()
-        .unwrap()
-        .get(&conn_id)
-        .and_then(|s| s.pending_audit.clone());
+    let pending = connections.lock().get(&conn_id).and_then(|s| s.pending_audit.clone());
     let pending = pending.expect("redit did not park a grade snapshot");
     assert_eq!(pending.kind, ContentKind::Room);
     assert!(pending.before.is_some(), "the pre-edit grade was not captured");

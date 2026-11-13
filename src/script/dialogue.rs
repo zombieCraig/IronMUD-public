@@ -1209,7 +1209,7 @@ where
 
 /// True iff the player at this connection is in sticky dialogue mode.
 pub fn session_in_dialogue(connections: &SharedConnections, connection_id: &Uuid) -> bool {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns
         .get(connection_id)
         .map(|s| s.dialogue_partner_id.is_some())
@@ -1512,12 +1512,12 @@ fn exit_internal(
 }
 
 fn connection_partner(connections: &SharedConnections, conn_id: Uuid) -> Option<Uuid> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns.get(&conn_id).and_then(|s| s.dialogue_partner_id)
 }
 
 fn clear_partner(connections: &SharedConnections, conn_id: Uuid) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(s) = conns.get_mut(&conn_id) {
         s.dialogue_partner_id = None;
     }
@@ -1572,19 +1572,19 @@ fn err(mut m: Map, msg: &str) -> Map {
 
 fn session_dialogue_partner(connections: &SharedConnections, conn_id_str: &str) -> Option<Uuid> {
     let uuid = Uuid::parse_str(conn_id_str).ok()?;
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns.get(&uuid).and_then(|s| s.dialogue_partner_id)
 }
 
 fn set_session_dialogue_partner(connections: &SharedConnections, conn_id: Uuid, partner: Option<Uuid>) {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(s) = conns.get_mut(&conn_id) {
         s.dialogue_partner_id = partner;
     }
 }
 
 fn get_character_for_conn(connections: &SharedConnections, conn_id: Uuid) -> Option<CharacterData> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns.get(&conn_id).and_then(|s| s.character.clone())
 }
 
@@ -1616,7 +1616,8 @@ fn save_character_and_sync(
 ) {
     let _ = db.save_character_data(ch.clone());
     let char_name = ch.name.clone();
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         if let Some(session) = conns.get_mut(&conn_id) {
             session.character = Some(ch.clone());
         }
@@ -2373,7 +2374,8 @@ fn apply_effect(
             if let Some(mob_now) = db.get_mobile_data(&mob.id).ok().flatten() {
                 let conn_str = String::new();
                 let db_arc = std::sync::Arc::new(db.clone());
-                let conns_dummy: SharedConnections = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+                let conns_dummy: SharedConnections =
+                    Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
                 crate::script::dg::fire_mobile_dg_triggers(
                     &db_arc,
                     &conns_dummy,
@@ -2760,7 +2762,7 @@ mod tests {
     fn award_skill_xp_applies_the_language_traits() {
         let (db, _t) = open_temp_db("award");
         let (_conns, state) = dummy_conns_and_state(&db);
-        state.lock().expect("world lock").language_definitions.insert(
+        state.lock().language_definitions.insert(
             "elvish".to_string(),
             crate::LanguageDefinition {
                 key: "elvish".to_string(),
@@ -2824,7 +2826,8 @@ mod tests {
     /// effect tests don't actually exercise CompleteQuest (the only effect
     /// that reads either).
     fn dummy_conns_and_state(db: &Db) -> (SharedConnections, SharedState) {
-        use std::sync::{Arc, Mutex};
+        use parking_lot::Mutex;
+        use std::sync::Arc;
         let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
         (conns, state)
@@ -3858,7 +3861,7 @@ mod tests {
         let (db, _temp) = open_temp_db("teach_achievement");
         let (conns, st) = dummy_conns_and_state(&db);
         {
-            let mut world = st.lock().expect("world");
+            let mut world = st.lock();
             world.achievement_definitions.insert(
                 "novice_swimmer".to_string(),
                 AchievementDef {
@@ -4075,7 +4078,7 @@ mod tests {
         let (db, _temp) = open_temp_db("reputation_fx");
         let (conns, st) = dummy_conns_and_state(&db);
         {
-            let mut w = st.lock().unwrap();
+            let mut w = st.lock();
             w.faction_definitions.insert(
                 "iron_guard".to_string(),
                 crate::reputation::FactionDefinition {

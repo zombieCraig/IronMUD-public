@@ -123,13 +123,13 @@ export declare const spawnPointToolDefinitions: ({
             };
             max_count: {
                 type: string;
+                description: string;
                 default?: undefined;
-                description?: undefined;
             };
             respawn_interval_secs: {
                 type: string;
+                description: string;
                 default?: undefined;
-                description?: undefined;
             };
             enabled: {
                 type: string;

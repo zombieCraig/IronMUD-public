@@ -62,13 +62,14 @@ mod stealth;
 pub mod synth;
 mod tattoos;
 mod transport;
+pub mod trigger_sandbox;
 mod triggers;
 mod utilities;
 pub mod vampire;
 pub mod werewolf;
 pub mod worship;
 
-pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
+pub use ai::{set_ai_sender, set_chat_sender};
 pub use areas::check_build_mode;
 pub use combat::{
     apply_damage_reduction, apply_mobile_on_hit_dots, apply_mobile_passive_stance_regen, effective_combat_zone,
@@ -91,7 +92,215 @@ use crate::{
 use rhai::{Engine, EvalAltResult, Position};
 use std::sync::Arc;
 
+/// Register every Rhai function the command scripts use.
+///
+/// Registration is split into named steps (see [`registration_steps`]) so the
+/// test suite can register each step into its own engine and detect two
+/// steps registering the same signature. Rhai silently keeps the LATER
+/// registration, which has caused real bugs (an unguarded `random_int`
+/// overriding the guarded one; a legacy `add_character_gold` bypassing purse).
 pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
+    for (_name, step) in registration_steps(db, connections, state) {
+        step(engine);
+    }
+}
+
+/// A named, re-runnable registration step.
+pub type RegistrationStep = (&'static str, Box<dyn Fn(&mut Engine)>);
+
+/// Ordered list of registration steps. Order matters only when two steps
+/// register the same signature, which `tests/engine_registration.rs` forbids.
+#[allow(unused_variables)]
+pub fn registration_steps(db: Arc<Db>, connections: SharedConnections, state: SharedState) -> Vec<RegistrationStep> {
+    type StepFn = fn(&mut Engine, &Arc<Db>, &SharedConnections, &SharedState);
+    let steps: Vec<(&'static str, StepFn)> = vec![
+        ("core", |e, db, connections, state| {
+            register_core(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("utilities", |e, db, connections, state| {
+            utilities::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("spawn", |e, db, connections, state| {
+            spawn::register(e, db.clone(), connections.clone())
+        }),
+        ("api_keys", |e, db, connections, state| {
+            api_keys::register(e, db.clone())
+        }),
+        ("areas", |e, db, connections, state| areas::register(e, db.clone())),
+        ("combat", |e, db, connections, state| {
+            combat::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("consignment", |e, db, connections, state| {
+            consignment::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        // Severity-tiered hit verbs, shared with the combat tick so attack/shoot/
+        // snipe don't each carry their own copy of the tables.
+        ("combat_text", |e, db, connections, state| {
+            crate::combat_text::register(e)
+        }),
+        ("fear", |e, db, connections, state| {
+            fear::register(e, db.clone(), connections.clone())
+        }),
+        ("worship", |e, db, connections, state| {
+            worship::register(e, db.clone(), connections.clone())
+        }),
+        ("items", |e, db, connections, state| {
+            items::register(e, db.clone(), connections.clone())
+        }),
+        ("mobiles", |e, db, connections, state| {
+            mobiles::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("mobile_presets", |e, db, connections, state| {
+            mobile_presets::register(e, db.clone())
+        }),
+        ("rooms", |e, db, connections, state| {
+            rooms::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("reputation", |e, db, connections, state| {
+            reputation::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("leaderboard", |e, db, connections, state| {
+            leaderboard::register(e, state.clone())
+        }),
+        ("build", |e, db, connections, state| {
+            build::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("bounty", |e, db, connections, state| {
+            bounty::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("shops", |e, db, connections, state| {
+            shops::register(e, db.clone(), state.clone())
+        }),
+        ("shop_presets", |e, db, connections, state| {
+            shop_presets::register(e, db.clone())
+        }),
+        ("transport_types", |e, db, connections, state| {
+            transport::register_types(e)
+        }),
+        ("transport", |e, db, connections, state| {
+            transport::register(e, db.clone())
+        }),
+        ("triggers", |e, db, connections, state| {
+            triggers::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("fishing", |e, db, connections, state| {
+            fishing::register(e, connections.clone())
+        }),
+        ("medical", |e, db, connections, state| {
+            medical::register(e, db.clone(), connections.clone())
+        }),
+        ("tattoos", |e, db, connections, state| {
+            tattoos::register(e, db.clone(), connections.clone())
+        }),
+        ("healers", |e, db, connections, state| {
+            healers::register(e, db.clone(), connections.clone())
+        }),
+        ("crafting", |e, db, connections, state| {
+            crafting::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("characters", |e, db, connections, state| {
+            characters::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("classes", |e, db, connections, state| {
+            classes::register(e, db.clone(), state.clone())
+        }),
+        ("races", |e, db, connections, state| {
+            races::register(e, db.clone(), state.clone())
+        }),
+        ("groups", |e, db, connections, state| {
+            groups::register(e, db.clone(), connections.clone())
+        }),
+        ("property", |e, db, connections, state| {
+            property::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("mail", |e, db, connections, state| {
+            mail::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("boards", |e, db, connections, state| {
+            boards::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("garden", |e, db, connections, state| garden::register(e, db.clone())),
+        ("spells", |e, db, connections, state| {
+            spells::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("lookup", |e, db, connections, state| {
+            lookup::register(e, db.clone(), state.clone())
+        }),
+        ("stealth", |e, db, connections, state| {
+            stealth::register(e, db.clone(), connections.clone())
+        }),
+        ("bugs", |e, db, connections, state| {
+            bugs::register(e, db.clone(), connections.clone())
+        }),
+        ("player_log", |e, db, connections, state| {
+            player_log::register(e, db.clone())
+        }),
+        ("simulation", |e, db, connections, state| {
+            simulation::register(e, db.clone())
+        }),
+        ("social", |e, db, connections, state| social::register(e, db.clone())),
+        ("clan", |e, db, connections, state| {
+            clan::register(e, db.clone(), connections.clone())
+        }),
+        ("achievements", |e, db, connections, state| {
+            achievements::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("map", |e, db, connections, state| {
+            map::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("lang", |e, db, connections, state| {
+            lang::register(e, db.clone(), state.clone())
+        }),
+        ("dialogue", |e, db, connections, state| {
+            dialogue::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("quests", |e, db, connections, state| {
+            quests::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("accounts", |e, db, connections, state| {
+            accounts::register(e, db.clone(), connections.clone())
+        }),
+        ("email", |e, db, connections, state| email::register(e, db.clone())),
+        ("bans", |e, db, connections, state| {
+            bans::register(e, db.clone(), connections.clone())
+        }),
+        ("account_prefs", |e, db, connections, state| {
+            account_prefs::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("editor", |e, db, connections, state| {
+            editor::register(e, connections.clone())
+        }),
+        ("vampire", |e, db, connections, state| {
+            vampire::register(e, db.clone(), connections.clone())
+        }),
+        ("werewolf", |e, db, connections, state| {
+            werewolf::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("replicant", |e, db, connections, state| {
+            replicant::register_replicant_functions(e, db.clone(), connections.clone())
+        }),
+        ("synth", |e, db, connections, state| {
+            synth::register_synth_functions(e, db.clone(), connections.clone())
+        }),
+        ("cyberware", |e, db, connections, state| {
+            cyberware::register_cyberware_functions(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("mutant", |e, db, connections, state| {
+            mutant::register_mutant_functions(e, db.clone(), connections.clone(), state.clone())
+        }),
+    ];
+    steps
+        .into_iter()
+        .map(|(name, f)| {
+            let (db, connections, state) = (db.clone(), connections.clone(), state.clone());
+            let step: Box<dyn Fn(&mut Engine)> = Box::new(move |e: &mut Engine| f(e, &db, &connections, &state));
+            (name, step)
+        })
+        .collect()
+}
+
+/// Functions registered directly in this module (types, flags, rooms, areas, ...).
+fn register_core(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // Register CharacterData type
     engine.register_type_with_name::<CharacterData>("CharacterData");
 
@@ -890,7 +1099,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         // also updating the session would be silently clobbered by the next regen
         // flush. Update the session here so the change sticks. Mirrors the
         // `sync_character_to_session` helper used throughout the tick code.
-        if let Ok(mut conns) = sync_conns.lock() {
+        {
+            let mut conns = sync_conns.lock();
             for session in conns.values_mut() {
                 if let Some(ref mut existing) = session.character {
                     if existing.name.eq_ignore_ascii_case(&character.name) {
@@ -927,7 +1137,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     engine.register_fn(
         "refresh_dg_vars",
         move |mut character: CharacterData| -> CharacterData {
-            if let Ok(conns) = sync_conns.lock() {
+            {
+                let conns = sync_conns.lock();
                 for session in conns.values() {
                     if let Some(ref existing) = session.character {
                         if existing.name.eq_ignore_ascii_case(&character.name) {
@@ -945,6 +1156,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     );
 
     let cloned_db = db.clone();
+    // Minimum length for a newly chosen password. Existing shorter
+    // passwords still log in; they just can't be set again.
+    engine.register_fn("min_password_len", || -> i64 { crate::MIN_PASSWORD_LEN as i64 });
     engine.register_fn("hash_password", move |password: String| {
         cloned_db
             .hash_password(&password)
@@ -1151,7 +1365,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
                     // Look up the character name for this connection
                     let exclude_name = {
-                        let conns_guard = conns.lock().unwrap();
+                        let conns_guard = conns.lock();
                         conns_guard
                             .get(&conn_uuid)
                             .and_then(|session| session.character.as_ref())
@@ -1188,7 +1402,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) else {
             return rhai::Dynamic::UNIT;
         };
-        let guard = conns.lock().unwrap();
+        let guard = conns.lock();
         match guard.get(&uuid).and_then(|s| s.character.clone()) {
             Some(c) => rhai::Dynamic::from(c),
             None => rhai::Dynamic::UNIT,
@@ -1208,7 +1422,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("mark_session_start", move |connection_id: String| {
         if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut connections = conns.lock().unwrap();
+            let mut connections = conns.lock();
             if let Some(session) = connections.get_mut(&conn_id) {
                 if session.session_started_at.is_none() {
                     session.session_started_at = Some(
@@ -1234,7 +1448,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         move |connection_id: String, character: CharacterData| -> CharacterData {
             let mut character = character;
             if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut connections = conns.lock().unwrap();
+                let mut connections = conns.lock();
                 if let Some(session) = connections.get_mut(&conn_id) {
                     if let Some(start) = session.session_started_at.take() {
                         let now = std::time::SystemTime::now()
@@ -1277,7 +1491,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             if let Some(conn_id) = found {
                 // Get character data and room
                 let char_info = {
-                    let connections = conns.lock().unwrap();
+                    let connections = conns.lock();
                     if let Some(session) = connections.get(&conn_id) {
                         if let Some(ref c) = session.character {
                             Some((c.clone(), c.current_room_id, session.sender.clone()))
@@ -1294,7 +1508,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
                     // Save character before kicking
                     {
-                        let world = kick_state.lock().unwrap();
+                        let world = kick_state.lock();
                         if let Err(e) = world.db.save_character_data(character) {
                             tracing::error!("Failed to save {} before kick: {}", char_name, e);
                         }
@@ -1316,7 +1530,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
                     // Notify chat integrations (Matrix/Discord)
                     {
-                        let world = kick_state.lock().unwrap();
+                        let world = kick_state.lock();
                         if let Some(ref chat_tx) = world.chat_sender {
                             let _ = chat_tx.send(crate::chat::ChatMessage::Broadcast(format!(
                                 "{} has been removed from the realm.",
@@ -1346,7 +1560,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             if delay_seconds < 0 {
                 return false;
             }
-            let world = shutdown_state.lock().unwrap();
+            let world = shutdown_state.lock();
             if let Some(ref sender) = world.shutdown_sender {
                 let cmd = crate::ShutdownCommand {
                     delay_seconds: delay_seconds as u64,
@@ -1402,7 +1616,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         }
 
         {
-            let world = preset_state.lock().unwrap();
+            let world = preset_state.lock();
             for key in ["class_preset", "race_preset", "spell_preset", "language_preset"] {
                 if let Err(e) = world.db.set_setting(key, &preset_clean) {
                     result.insert("error".into(), format!("failed to write {}: {}", key, e).into());
@@ -1416,7 +1630,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             return result;
         }
 
-        let world = preset_state.lock().unwrap();
+        let world = preset_state.lock();
         result.insert("classes_count".into(), (world.class_definitions.len() as i64).into());
         result.insert("races_count".into(), (world.race_definitions.len() as i64).into());
         result.insert("spells_count".into(), (world.spell_definitions.len() as i64).into());
@@ -1440,7 +1654,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     // cancel_shutdown() -> String ("cancelled", "no_shutdown_pending")
     let cancel_state = state.clone();
     engine.register_fn("cancel_shutdown", move || {
-        let world = cancel_state.lock().unwrap();
+        let world = cancel_state.lock();
         if let Some(ref sender) = world.shutdown_cancel_sender {
             // Send true to signal cancellation
             if sender.send(true).is_ok() {
@@ -1459,7 +1673,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let god_db = db.clone();
     engine.register_fn("set_god_mode", move |connection_id: String, enabled: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = god_conns.lock().unwrap();
+            let mut conns = god_conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 if let Some(ref mut character) = session.character {
                     // Only admins can toggle god mode
@@ -1483,7 +1697,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let build_db = db.clone();
     engine.register_fn("set_build_mode", move |connection_id: String, enabled: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = build_conns.lock().unwrap();
+            let mut conns = build_conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 if let Some(ref mut character) = session.character {
                     // Builders and admins can toggle build mode
@@ -1513,7 +1727,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("is_logged_in", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.character.is_some()).unwrap_or(false)
         } else {
             false
@@ -1525,7 +1739,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     engine.register_fn("send_banner", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
             if let Ok(banner) = std::fs::read_to_string("assets/banner.txt") {
-                let conns = conns.lock().unwrap();
+                let conns = conns.lock();
                 if let Some(session) = conns.get(&uuid) {
                     let _ = session.sender.send(banner);
                 }
@@ -1540,7 +1754,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         // Get login status, permissions, and skill levels (for ability gates)
         let (is_logged_in, is_builder, is_admin, skill_levels) = if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id)
         {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns
                 .get(&uuid)
                 .map(|s| {
@@ -1562,7 +1776,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             (false, false, false, std::collections::HashMap::new())
         };
 
-        let world = cloned_state.lock().unwrap();
+        let world = cloned_state.lock();
         let mut commands: Vec<rhai::Dynamic> = Vec::new();
 
         for (name, meta) in &world.command_metadata {
@@ -1623,7 +1837,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     // names only (no abbrev duplicates).
     let cloned_state2 = state.clone();
     engine.register_fn("get_social_command_names", move || {
-        let world = cloned_state2.lock().unwrap();
+        let world = cloned_state2.lock();
         let mut names: Vec<String> = world.socials.iter().map(|a| a.lookup_key()).collect();
         names.sort();
         names.into_iter().map(rhai::Dynamic::from).collect::<rhai::Array>()
@@ -1641,7 +1855,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("get_aliases", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 if let Some(ref character) = session.character {
                     return character
@@ -1662,7 +1876,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         "set_alias",
         move |connection_id: String, alias_name: String, expansion: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&uuid) {
                     if let Some(ref mut character) = session.character {
                         character.aliases.insert(alias_name, expansion);
@@ -1680,7 +1894,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let db_clone = db.clone();
     engine.register_fn("remove_alias", move |connection_id: String, alias_name: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 if let Some(ref mut character) = session.character {
                     let removed = character.aliases.remove(&alias_name).is_some();
@@ -1700,7 +1914,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("set_olc_mode", move |connection_id: String, mode: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.olc_mode = if mode.is_empty() { None } else { Some(mode) };
                 return true;
@@ -1713,7 +1927,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("get_olc_mode", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 return session.olc_mode.clone().unwrap_or_default();
             }
@@ -1725,7 +1939,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("append_olc_buffer", move |connection_id: String, line: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.olc_buffer.push(line);
                 return true;
@@ -1738,7 +1952,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("get_olc_buffer", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 return session
                     .olc_buffer
@@ -1754,7 +1968,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("clear_olc_buffer", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.olc_buffer.clear();
                 return true;
@@ -1769,7 +1983,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("set_olc_buffer_text", move |connection_id: String, text: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.olc_buffer = if text.is_empty() {
                     Vec::new()
@@ -1786,7 +2000,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("set_olc_buffer", move |connection_id: String, lines: rhai::Array| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.olc_buffer = lines.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
                 return true;
@@ -1804,7 +2018,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             } else {
                 uuid::Uuid::parse_str(&room_id).ok()
             };
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&conn_uuid) {
                 session.olc_edit_room = room_uuid;
                 return true;
@@ -1817,7 +2031,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("get_olc_edit_room", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 return session.olc_edit_room.map(|u| u.to_string()).unwrap_or_default();
             }
@@ -1834,7 +2048,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             } else {
                 uuid::Uuid::parse_str(&item_id).ok()
             };
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&conn_uuid) {
                 session.olc_edit_item = item_uuid;
                 return true;
@@ -1855,7 +2069,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&conn_uuid) {
                 session.olc_mode = Some("collecting_board_post".to_string());
                 session.olc_buffer.clear();
@@ -1880,7 +2094,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 } else {
                     uuid::Uuid::parse_str(&mobile_id).ok()
                 };
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.olc_edit_mobile = mob_uuid;
                     return true;
@@ -1896,7 +2110,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("set_olc_edit_proto_vnum", move |connection_id: String, vnum: String| {
         if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&conn_uuid) {
                 session.olc_edit_proto_vnum = if vnum.is_empty() { None } else { Some(vnum) };
                 return true;
@@ -1913,7 +2127,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         "set_olc_dialogue_node",
         move |connection_id: String, node_name: String| {
             if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.olc_dialogue_node_name = if node_name.is_empty() { None } else { Some(node_name) };
                     return true;
@@ -1931,7 +2145,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         "set_olc_edit_trigger",
         move |connection_id: String, host_kind: String, index: i64| {
             if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
                     session.olc_edit_trigger_host = if host_kind.is_empty() { None } else { Some(host_kind) };
                     session.olc_edit_trigger_index = if index < 0 { None } else { Some(index as usize) };
@@ -1948,7 +2162,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         "set_olc_extra_keywords",
         move |connection_id: String, keywords: rhai::Array| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&uuid) {
                     session.olc_extra_keywords = keywords.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
                     return true;
@@ -1962,7 +2176,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     engine.register_fn("get_olc_extra_keywords", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 return session
                     .olc_extra_keywords
@@ -2206,67 +2420,4 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             }
         },
     );
-
-    // Register submodule functions
-    utilities::register(engine, db.clone(), connections.clone(), state.clone());
-    spawn::register(engine, db.clone(), connections.clone());
-    api_keys::register(engine, db.clone());
-    areas::register(engine, db.clone());
-    combat::register(engine, db.clone());
-    consignment::register(engine, db.clone(), connections.clone(), state.clone());
-    // Severity-tiered hit verbs, shared with the combat tick so attack/shoot/
-    // snipe don't each carry their own copy of the tables.
-    crate::combat_text::register(engine);
-    fear::register(engine, db.clone(), connections.clone());
-    worship::register(engine, db.clone(), connections.clone());
-    items::register(engine, db.clone(), connections.clone());
-    mobiles::register(engine, db.clone(), connections.clone(), state.clone());
-    mobile_presets::register(engine, db.clone());
-    rooms::register(engine, db.clone(), connections.clone(), state.clone());
-    reputation::register(engine, db.clone(), connections.clone(), state.clone());
-    leaderboard::register(engine, state.clone());
-    build::register(engine, db.clone(), connections.clone(), state.clone());
-    bounty::register(engine, db.clone(), connections.clone(), state.clone());
-    shops::register(engine, db.clone(), state.clone());
-    shop_presets::register(engine, db.clone());
-    transport::register_types(engine);
-    transport::register(engine, db.clone());
-    triggers::register(engine, db.clone(), connections.clone(), state.clone());
-    fishing::register(engine, connections.clone());
-    medical::register(engine, db.clone(), connections.clone());
-    tattoos::register(engine, db.clone(), connections.clone());
-    healers::register(engine, db.clone(), connections.clone());
-    crafting::register(engine, db.clone(), connections.clone(), state.clone());
-    characters::register(engine, db.clone(), connections.clone(), state.clone());
-    classes::register(engine, db.clone(), state.clone());
-    races::register(engine, db.clone(), state.clone());
-    groups::register(engine, db.clone(), connections.clone());
-    property::register(engine, db.clone(), connections.clone(), state.clone());
-    mail::register(engine, db.clone(), connections.clone(), state.clone());
-    boards::register(engine, db.clone(), connections.clone(), state.clone());
-    garden::register(engine, db.clone());
-    spells::register(engine, db.clone(), connections.clone(), state.clone());
-    lookup::register(engine, db.clone(), state.clone());
-    stealth::register(engine, db.clone(), connections.clone());
-    bugs::register(engine, db.clone(), connections.clone());
-    player_log::register(engine, db.clone());
-    simulation::register(engine, db.clone());
-    social::register(engine, db.clone());
-    clan::register(engine, db.clone(), connections.clone());
-    achievements::register(engine, db.clone(), connections.clone(), state.clone());
-    map::register(engine, db.clone(), connections.clone(), state.clone());
-    lang::register(engine, db.clone(), state.clone());
-    dialogue::register(engine, db.clone(), connections.clone(), state.clone());
-    quests::register(engine, db.clone(), connections.clone(), state.clone());
-    accounts::register(engine, db.clone(), connections.clone());
-    email::register(engine, db.clone());
-    bans::register(engine, db.clone(), connections.clone());
-    account_prefs::register(engine, db.clone(), connections.clone());
-    editor::register(engine, connections.clone());
-    vampire::register(engine, db.clone(), connections.clone());
-    werewolf::register(engine, db.clone(), connections.clone(), state.clone());
-    replicant::register_replicant_functions(engine, db.clone(), connections.clone());
-    synth::register_synth_functions(engine, db.clone(), connections.clone());
-    cyberware::register_cyberware_functions(engine, db.clone(), connections.clone(), state.clone());
-    mutant::register_mutant_functions(engine, db.clone(), connections.clone(), state.clone());
 }

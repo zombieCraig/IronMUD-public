@@ -266,16 +266,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: crate::SharedState) {
         move |mobile_id: String, item_id: String| -> bool {
             if let Ok(mobile_uuid) = uuid::Uuid::parse_str(&mobile_id) {
                 if let Ok(item_uuid) = uuid::Uuid::parse_str(&item_id) {
-                    match cloned_db.get_mobile_data(&mobile_uuid) {
-                        Ok(Some(mut mobile)) => {
-                            if !mobile.shop_inventory.contains(&item_uuid) {
-                                mobile.shop_inventory.push(item_uuid);
-                                return cloned_db.save_mobile_data(mobile).is_ok();
-                            }
-                            true
+                    let res = cloned_db.update_mobile(&mobile_uuid, |m| {
+                        if !m.shop_inventory.contains(&item_uuid) {
+                            m.shop_inventory.push(item_uuid);
                         }
-                        _ => false,
-                    }
+                    });
+                    matches!(res, Ok(Some(_)))
                 } else {
                     false
                 }
@@ -286,25 +282,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: crate::SharedState) {
     );
 
     // remove_from_shop_inventory(mobile_id, item_id) -> bool
+    // Atomic claim: true only if the item was in the shop's stock and this
+    // call removed it. Two buyers racing for one unique item can't both win.
     let cloned_db = db.clone();
     engine.register_fn(
         "remove_from_shop_inventory",
         move |mobile_id: String, item_id: String| -> bool {
-            if let Ok(mobile_uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(item_uuid) = uuid::Uuid::parse_str(&item_id) {
-                    match cloned_db.get_mobile_data(&mobile_uuid) {
-                        Ok(Some(mut mobile)) => {
-                            mobile.shop_inventory.retain(|id| id != &item_uuid);
-                            cloned_db.save_mobile_data(mobile).is_ok()
-                        }
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
+            let (Ok(mobile_uuid), Ok(item_uuid)) = (uuid::Uuid::parse_str(&mobile_id), uuid::Uuid::parse_str(&item_id))
+            else {
+                return false;
+            };
+            remove_shop_item(&cloned_db, &mobile_uuid, &item_uuid)
         },
     );
 
@@ -930,10 +918,10 @@ mod tests {
         db.save_mobile_data(mob).expect("save mob");
 
         let conns: crate::SharedConnections =
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns);
         {
-            let mut w = state.lock().unwrap();
+            let mut w = state.lock();
             w.faction_definitions.insert(
                 "iron_guard".to_string(),
                 crate::reputation::FactionDefinition::unregistered("iron_guard"),
@@ -1003,5 +991,51 @@ mod tests {
             shop_rate_for_player(&f.db, &f.state, 150, "rook", &uuid::Uuid::new_v4().to_string(), true),
             150
         );
+    }
+}
+
+/// Remove `item` from `mobile`'s shop stock in one compare-and-swap. True only
+/// when the item was present and this call removed it.
+pub fn remove_shop_item(db: &crate::db::Db, mobile: &uuid::Uuid, item: &uuid::Uuid) -> bool {
+    let mut removed = false;
+    let res = db.update_mobile(mobile, |m| {
+        let before = m.shop_inventory.len();
+        m.shop_inventory.retain(|id| id != item);
+        removed = m.shop_inventory.len() != before;
+    });
+    matches!(res, Ok(Some(_))) && removed
+}
+
+#[cfg(test)]
+mod money_path_tests {
+    use super::*;
+
+    #[test]
+    fn a_shop_item_can_only_be_claimed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::Db::open(dir.path()).unwrap();
+        let mut m = crate::types::MobileData::new("Shopkeeper".to_string());
+        let item = uuid::Uuid::new_v4();
+        m.shop_inventory.push(item);
+        let id = m.id;
+        db.save_mobile_data(m).unwrap();
+        assert!(remove_shop_item(&db, &id, &item));
+        assert!(!remove_shop_item(&db, &id, &item), "second claim must fail");
+        assert!(!remove_shop_item(&db, &uuid::Uuid::new_v4(), &item));
+    }
+
+    #[test]
+    fn mobile_gold_debits_never_go_negative() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::Db::open(dir.path()).unwrap();
+        let mut m = crate::types::MobileData::new("Mark".to_string());
+        m.gold = 10;
+        let id = m.id;
+        db.save_mobile_data(m).unwrap();
+        assert!(super::super::mobiles::add_mobile_gold(&db, &id, -7));
+        assert!(!super::super::mobiles::add_mobile_gold(&db, &id, -7));
+        assert_eq!(db.get_mobile_data(&id).unwrap().unwrap().gold, 3);
+        assert!(super::super::mobiles::add_mobile_gold(&db, &id, i64::MAX));
+        assert_eq!(db.get_mobile_data(&id).unwrap().unwrap().gold, i32::MAX);
     }
 }

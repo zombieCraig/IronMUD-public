@@ -689,9 +689,7 @@ pub fn compute(
 /// tokio wrapper is `src/ticks/leaderboard.rs`.
 pub fn process_leaderboard_tick(db: &crate::db::Db, state: &crate::SharedState) -> anyhow::Result<()> {
     let factions = {
-        let world = state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("world lock poisoned during leaderboard scan"))?;
+        let world = state.lock();
         world.faction_definitions.clone()
     };
 
@@ -702,9 +700,7 @@ pub fn process_leaderboard_tick(db: &crate::db::Db, state: &crate::SharedState) 
         .unwrap_or(0);
     let boards = compute(&chars, &factions, now);
 
-    let mut world = state
-        .lock()
-        .map_err(|_| anyhow::anyhow!("world lock poisoned installing leaderboards"))?;
+    let mut world = state.lock();
     world.leaderboards = boards;
     Ok(())
 }

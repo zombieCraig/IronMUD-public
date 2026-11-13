@@ -398,9 +398,7 @@ pub fn report_xp(connections: &SharedConnections, char_name: &str, skill: &str, 
     }
     let skill_key = skill.to_lowercase();
 
-    let Ok(mut conns) = connections.lock() else {
-        return;
-    };
+    let mut conns = connections.lock();
     for (_, session) in conns.iter_mut() {
         let matches = session
             .character
@@ -559,18 +557,15 @@ pub fn notify_skill_level_gains(
 /// inside a tick that holds world state should pass `false` explicitly rather
 /// than call this.
 pub fn is_language_skill(state: &SharedState, skill: &str) -> bool {
-    state
-        .lock()
-        .ok()
-        .map(|w| w.language_definitions.contains_key(&skill.to_lowercase()))
-        .unwrap_or(false)
+    state.lock().language_definitions.contains_key(&skill.to_lowercase())
 }
 
 /// Push the updated character into the live session so an online player's
 /// in-memory copy does not go stale and get flushed back over the award by
 /// the regen tick.
 fn sync_to_session(connections: &SharedConnections, ch: &CharacterData) {
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for (_, session) in conns.iter_mut() {
             let matches = session
                 .character
@@ -846,8 +841,8 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch.clone());
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         (conns, rx_client)
     }
 
@@ -863,7 +858,6 @@ mod tests {
     fn pending(conns: &SharedConnections, skill: &str) -> Option<XpTally> {
         conns
             .lock()
-            .unwrap()
             .values()
             .next()
             .and_then(|s| s.xp_buffer.get(skill).cloned())

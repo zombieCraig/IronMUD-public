@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// database. Called from every setter so the in-memory edit survives restart
 /// via the overlay in `init::data::load_game_data`.
 fn persist_loadout(db: &Db, state: &SharedState, race_id: &str) -> bool {
-    let world = state.lock().unwrap();
+    let world = state.lock();
     let Some(def) = world.race_definitions.get(race_id) else {
         return false;
     };
@@ -31,7 +31,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // race_exists(race_id) -> bool
     let state_clone = state.clone();
     engine.register_fn("race_exists", move |race_id: String| -> bool {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world.race_definitions.contains_key(&race_id.to_lowercase())
     });
 
@@ -40,7 +40,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // races. (get_race_list filters on availability and is the wrong primitive.)
     let state_clone = state.clone();
     engine.register_fn("list_race_ids", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut ids: Vec<String> = world.race_definitions.keys().cloned().collect();
         ids.sort();
         ids.into_iter().map(rhai::Dynamic::from).collect()
@@ -49,7 +49,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // get_race_starting_gold(race_id) -> i64
     let state_clone = state.clone();
     engine.register_fn("get_race_starting_gold", move |race_id: String| -> i64 {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .race_definitions
             .get(&race_id.to_lowercase())
@@ -60,7 +60,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // get_race_starting_items(race_id) -> Array<String>
     let state_clone = state.clone();
     engine.register_fn("get_race_starting_items", move |race_id: String| -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .race_definitions
             .get(&race_id.to_lowercase())
@@ -77,7 +77,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         }
         let race_id = race_id.to_lowercase();
         {
-            let mut world = cloned_state.lock().unwrap();
+            let mut world = cloned_state.lock();
             let Some(def) = world.race_definitions.get_mut(&race_id) else {
                 return false;
             };
@@ -98,7 +98,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             return false;
         }
         {
-            let mut world = cloned_state.lock().unwrap();
+            let mut world = cloned_state.lock();
             let Some(def) = world.race_definitions.get_mut(&race_id) else {
                 return false;
             };
@@ -119,7 +119,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             let race_id = race_id.to_lowercase();
             let vnum_lower = vnum.to_lowercase();
             let removed = {
-                let mut world = cloned_state.lock().unwrap();
+                let mut world = cloned_state.lock();
                 let Some(def) = world.race_definitions.get_mut(&race_id) else {
                     return false;
                 };
@@ -140,7 +140,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     engine.register_fn("clear_race_starting_items", move |race_id: String| -> bool {
         let race_id = race_id.to_lowercase();
         {
-            let mut world = cloned_state.lock().unwrap();
+            let mut world = cloned_state.lock();
             let Some(def) = world.race_definitions.get_mut(&race_id) else {
                 return false;
             };

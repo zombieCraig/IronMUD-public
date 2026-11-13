@@ -4,6 +4,7 @@
 //! entities they have no UUID — the vnum is the canonical id in the `recipes`
 //! sled tree.
 
+use crate::api::validate::{LIST_MAX, NAME_MAX, VNUM_MAX, check_count, check_opt_len, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, State},
@@ -166,10 +167,7 @@ async fn list_recipes(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let recipes = state
-        .db
-        .list_all_recipes()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let recipes = state.db.list_all_recipes()?;
     Ok(Json(RecipeListResponse {
         success: true,
         data: recipes,
@@ -187,8 +185,7 @@ async fn get_recipe(
     }
     let recipe = state
         .db
-        .get_recipe(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_recipe(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Recipe '{}' not found", vnum)))?;
     Ok(Json(RecipeResponse {
         success: true,
@@ -202,6 +199,12 @@ async fn create_recipe(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<CreateRecipeRequest>,
 ) -> Result<Json<RecipeResponse>, ApiError> {
+    check_text_len("vnum", &req.vnum, VNUM_MAX)?;
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("skill", &req.skill, NAME_MAX)?;
+    check_text_len("output_vnum", &req.output_vnum, VNUM_MAX)?;
+    check_count("ingredients", &req.ingredients, LIST_MAX)?;
+    check_count("tools", &req.tools, LIST_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -246,10 +249,7 @@ async fn create_recipe(
         difficulty: req.difficulty.clamp(1, 10),
     };
 
-    state
-        .db
-        .save_recipe(recipe.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_recipe(recipe.clone())?;
 
     notify_builders(
         &state.connections,
@@ -269,14 +269,18 @@ async fn update_recipe(
     Path(vnum): Path<String>,
     Json(req): Json<UpdateRecipeRequest>,
 ) -> Result<Json<RecipeResponse>, ApiError> {
+    check_opt_len("name", &req.name, NAME_MAX)?;
+    check_opt_len("skill", &req.skill, NAME_MAX)?;
+    check_opt_len("output_vnum", &req.output_vnum, VNUM_MAX)?;
+    check_count("ingredients", req.ingredients.as_deref().unwrap_or_default(), LIST_MAX)?;
+    check_count("tools", req.tools.as_deref().unwrap_or_default(), LIST_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
     let mut recipe = state
         .db
-        .get_recipe(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_recipe(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Recipe '{}' not found", vnum)))?;
 
     if let Some(name) = req.name {
@@ -316,10 +320,7 @@ async fn update_recipe(
         recipe.difficulty = v.clamp(1, 10);
     }
 
-    state
-        .db
-        .save_recipe(recipe.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_recipe(recipe.clone())?;
 
     notify_builders(
         &state.connections,
@@ -344,14 +345,10 @@ async fn delete_recipe(
 
     let recipe = state
         .db
-        .get_recipe(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_recipe(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Recipe '{}' not found", vnum)))?;
 
-    state
-        .db
-        .delete_recipe(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_recipe(&vnum)?;
 
     notify_builders(
         &state.connections,

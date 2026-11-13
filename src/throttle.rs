@@ -5,14 +5,19 @@
 //! online player. A short cooldown stops the spam without inhibiting
 //! normal conversation cadence.
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
 pub struct CommandThrottle {
+    /// `(player, command)` -> when its cooldown ends.
     inner: Mutex<HashMap<(String, String), Instant>>,
 }
+
+/// Prune expired entries once the map holds this many, so it stays bounded
+/// by recent activity rather than every (player, command) pair ever seen.
+const PRUNE_THRESHOLD: usize = 1024;
 
 impl CommandThrottle {
     pub fn new() -> Self {
@@ -25,13 +30,12 @@ impl CommandThrottle {
     /// has to wait. The returned remaining time is always >= 1 when the
     /// throttle is engaged so the caller can render an accurate message.
     pub fn try_consume(&self, player: &str, command: &str, cooldown: Duration) -> u64 {
-        let mut map = self.inner.lock().unwrap();
+        let mut map = self.inner.lock();
         let now = Instant::now();
         let key = (player.to_lowercase(), command.to_string());
-        if let Some(last) = map.get(&key) {
-            let elapsed = now.duration_since(*last);
-            if elapsed < cooldown {
-                let remaining = cooldown - elapsed;
+        if let Some(until) = map.get(&key) {
+            if *until > now {
+                let remaining = *until - now;
                 let secs = remaining.as_secs();
                 return if remaining.subsec_nanos() > 0 {
                     secs + 1
@@ -40,8 +44,20 @@ impl CommandThrottle {
                 };
             }
         }
-        map.insert(key, now);
+        if map.len() >= PRUNE_THRESHOLD {
+            map.retain(|_, until| *until > now);
+        }
+        map.insert(key, now + cooldown);
         0
+    }
+
+    /// Number of tracked entries (for tests and diagnostics).
+    pub fn len(&self) -> usize {
+        self.inner.lock().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -96,5 +112,16 @@ mod tests {
             "case-insensitive match should engage throttle (got {})",
             remaining
         );
+    }
+
+    #[test]
+    fn expired_entries_are_pruned() {
+        let t = CommandThrottle::new();
+        for i in 0..PRUNE_THRESHOLD {
+            t.try_consume(&format!("p{i}"), "shout", Duration::from_millis(1));
+        }
+        sleep(Duration::from_millis(5));
+        t.try_consume("late", "shout", Duration::from_secs(5));
+        assert_eq!(t.len(), 1);
     }
 }

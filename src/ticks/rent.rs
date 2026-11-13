@@ -79,11 +79,11 @@ fn process_expired_escrow(db: &db::Db, connections: &SharedConnections, now: i64
 
         // Remove from character's escrow_ids
         let escrow_id = escrow.id;
-        if let Err(e) = db.update_character(&escrow.owner_name, |c| {
+        ironmud::script::achievements::apply_to_character(db, connections, &escrow.owner_name, |c| {
+            let before = c.escrow_ids.len();
             c.escrow_ids.retain(|id| *id != escrow_id);
-        }) {
-            error!("Failed to update character escrow_ids after expiration: {}", e);
-        }
+            c.escrow_ids.len() != before
+        });
 
         // Delete escrow entry
         if let Err(e) = db.delete_escrow(&escrow.id) {
@@ -135,27 +135,32 @@ fn process_lease_payment(
         .max(1);
 
     // Try to get character data (may be online or offline)
-    let mut char_data = match db.get_character_data(owner_name)? {
+    let char_data = match db.get_character_data(owner_name)? {
         Some(c) => c,
         None => {
-            // Character doesn't exist - evict the lease
+            // Character doesn't exist (deleted) - end the lease and tear the
+            // property down. Nobody is left to hold the contents in escrow.
             debug!("Character {} not found for lease {}, evicting", owner_name, lease.id);
             lease.is_evicted = true;
             lease.eviction_time = Some(now);
             db.save_lease(&lease)?;
+            relocate_players_from_rooms(connections, db, &lease.instanced_rooms, lease.leasing_office_room_id);
+            for room_id in &lease.instanced_rooms {
+                if let Ok(items) = db.get_items_in_room(room_id) {
+                    for item in items {
+                        let _ = db.delete_item_recursive(&item.id);
+                    }
+                }
+                let _ = db.delete_room(room_id);
+            }
             return Ok(());
         }
     };
 
-    // Check if character has enough gold
-    if char_data.gold >= rent_amount {
-        // Deduct rent via CAS so an online player's own gold changes don't
-        // get clobbered.
-        db.update_character(owner_name, |c| {
-            c.gold = c.gold.saturating_sub(rent_amount);
-        })?;
-        char_data.gold -= rent_amount;
-
+    // Deduct rent through the purse: session-first, so an online player's
+    // payment isn't reverted by the next session flush, and refused (not
+    // clamped) when they can't cover it.
+    if rent_amount <= 0 || ironmud::purse::debit_gold(db, connections, owner_name, rent_amount as i64) {
         // Extend lease
         lease.rent_paid_until = now + rent_duration;
         db.save_lease(&lease)?;
@@ -224,10 +229,13 @@ fn process_lease_payment(
             } else {
                 // Add escrow ID to character via CAS
                 let escrow_id = escrow.id;
-                if let Err(e) = db.update_character(owner_name, |c| {
+                if ironmud::script::achievements::apply_to_character(db, connections, owner_name, |c| {
                     c.escrow_ids.push(escrow_id);
-                }) {
-                    error!("Failed to update character escrow_ids: {}", e);
+                    true
+                })
+                .is_none()
+                {
+                    error!("Failed to update character escrow_ids for {}", owner_name);
                 }
                 debug!(
                     "Created escrow {} with {} items for {}",
@@ -266,7 +274,8 @@ fn relocate_players_from_rooms(
     room_ids: &[uuid::Uuid],
     destination: uuid::Uuid,
 ) {
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for (_conn_id, session) in conns.iter_mut() {
             if let Some(ref mut character) = session.character {
                 if room_ids.contains(&character.current_room_id) {
@@ -285,7 +294,8 @@ fn relocate_players_from_rooms(
 
 /// Send a message to a player by name if they're online
 fn send_to_player_by_name(connections: &SharedConnections, name: &str, msg: &str) {
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for (_conn_id, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.name.to_lowercase() == name.to_lowercase() {

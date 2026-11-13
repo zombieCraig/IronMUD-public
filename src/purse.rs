@@ -39,6 +39,23 @@ use crate::{SharedConnections, SharedState};
 /// Set carried gold to an absolute value. Negative values are clamped to zero
 /// rather than refused: this is the admin/scripted setter, and a caller that
 /// wanted a refusal should be using [`add_gold`].
+/// Largest gold reward a single achievement or quest may grant. Rewards are
+/// minted from nothing, so an editor (in game or over the API) must not be
+/// able to set an arbitrary amount.
+pub const MAX_REWARD_GOLD: i64 = 1_000_000;
+
+/// Validate a configured gold reward: `Err` with a user-facing reason when it
+/// is negative or above [`MAX_REWARD_GOLD`].
+pub fn check_reward_gold(amount: i64) -> Result<(), String> {
+    if amount < 0 {
+        return Err("gold reward can't be negative".to_string());
+    }
+    if amount > MAX_REWARD_GOLD {
+        return Err(format!("gold reward can't exceed {MAX_REWARD_GOLD}"));
+    }
+    Ok(())
+}
+
 pub fn set_gold(db: &Db, connections: &SharedConnections, state: &SharedState, char_name: &str, gold: i64) -> bool {
     let target = gold.clamp(0, i32::MAX as i64) as i32;
     write_gold(db, connections, state, char_name, |_| Some(target))
@@ -56,9 +73,33 @@ pub fn add_gold(db: &Db, connections: &SharedConnections, state: &SharedState, c
         return apply_to_character(db, connections, char_name, |_| false).is_some();
     }
     write_gold(db, connections, state, char_name, move |ch| {
+        // Refuse rather than wrap: a credit past i32::MAX used to store
+        // negative gold via `as i32`.
         let next = ch.gold as i64 + amount;
-        (next >= 0).then_some(next as i32)
+        (0..=i32::MAX as i64).contains(&next).then_some(next as i32)
     })
+}
+
+/// Take `amount` (> 0) carried gold, for callers with no `SharedState` in
+/// reach (the rent tick). A debit never crosses the high-water mark or earns
+/// anything, so it needs none of the notifications `add_gold` fires. False
+/// when the character is missing or can't cover it; nothing changes then.
+pub fn debit_gold(db: &Db, connections: &SharedConnections, char_name: &str, amount: i64) -> bool {
+    if amount <= 0 {
+        return false;
+    }
+    let mut ok = false;
+    let found = apply_to_character(db, connections, char_name, |ch| {
+        let next = ch.gold as i64 - amount;
+        if next < 0 {
+            return false;
+        }
+        ch.gold = next as i32;
+        ok = true;
+        true
+    })
+    .is_some();
+    found && ok
 }
 
 /// The one place carried gold is written.
@@ -200,8 +241,9 @@ pub fn withdraw(db: &Db, connections: &SharedConnections, char_name: &str, amoun
 mod tests {
     use super::*;
     use crate::{PlayerSession, World};
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn temp_db() -> (Db, tempfile::TempDir) {
         let temp = tempfile::tempdir().expect("temp dir");
@@ -230,7 +272,7 @@ mod tests {
             let (tx_input, rx_in) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
             let mut session = PlayerSession::new_for_test(tx_client, tx_input);
             session.character = Some(c.clone());
-            conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+            conns.lock().insert(uuid::Uuid::new_v4(), session);
             // Dropping the receivers closes the channels and silences every
             // later send; the tests do not read them but the code does write.
             std::mem::forget((rx, rx_in));
@@ -239,7 +281,7 @@ mod tests {
     }
 
     fn session_gold(conns: &SharedConnections, name: &str) -> (i32, i64) {
-        let guard = conns.lock().unwrap();
+        let guard = conns.lock();
         guard
             .values()
             .find_map(|s| {
@@ -309,7 +351,7 @@ mod tests {
     }
 
     fn flush_session(db: &Db, conns: &SharedConnections, name: &str) {
-        let guard = conns.lock().unwrap();
+        let guard = conns.lock();
         for s in guard.values() {
             if let Some(ref c) = s.character {
                 if c.name.eq_ignore_ascii_case(name) {
@@ -330,6 +372,19 @@ mod tests {
         assert_eq!(db_gold(&db, "away").0, 150);
         assert!(add_bank(&db, &conns, "away", 5));
         assert_eq!(db_gold(&db, "away").1, 15);
+    }
+
+    #[test]
+    fn a_credit_past_i32_max_is_refused_not_wrapped() {
+        let (db, _t) = temp_db();
+        saved(&db, "rich", i32::MAX - 5, 0);
+        let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let state = World::minimal_shared(db.clone(), conns.clone());
+
+        assert!(!add_gold(&db, &conns, &state, "rich", 10));
+        assert_eq!(db_gold(&db, "rich").0, i32::MAX - 5, "unchanged, not negative");
+        assert!(add_gold(&db, &conns, &state, "rich", 5));
+        assert_eq!(db_gold(&db, "rich").0, i32::MAX);
     }
 
     #[test]

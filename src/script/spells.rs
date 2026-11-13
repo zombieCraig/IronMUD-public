@@ -12,7 +12,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // get_spell_list() -> Array of spell IDs
     let state_clone = state.clone();
     engine.register_fn("get_spell_list", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world
             .spell_definitions
             .keys()
@@ -23,7 +23,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // get_spell_info(spell_id) -> Map with all spell fields, or empty map
     let state_clone = state.clone();
     engine.register_fn("get_spell_info", move |spell_id: String| -> rhai::Map {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut map = rhai::Map::new();
         if let Some(spell) = world.spell_definitions.get(&spell_id) {
             map.insert("id".into(), rhai::Dynamic::from(spell.id.clone()));
@@ -130,7 +130,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             Ok(Some(c)) => c,
             _ => return rhai::Array::new(),
         };
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut available = rhai::Array::new();
         for (id, spell) in &world.spell_definitions {
             if spell.requires_vampire && char.vampire_state.is_none() {
@@ -252,7 +252,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                     .sum();
                 effective_int += buff_bonus;
                 // Add racial stat modifiers
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if let Some(race_def) = world.race_definitions.get(&c.race.to_lowercase()) {
                     if let Some(&modifier) = race_def.stat_modifiers.get("int") {
                         effective_int += modifier;
@@ -491,7 +491,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             // Check evolution. Re-lookup the SpellDefinition each call so JSON
             // hot-reloads pick up new chains.
             let evolve_target: Option<(i32, String)> = {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 world
                     .spell_definitions
                     .get(&spell_id)
@@ -503,11 +503,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             if let Some((req, new_id)) = evolve_target {
                 if final_level >= req {
                     // Verify the evolved target exists and is not already learned.
-                    let target_exists = state_clone
-                        .lock()
-                        .ok()
-                        .map(|w| w.spell_definitions.contains_key(&new_id))
-                        .unwrap_or(false);
+                    let target_exists = state_clone.lock().spell_definitions.contains_key(&new_id);
                     let already_has_new = char.learned_spells.iter().any(|s| s == &new_id);
                     let has_old = char.learned_spells.iter().any(|s| s == &spell_id);
                     if target_exists && has_old && !already_has_new {

@@ -34,7 +34,7 @@
 //! Resolving opposed factions needs the definition registry, which lives in
 //! `World`. Every function here that takes a [`crate::SharedState`] locks it
 //! only to clone the definitions it needs and releases before touching
-//! connections — `std::sync::Mutex` is not reentrant and holding both locks is
+//! connections — `parking_lot::Mutex` is not reentrant and holding both locks is
 //! the standing deadlock hazard in this codebase.
 
 use crate::tiers::{Tier, TierLadder};
@@ -327,13 +327,13 @@ pub fn opposition_deltas(def: &FactionDefinition, delta: i32) -> Vec<(String, i3
 /// holding the connections lock.
 pub fn definition(state: &crate::SharedState, faction: &str) -> FactionDefinition {
     let key = faction.to_lowercase();
-    match state.lock() {
-        Ok(world) => world
+    {
+        let world = state.lock();
+        world
             .faction_definitions
             .get(&key)
             .cloned()
-            .unwrap_or_else(|| FactionDefinition::unregistered(&key)),
-        Err(_) => FactionDefinition::unregistered(&key),
+            .unwrap_or_else(|| FactionDefinition::unregistered(&key))
     }
 }
 
@@ -439,7 +439,8 @@ pub fn apply_delta(
         return Vec::new();
     }
 
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for session in conns.values_mut() {
             let is_them = session
                 .character
@@ -762,10 +763,10 @@ mod tests {
 
     fn world_with(db: &crate::db::Db, defs: Vec<FactionDefinition>) -> (crate::SharedConnections, crate::SharedState) {
         let conns: crate::SharedConnections =
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
         {
-            let mut w = state.lock().unwrap();
+            let mut w = state.lock();
             for d in defs {
                 w.faction_definitions.insert(d.key.clone(), d);
             }
@@ -820,7 +821,7 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = db.get_character_data("rook").expect("read");
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
 
         apply_delta(&db, &conns, &state, "rook", "iron_guard", 60);
 
@@ -833,7 +834,6 @@ mod tests {
         );
         let live = conns
             .lock()
-            .unwrap()
             .values()
             .next()
             .and_then(|s| s.character.as_ref().map(|c| standing(&c.reputation, "iron_guard")));
@@ -860,7 +860,7 @@ mod tests {
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = db.get_character_data("rook").expect("read");
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
 
         let drain = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>| {
             let mut out = String::new();

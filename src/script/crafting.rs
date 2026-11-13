@@ -139,7 +139,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_all_recipes() -> Array<Recipe>
     let cloned_state = state.clone();
     engine.register_fn("get_all_recipes", move || -> Vec<rhai::Dynamic> {
-        let state_guard = cloned_state.lock().unwrap();
+        let state_guard = cloned_state.lock();
         state_guard
             .recipes
             .values()
@@ -150,7 +150,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_recipes_by_skill(skill) -> Array<Recipe>
     let cloned_state = state.clone();
     engine.register_fn("get_recipes_by_skill", move |skill: String| -> Vec<rhai::Dynamic> {
-        let state_guard = cloned_state.lock().unwrap();
+        let state_guard = cloned_state.lock();
         let skill_lower = skill.to_lowercase();
         state_guard
             .recipes
@@ -163,7 +163,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_recipe(id) -> Recipe or ()
     let cloned_state = state.clone();
     engine.register_fn("get_recipe", move |id: String| -> rhai::Dynamic {
-        let state_guard = cloned_state.lock().unwrap();
+        let state_guard = cloned_state.lock();
         match state_guard.recipes.get(&id) {
             Some(recipe) => rhai::Dynamic::from(recipe.clone()),
             None => rhai::Dynamic::UNIT,
@@ -177,7 +177,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("knows_recipe", move |char_name: String, recipe_id: String| -> bool {
         // Get the recipe
         let recipe: Recipe = {
-            let state_guard = cloned_state.lock().unwrap();
+            let state_guard = cloned_state.lock();
             match state_guard.recipes.get(&recipe_id) {
                 Some(r) => r.clone(),
                 None => return false,
@@ -215,7 +215,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("learn_recipe", move |char_name: String, recipe_id: String| -> bool {
         // Verify recipe exists
         {
-            let state_guard = cloned_state.lock().unwrap();
+            let state_guard = cloned_state.lock();
             if !state_guard.recipes.contains_key(&recipe_id) {
                 return false;
             }
@@ -354,7 +354,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // so holding the World mutex through it would stall every other
             // player rather than just this one.
             let recipes = {
-                let world = cloned_state.lock().unwrap();
+                let world = cloned_state.lock();
                 world.recipes.clone()
             };
             // Auto-learn recipes the player already has the skill for are
@@ -384,7 +384,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "experiment_success_chance",
         move |skill_level: i64, recipe_id: String| -> i64 {
-            let world = cloned_state.lock().unwrap();
+            let world = cloned_state.lock();
             match world.recipes.get(&recipe_id) {
                 Some(r) => crate::experiment::success_chance(skill_level as i32, r) as i64,
                 None => 0,
@@ -395,7 +395,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // experiment_consolation_xp(recipe_id) -> i64
     let cloned_state = state.clone();
     engine.register_fn("experiment_consolation_xp", move |recipe_id: String| -> i64 {
-        let world = cloned_state.lock().unwrap();
+        let world = cloned_state.lock();
         match world.recipes.get(&recipe_id) {
             Some(r) => crate::experiment::consolation_xp(r) as i64,
             None => 0,
@@ -866,7 +866,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             return false;
         }
         // Update in-memory cache
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         state_guard.recipes.insert(recipe.id.clone(), recipe);
         true
     });
@@ -880,7 +880,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         match cloned_db.delete_recipe(&vnum) {
             Ok(true) => {
                 // Remove from in-memory cache
-                let mut state_guard = cloned_state.lock().unwrap();
+                let mut state_guard = cloned_state.lock();
                 state_guard.recipes.remove(&vnum);
                 true
             }
@@ -891,7 +891,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // recipe_exists(vnum) -> bool
     let cloned_state = state.clone();
     engine.register_fn("recipe_exists", move |vnum: String| -> bool {
-        let state_guard = cloned_state.lock().unwrap();
+        let state_guard = cloned_state.lock();
         state_guard.recipes.contains_key(&vnum.to_lowercase()) || state_guard.recipes.contains_key(&vnum)
     });
 
@@ -899,7 +899,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     let cloned_state = state.clone();
     engine.register_fn("set_recipe_name", move |vnum: String, name: String| -> bool {
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.name = name;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -916,7 +916,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if skill_lower != "cooking" && skill_lower != "crafting" {
             return false;
         }
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.skill = skill_lower;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -932,7 +932,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if level < 0 || level > 10 {
             return false;
         }
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.skill_required = level as i32;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -945,7 +945,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     let cloned_state = state.clone();
     engine.register_fn("set_recipe_autolearn", move |vnum: String, autolearn: bool| -> bool {
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.auto_learn = autolearn;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -961,7 +961,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if difficulty < 1 || difficulty > 10 {
             return false;
         }
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.difficulty = difficulty as i32;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -977,7 +977,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if xp < 0 {
             return false;
         }
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             recipe.base_xp = xp as i32;
             cloned_db.save_recipe(recipe.clone()).is_ok()
@@ -995,7 +995,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if quantity < 1 {
                 return false;
             }
-            let mut state_guard = cloned_state.lock().unwrap();
+            let mut state_guard = cloned_state.lock();
             if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
                 recipe.output_vnum = output_vnum;
                 recipe.output_quantity = quantity as i32;
@@ -1016,7 +1016,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if quantity < 1 {
                 return false;
             }
-            let mut state_guard = cloned_state.lock().unwrap();
+            let mut state_guard = cloned_state.lock();
             if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
                 let ingredient = if item_ref.starts_with("@liquid:") {
                     // Liquid ingredient - preserve full @liquid:TYPE format
@@ -1052,7 +1052,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     let cloned_state = state.clone();
     engine.register_fn("remove_recipe_ingredient", move |vnum: String, index: i64| -> bool {
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             let idx = index as usize;
             if idx < recipe.ingredients.len() {
@@ -1080,7 +1080,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "either" => ToolLocation::Either,
                 _ => return false,
             };
-            let mut state_guard = cloned_state.lock().unwrap();
+            let mut state_guard = cloned_state.lock();
             if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
                 let tool = if item_ref.starts_with('@') {
                     // Category match
@@ -1109,7 +1109,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     let cloned_state = state.clone();
     engine.register_fn("remove_recipe_tool", move |vnum: String, index: i64| -> bool {
-        let mut state_guard = cloned_state.lock().unwrap();
+        let mut state_guard = cloned_state.lock();
         if let Some(recipe) = state_guard.recipes.get_mut(&vnum) {
             let idx = index as usize;
             if idx < recipe.tools.len() {
@@ -1133,7 +1133,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if old_vnum == new_vnum {
                 return true; // No change needed
             }
-            let mut state_guard = cloned_state.lock().unwrap();
+            let mut state_guard = cloned_state.lock();
             // Check new vnum doesn't already exist
             if state_guard.recipes.contains_key(&new_vnum) {
                 return false;
@@ -1164,7 +1164,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_state = state.clone();
     engine.register_fn("search_recipes", move |keyword: String| -> Vec<rhai::Dynamic> {
         let keyword_lower = keyword.to_lowercase();
-        let state_guard = cloned_state.lock().unwrap();
+        let state_guard = cloned_state.lock();
         state_guard
             .recipes
             .values()

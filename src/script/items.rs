@@ -447,12 +447,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         .register_get("has_damage", |i: &mut ItemData| {
             i.damage_dice_count > 0 && i.damage_dice_sides > 0
         })
-        .register_get("container_contents", |i: &mut ItemData| {
-            i.container_contents
-                .iter()
-                .map(|u| rhai::Dynamic::from(u.to_string()))
-                .collect::<Vec<_>>()
-        })
         .register_get("is_container", |i: &mut ItemData| i.item_type == ItemType::Container)
         .register_get("is_key", |i: &mut ItemData| i.item_type == ItemType::Key)
         .register_get("liquid_type", |i: &mut ItemData| {
@@ -467,10 +461,25 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         .register_get("is_liquid_container", |i: &mut ItemData| {
             i.item_type == ItemType::LiquidContainer
         })
-        .register_get("is_empty", |i: &mut ItemData| match i.item_type {
-            ItemType::Container => i.container_contents.is_empty(),
-            ItemType::LiquidContainer => i.liquid_current <= 0,
-            _ => true,
+        .register_get("is_empty", {
+            let db = db.clone();
+            move |i: &mut ItemData| match i.item_type {
+                ItemType::Container => db.get_items_in_container(&i.id).map(|v| v.is_empty()).unwrap_or(true),
+                ItemType::LiquidContainer => i.liquid_current <= 0,
+                _ => true,
+            }
+        })
+        // container_contents -> Array of item id strings: what is in this
+        // container now (items whose location is this container).
+        .register_get("container_contents", {
+            let db = db.clone();
+            move |i: &mut ItemData| {
+                db.get_items_in_container(&i.id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|item| rhai::Dynamic::from(item.id.to_string()))
+                    .collect::<Vec<_>>()
+            }
         })
         // Food properties
         .register_get("food_spoil_duration", |i: &mut ItemData| i.food_spoil_duration)
@@ -2020,13 +2029,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         let mut noise_reduction: i64 = 0;
         let mut magazine_bonus: i64 = 0;
 
-        for content_id in &weapon.container_contents {
-            if let Ok(Some(attachment)) = cloned_db.get_item_data(content_id) {
-                if !attachment.attachment_slot.is_empty() {
-                    accuracy_bonus += attachment.attachment_accuracy_bonus as i64;
-                    noise_reduction += attachment.attachment_noise_reduction as i64;
-                    magazine_bonus += attachment.attachment_magazine_bonus as i64;
-                }
+        for attachment in cloned_db.get_items_in_container(&weapon.id).unwrap_or_default() {
+            if !attachment.attachment_slot.is_empty() {
+                accuracy_bonus += attachment.attachment_accuracy_bonus as i64;
+                noise_reduction += attachment.attachment_noise_reduction as i64;
+                magazine_bonus += attachment.attachment_magazine_bonus as i64;
             }
         }
 
@@ -2122,7 +2129,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             }
 
             // Check slot capacity
-            if weapon.container_max_items > 0 && weapon.container_contents.len() as i32 >= weapon.container_max_items {
+            let fitted = cloned_db.get_items_in_container(&weapon.id).unwrap_or_default();
+            if weapon.container_max_items > 0 && fitted.len() as i32 >= weapon.container_max_items {
                 result.insert(
                     "reason".into(),
                     rhai::Dynamic::from("That weapon has no free attachment slots.".to_string()),
@@ -2131,19 +2139,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             }
 
             // Check duplicate slot
-            for content_id in &weapon.container_contents {
-                if let Ok(Some(existing)) = cloned_db.get_item_data(content_id) {
-                    if existing.attachment_slot == attachment.attachment_slot {
-                        result.insert(
-                            "reason".into(),
-                            rhai::Dynamic::from(format!(
-                                "That weapon already has a {} attached.",
-                                attachment.attachment_slot
-                            )),
-                        );
-                        return result;
-                    }
-                }
+            if let Some(existing) = fitted.iter().find(|e| e.attachment_slot == attachment.attachment_slot) {
+                result.insert(
+                    "reason".into(),
+                    rhai::Dynamic::from(format!(
+                        "That weapon already has a {} attached.",
+                        existing.attachment_slot
+                    )),
+                );
+                return result;
             }
 
             result.insert("allowed".into(), rhai::Dynamic::from(true));
@@ -2271,12 +2275,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
 
                 spawned.location = ItemLocation::Container(corpse_uuid);
                 spawned.ammo_count = 1;
-                if cloned_db.save_item_data(spawned.clone()).is_ok() {
-                    if let Ok(Some(mut corpse)) = cloned_db.get_item_data(&corpse_uuid) {
-                        corpse.container_contents.push(spawned.id);
-                        let _ = cloned_db.save_item_data(corpse);
-                    }
-                }
+                if cloned_db.save_item_data(spawned.clone()).is_ok() {}
                 recovered += 1;
             }
 
@@ -2698,20 +2697,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             return result;
         }
 
-        if container.container_max_items > 0
-            && container.container_contents.len() >= container.container_max_items as usize
-        {
+        let inside = cloned_db.get_items_in_container(&container.id).unwrap_or_default();
+        if container.container_max_items > 0 && inside.len() >= container.container_max_items as usize {
             result.insert("reason".into(), "Container is full".into());
             return result;
         }
 
         if container.container_max_weight > 0 {
-            let current_weight: i32 = container
-                .container_contents
-                .iter()
-                .filter_map(|id| cloned_db.get_item_data(id).ok().flatten())
-                .map(|i| i.weight)
-                .sum();
+            let current_weight: i32 = inside.iter().map(|i| i.weight).sum();
             if current_weight + item.weight > container.container_max_weight {
                 result.insert("reason".into(), "Too heavy for container".into());
                 return result;
@@ -3539,7 +3532,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
                             new_item.is_prototype = false;
                             new_item.location = ItemLocation::Nowhere;
                             // Clear container contents for spawned items
-                            new_item.container_contents = Vec::new();
                             if cloned_db.save_item_data(new_item.clone()).is_ok() {
                                 return rhai::Dynamic::from(new_item);
                             }
@@ -3567,7 +3559,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
                                 new_item.is_prototype = false;
                                 new_item.location = ItemLocation::Inventory(char_name.clone());
                                 // Clear container contents for spawned items
-                                new_item.container_contents = Vec::new();
                                 if cloned_db.save_item_data(new_item.clone()).is_ok() {
                                     return rhai::Dynamic::from(new_item);
                                 }
@@ -3649,6 +3640,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     );
 
     // is_gold_item(item_id) -> bool
+    // claim_gold_item(item_id) -> i64
+    // Atomically removes a gold pile and returns its value (0 if it was
+    // already taken or is not gold). Credit ONLY the returned amount.
+    let cloned_db = db.clone();
+    engine.register_fn("claim_gold_item", move |item_id: String| -> i64 {
+        uuid::Uuid::parse_str(&item_id)
+            .ok()
+            .and_then(|id| cloned_db.claim_gold_item(&id).ok().flatten())
+            .unwrap_or(0)
+    });
+
     let cloned_db = db.clone();
     engine.register_fn("is_gold_item", move |item_id: String| -> bool {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
@@ -4430,14 +4432,21 @@ fn set_item_cast_on_use_impl(
 
 // Helper function to calculate container contents weight
 fn calculate_container_contents_weight(db: &Db, container: &ItemData) -> i64 {
+    contents_weight_at_depth(db, container.id, 0)
+}
+
+/// Depth-bounded so a location loop (a container that ends up inside
+/// itself) can't recurse forever.
+fn contents_weight_at_depth(db: &Db, container_id: uuid::Uuid, depth: u32) -> i64 {
+    if depth > 16 {
+        return 0;
+    }
     let mut weight: i64 = 0;
-    for item_id in &container.container_contents {
-        if let Ok(Some(item)) = db.get_item_data(item_id) {
-            weight += item.weight as i64;
-            // Recursively add nested container contents (no reduction for nested)
-            if item.item_type == ItemType::Container {
-                weight += calculate_container_contents_weight(db, &item);
-            }
+    for item in db.get_items_in_container(&container_id).unwrap_or_default() {
+        weight += item.weight as i64;
+        // Recursively add nested container contents (no reduction for nested)
+        if item.item_type == ItemType::Container {
+            weight += contents_weight_at_depth(db, item.id, depth + 1);
         }
     }
     weight

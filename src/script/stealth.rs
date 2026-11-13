@@ -204,7 +204,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
             if cloned_db.save_character_data(character.clone()).is_ok() {
                 // Update session state
-                let mut conns = cloned_conns.lock().unwrap();
+                let mut conns = cloned_conns.lock();
                 for session in conns.values_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.to_lowercase() == key {
@@ -237,7 +237,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if let Ok(Some(mut character)) = cloned_db.get_character_data(&key) {
             character.is_sneaking = value;
             if cloned_db.save_character_data(character.clone()).is_ok() {
-                let mut conns = cloned_conns.lock().unwrap();
+                let mut conns = cloned_conns.lock();
                 for session in conns.values_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.to_lowercase() == key {
@@ -269,7 +269,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if let Ok(Some(mut character)) = cloned_db.get_character_data(&key) {
             character.is_camouflaged = value;
             if cloned_db.save_character_data(character.clone()).is_ok() {
-                let mut conns = cloned_conns.lock().unwrap();
+                let mut conns = cloned_conns.lock();
                 for session in conns.values_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.to_lowercase() == key {
@@ -305,7 +305,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             character.is_sneaking = false;
             character.is_camouflaged = false;
             if cloned_db.save_character_data(character.clone()).is_ok() {
-                let mut conns = cloned_conns.lock().unwrap();
+                let mut conns = cloned_conns.lock();
                 for session in conns.values_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.to_lowercase() == key {
@@ -811,7 +811,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&key) {
                 character.hunting_target = target_name;
                 if cloned_db.save_character_data(character.clone()).is_ok() {
-                    let mut conns = cloned_conns.lock().unwrap();
+                    let mut conns = cloned_conns.lock();
                     for session in conns.values_mut() {
                         if let Some(ref mut sc) = session.character {
                             if sc.name.to_lowercase() == key {
@@ -857,7 +857,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&key) {
                 character.envenomed_charges = charges as i32;
                 if cloned_db.save_character_data(character.clone()).is_ok() {
-                    let mut conns = cloned_conns.lock().unwrap();
+                    let mut conns = cloned_conns.lock();
                     for session in conns.values_mut() {
                         if let Some(ref mut sc) = session.character {
                             if sc.name.to_lowercase() == key {
@@ -892,7 +892,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if let Ok(Some(mut character)) = cloned_db.get_character_data(&key) {
             character.circle_cooldown = cooldown;
             if cloned_db.save_character_data(character.clone()).is_ok() {
-                let mut conns = cloned_conns.lock().unwrap();
+                let mut conns = cloned_conns.lock();
                 for session in conns.values_mut() {
                     if let Some(ref mut sc) = session.character {
                         if sc.name.to_lowercase() == key {

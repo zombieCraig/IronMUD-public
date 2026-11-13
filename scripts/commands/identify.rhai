@@ -36,7 +36,10 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    add_character_gold(char.name, -cost);
+    if !add_character_gold(char.name, -cost) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", cost);
     broadcast_to_room(char.current_room_id, connection_id,
         shopkeeper.name + " carefully examines " + char.name + "'s " + item.name + ".");

@@ -18,6 +18,16 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::warn;
 
+/// Environment variable that supplies the SMTP password instead of the
+/// `smtp_pass` setting.
+pub const SMTP_PASS_ENV: &str = "IRONMUD_SMTP_PASS";
+
+/// Settings whose values are credentials: never echoed, listed or logged.
+pub fn is_secret_setting(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    k.contains("pass") || k.contains("secret") || k.contains("token")
+}
+
 #[derive(Debug)]
 pub enum EmailError {
     /// SMTP host or `From:` address not configured. The verification flow is
@@ -145,10 +155,15 @@ fn deliver(db: &Db, to_address: &str, subject: &str, body: String) -> Result<(),
         .get_setting("smtp_user")
         .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
         .unwrap_or_default();
-    let pass = db
-        .get_setting("smtp_pass")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
-        .unwrap_or_default();
+    // The environment wins over the stored setting, so the password can be
+    // kept out of the database (and its backups) entirely.
+    let pass = match std::env::var(SMTP_PASS_ENV) {
+        Ok(p) if !p.is_empty() => p,
+        _ => db
+            .get_setting("smtp_pass")
+            .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
+            .unwrap_or_default(),
+    };
     let from_address = read_setting_required(db, "smtp_from_address", "smtp_from_address")?;
     let from_name = db
         .get_setting_or_default("smtp_from_name", "IronMUD")

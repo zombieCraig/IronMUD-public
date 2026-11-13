@@ -96,16 +96,12 @@ impl PromptContext {
     /// `extra` and `faction_names` — each cost a lock, so the caller fills
     /// them only when the format asks.
     pub fn from_character(ch: &CharacterData, colors: bool) -> Self {
-        // A torso wound caps hit points and a head wound caps mana. The
-        // prompt shows the capped maxima rather than the paper ones, because
-        // the capped number is the one the player can actually reach.
-        let torso = worst_wound_penalty(ch, crate::types::BodyPart::Torso);
-        let max_hp = if torso > 0 {
-            (ch.max_hp * (100 - torso) / 100).max(1)
-        } else {
-            ch.max_hp
-        };
-        let head = worst_wound_penalty(ch, crate::types::BodyPart::Head);
+        // Buffs, max-HP traits and a torso wound set the HP ceiling; a head
+        // wound caps mana. The prompt shows the capped maxima rather than the
+        // paper ones, because the capped number is the one the player can
+        // actually reach.
+        let max_hp = ch.effective_max_hp();
+        let head = ch.worst_wound_penalty(crate::types::BodyPart::Head);
         let max_mana = if head > 0 {
             (ch.max_mana * (100 - head) / 100).max(0)
         } else {
@@ -151,15 +147,6 @@ impl PromptContext {
             extra: String::new(),
         }
     }
-}
-
-fn worst_wound_penalty(ch: &CharacterData, part: crate::types::BodyPart) -> i32 {
-    ch.wounds
-        .iter()
-        .filter(|w| w.body_part == part)
-        .map(|w| w.level.penalty())
-        .max()
-        .unwrap_or(0)
 }
 
 /// One thing the prompt can say.

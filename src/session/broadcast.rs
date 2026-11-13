@@ -1,7 +1,8 @@
 //! Broadcasting functions for sending messages to players
 
+use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::db;
@@ -19,7 +20,7 @@ fn get_builder_debug_log() -> &'static Mutex<VecDeque<String>> {
 
 /// Retrieve the last N lines from the builder debug log
 pub fn get_builder_debug_lines(limit: usize) -> Vec<String> {
-    let log = get_builder_debug_log().lock().unwrap();
+    let log = get_builder_debug_log().lock();
     log.iter()
         .rev()
         .take(limit)
@@ -32,7 +33,7 @@ pub fn get_builder_debug_lines(limit: usize) -> Vec<String> {
 
 /// Get all character names in a specific room
 pub fn get_characters_in_room(connections: &SharedConnections, room_id: Uuid) -> Vec<String> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns
         .values()
         .filter_map(|session| {
@@ -52,7 +53,7 @@ pub fn get_characters_in_room_with_positions(
     connections: &SharedConnections,
     room_id: Uuid,
 ) -> Vec<(String, CharacterPosition)> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     conns
         .values()
         .filter_map(|session| {
@@ -72,14 +73,8 @@ pub fn get_characters_in_room_with_positions(
 /// hear the raw text; everyone else hears it through `garble_for_listener`
 /// based on their skill in the mob's spoken language.
 pub fn emit_mob_speech(connections: &SharedConnections, state: &SharedState, speech: &DialogueSayLine) {
-    let world = match state.lock() {
-        Ok(w) => w,
-        Err(_) => return,
-    };
-    let conns = match connections.lock() {
-        Ok(c) => c,
-        Err(_) => return,
-    };
+    let world = state.lock();
+    let conns = connections.lock();
     for (_id, session) in conns.iter() {
         let Some(ref ch) = session.character else {
             continue;
@@ -103,7 +98,7 @@ pub fn emit_mob_speech(connections: &SharedConnections, state: &SharedState, spe
 
 /// Broadcast a message to all players in a room
 pub fn broadcast_to_room(connections: &SharedConnections, room_id: Uuid, message: String, exclude_name: Option<&str>) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.current_room_id == room_id {
@@ -133,7 +128,7 @@ pub fn broadcast_to_room_awake(
     message: String,
     exclude_name: Option<&str>,
 ) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.current_room_id == room_id {
@@ -169,7 +164,7 @@ pub fn broadcast_to_room_dreaming(
     sleeping_message: String,
     exclude_name: Option<&str>,
 ) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.current_room_id == room_id {
@@ -199,7 +194,7 @@ pub fn broadcast_to_room_dreaming(
 
 /// Broadcast a message to all logged-in players
 pub fn broadcast_to_all_players(connections: &SharedConnections, message: &str, exclude_name: Option<&str>) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for session in conns.values() {
         if let Some(ref character) = session.character {
             // Writers are deafened to world-wide ambient broadcasts.
@@ -223,7 +218,7 @@ pub fn broadcast_to_all_players(connections: &SharedConnections, message: &str, 
 /// Broadcast a message to players in rooms that can see outside
 /// (no no_windows flag, not climate controlled)
 pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections, message: &str) {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for session in conns.values() {
         if let Some(ref character) = session.character {
             // Writers are deafened to weather/time-of-day broadcasts.
@@ -260,14 +255,8 @@ pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections
 /// wrong for news — a world milestone sent that way is invisible to every
 /// builder who has not typed `builder debug on`, arrives labelled as debug
 /// output, and evicts a real debug line on the way past.
-///
-/// Locks are taken with `if let`, not `unwrap`: this is reachable from a
-/// blocking tick thread, where a panic poisons the connections mutex for the
-/// whole process.
 pub fn announce_to_builders(connections: &SharedConnections, message: &str) {
-    let Ok(conns) = connections.lock() else {
-        return;
-    };
+    let conns = connections.lock();
     for session in conns.values() {
         if let Some(ref character) = session.character
             && (character.is_builder || character.is_admin)
@@ -281,14 +270,14 @@ pub fn announce_to_builders(connections: &SharedConnections, message: &str) {
 pub fn broadcast_to_builders(connections: &SharedConnections, message: &str) {
     // Store in global log buffer
     {
-        let mut log = get_builder_debug_log().lock().unwrap();
+        let mut log = get_builder_debug_log().lock();
         if log.len() >= 50 {
             log.pop_front();
         }
         log.push_back(message.to_string());
     }
 
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for session in conns.values() {
         if let Some(ref character) = session.character {
             if (character.is_builder || character.is_admin) && character.builder_debug_enabled {
@@ -303,7 +292,7 @@ pub fn broadcast_to_builders(connections: &SharedConnections, message: &str) {
 /// saturating the 50-slot ring buffer with one repeated error.
 pub fn broadcast_to_builders_dedup(connections: &SharedConnections, message: &str) {
     {
-        let log = get_builder_debug_log().lock().unwrap();
+        let log = get_builder_debug_log().lock();
         if log.back().map(String::as_str) == Some(message) {
             return;
         }

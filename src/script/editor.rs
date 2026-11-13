@@ -22,7 +22,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
             Err(_) => return false,
         };
 
-        let mut conns_lock = conns.lock().unwrap();
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return false,

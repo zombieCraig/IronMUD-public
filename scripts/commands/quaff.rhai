@@ -96,7 +96,7 @@ fn fire_potion_spell(connection_id, char, spell) {
         }
         let old_hp = target.hp;
         target.hp += heal_amount;
-        if target.hp > target.max_hp { target.hp = target.max_hp; }
+        if target.hp > target.effective_max_hp() { target.hp = target.effective_max_hp(); }
         let actual = target.hp - old_hp;
         save_character_data(target);
         let refreshed = get_character_data(char.name);

@@ -206,8 +206,20 @@ fn run_unauthenticated_create(args, connection_id) {
     }
 
     let name = parts[0];
-    let password = parts[1];
-    let email = if parts.len() >= 3 { parts[2] } else { "" };
+    // The password may contain spaces: with verification it's everything
+    // between the name and the trailing email, otherwise the rest of the line.
+    let password = "";
+    let email = "";
+    if need_email {
+        email = parts[parts.len() - 1];
+        let mid = [];
+        for i in 1..(parts.len() - 1) { mid.push(parts[i]); }
+        password = mid.join(" ");
+    } else {
+        let rest = [];
+        for i in 1..parts.len() { rest.push(parts[i]); }
+        password = rest.join(" ");
+    }
 
     if name == "" {
         send_client_message(connection_id, "Account name cannot be empty.");
@@ -221,6 +233,10 @@ fn run_unauthenticated_create(args, connection_id) {
 
     if password == "" {
         send_client_message(connection_id, "Password cannot be empty.");
+        return;
+    }
+    if password.len() < min_password_len() {
+        send_client_message(connection_id, "Password must be at least " + min_password_len() + " characters long.");
         return;
     }
 
@@ -314,9 +330,10 @@ fn run_unauthenticated_create(args, connection_id) {
     set_authenticated_account(connection_id, account_id, name);
     touch_account_login(account_id);
 
-    // First character becomes admin automatically (secured server-side)
+    // First character becomes admin automatically (secured server-side:
+    // only from a local connection unless the operator opted in).
     if is_first_character {
-        set_first_character_privileges(name);
+        is_first_character = set_first_character_privileges(name, connection_id);
     }
 
     // Stash chargen state up front so the post-verify success path can find
@@ -447,6 +464,10 @@ fn handle_email_verify_input(args, connection_id) {
     }
     if result == 1 {
         send_client_message(connection_id, "No verification code is outstanding. Type 'resend' to request one.\n> ");
+        return;
+    }
+    if result == 4 {
+        send_client_message(connection_id, "Too many wrong codes. Type 'resend' for a new code, or 'cancel'.\n> ");
         return;
     }
     if result == 2 {

@@ -1,3 +1,4 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::indexing_slicing))]
 //! Tick systems for IronMUD
 //!
 //! This module contains all background tick systems that run periodically
@@ -36,6 +37,9 @@ pub(crate) mod broadcast;
 
 // Liveness registry + watchdog — surfaces ticks whose tasks have died.
 pub mod heartbeat;
+
+// Restarts tick tasks that panic.
+pub mod supervise;
 
 // Submodules for each tick system
 pub mod achievements;

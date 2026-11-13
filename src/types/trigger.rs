@@ -33,6 +33,37 @@ pub struct DgTriggerProto {
     pub arglist: String,
     /// Raw DG body — copied into `dg_body` on the resulting trigger.
     pub body: String,
+    /// Character who last saved the body. Attached instances run with this
+    /// author's DG opcode permissions (see `EvalCtx::opcode_authorized`).
+    #[serde(default)]
+    pub last_edited_by: Option<String>,
+    /// Importer-seeded body nobody has edited in game: attached instances
+    /// run with system trust. Cleared by the first in-game or API edit.
+    /// Records written before this field existed can't be told apart from
+    /// builder-made ones, so they deserialize as `false` (untrusted until a
+    /// builder re-saves them) and `Db::migrate_legacy_dg_proto_trust`
+    /// re-stamps their instances. An admin restores system trust for
+    /// genuinely imported protos with `ironmud-admin dg-proto trust`.
+    #[serde(default)]
+    pub imported: bool,
+}
+
+impl DgTriggerProto {
+    /// Author to stamp on an instance attached from this proto. `None`
+    /// (system trust) only for untouched imported content. Otherwise the
+    /// last editor, or an empty name — which the opcode gate refuses.
+    pub fn instance_author(&self) -> Option<String> {
+        if self.imported && self.last_edited_by.is_none() {
+            return None;
+        }
+        Some(self.last_edited_by.clone().unwrap_or_default())
+    }
+
+    /// Record an edit of the body by `author`.
+    pub fn stamp_edit(&mut self, author: &str) {
+        self.last_edited_by = Some(author.to_string());
+        self.imported = false;
+    }
 }
 
 fn default_proto_numeric() -> i32 {

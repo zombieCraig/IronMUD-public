@@ -17,7 +17,7 @@ pub fn set_character_for_connection(
             Position::NONE,
         ))
     })?;
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         // Copy persisted settings from CharacterData to session
         session.show_room_flags = character_data.show_room_flags;
@@ -54,7 +54,7 @@ pub fn get_character_for_connection(
             Position::NONE,
         ))
     })?;
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     if let Some(session) = conns.get(&connection_id) {
         session.character.clone().ok_or_else(|| {
             Box::new(rhai::EvalAltResult::ErrorRuntime(
@@ -81,7 +81,7 @@ pub fn clear_player_character(
             Position::NONE,
         ))
     })?;
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if let Some(session) = conns.get_mut(&connection_id) {
         session.character = None;
         Ok(())
@@ -104,7 +104,7 @@ pub fn disconnect_client(
             Position::NONE,
         ))
     })?;
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     if conns.remove(&connection_id).is_some() {
         Ok(())
     } else {
@@ -118,7 +118,7 @@ pub fn disconnect_client(
 /// Send a message to a specific client
 pub fn send_client_message(connections: &SharedConnections, connection_id_str: String, message: String) {
     if let Ok(connection_id) = Uuid::parse_str(&connection_id_str) {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         if let Some(session) = conns.get(&connection_id) {
             let _ = session.sender.send(message + "\n");
         }
@@ -127,7 +127,7 @@ pub fn send_client_message(connections: &SharedConnections, connection_id_str: S
 
 /// Find a player's connection ID by their character name (case-insensitive)
 pub fn find_player_connection_by_name(connections: &SharedConnections, player_name: &str) -> Option<ConnectionId> {
-    let conns = connections.lock().unwrap();
+    let conns = connections.lock();
     for (id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.name.eq_ignore_ascii_case(player_name) {
@@ -145,7 +145,8 @@ pub fn find_player_connection_by_name(connections: &SharedConnections, player_na
 /// Used by the DG people rosters so they don't list logged-off characters.
 pub fn online_character_names(connections: &SharedConnections) -> std::collections::HashSet<String> {
     let mut names = std::collections::HashSet::new();
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 names.insert(character.name.to_ascii_lowercase());

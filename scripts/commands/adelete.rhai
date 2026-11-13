@@ -25,8 +25,8 @@ fn run_command(args, connection_id) {
     }
 
     // Permission check
-    if !can_edit_area(area.id, char.name) {
-        send_client_message(connection_id, "You don't have permission to delete this area.");
+    if !can_govern_area(area.id, char.name) {
+        send_client_message(connection_id, "Only the area's owner or an admin can delete this area.");
         return;
     }
 

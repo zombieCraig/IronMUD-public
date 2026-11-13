@@ -211,7 +211,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return String::new(),
         };
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         match conns_guard.get(&cid) {
             Some(s) => s.addr.ip().to_string(),
             None => String::new(),
@@ -344,8 +344,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if trimmed.is_empty() {
                 return 0;
             }
-            let to_kick: Vec<(Uuid, tokio::sync::mpsc::UnboundedSender<String>)> = {
-                let guard = conns.lock().unwrap();
+            let to_kick: Vec<(Uuid, crate::session::ClientSender)> = {
+                let guard = conns.lock();
                 guard
                     .iter()
                     .filter(|(_, s)| s.addr.ip().to_string() == trimmed)

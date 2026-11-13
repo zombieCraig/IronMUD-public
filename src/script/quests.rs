@@ -427,6 +427,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         engine.register_fn("add_quest_reward_gold", move |vnum: String, amount: i64| -> String {
+            if let Err(why) = crate::purse::check_reward_gold(amount) {
+                return why;
+            }
             push_reward(&cloned_db, &vnum, QuestReward::Gold { amount })
         });
     }
@@ -663,10 +666,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             "quest_credit_mob_kill",
             move |killer_name: String, mob_proto_vnum: String| -> bool {
                 let room_id = {
-                    let guard = match cloned_conns.lock() {
-                        Ok(g) => g,
-                        Err(_) => return true,
-                    };
+                    let guard = cloned_conns.lock();
                     guard.values().find_map(|s| {
                         s.character
                             .as_ref()

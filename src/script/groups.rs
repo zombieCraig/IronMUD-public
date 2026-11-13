@@ -15,7 +15,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_followers", move |leader_name: String| -> rhai::Array {
         let leader_lower = leader_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         conns_guard
             .values()
             .filter_map(|session| {
@@ -36,7 +36,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_group_members", move |leader_name: String| -> rhai::Array {
         let leader_lower = leader_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         conns_guard
             .values()
             .filter_map(|session| {
@@ -84,7 +84,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(uuid) => uuid,
                 Err(_) => return rhai::Array::new(),
             };
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             conns_guard
                 .values()
                 .filter_map(|session| {
@@ -129,7 +129,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
         // Check for cycles: walk from leader up the chain
         {
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
             let mut current = leader_lower.clone();
             let mut visited = std::collections::HashSet::new();
 
@@ -159,7 +159,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
 
         // Set the following field
-        let mut conns_guard = conns.lock().unwrap();
+        let mut conns_guard = conns.lock();
         for session in conns_guard.values_mut() {
             if let Some(ref mut char) = session.character {
                 if char.name.to_lowercase() == char_lower {
@@ -180,7 +180,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let db_clone = db.clone();
     engine.register_fn("clear_following", move |char_name: String| -> bool {
         let char_lower = char_name.to_lowercase();
-        let mut conns_guard = conns.lock().unwrap();
+        let mut conns_guard = conns.lock();
         for session in conns_guard.values_mut() {
             if let Some(ref mut char) = session.character {
                 if char.name.to_lowercase() == char_lower {
@@ -208,7 +208,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Err(_) => return false,
             };
             let char_lower = char_name.to_lowercase();
-            let mut conns_guard = conns.lock().unwrap();
+            let mut conns_guard = conns.lock();
             for session in conns_guard.values_mut() {
                 if let Some(ref mut char) = session.character {
                     if char.name.to_lowercase() == char_lower {
@@ -228,7 +228,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_following_mobile_id", move |char_name: String| -> String {
         let char_lower = char_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
+        let conns_guard = conns.lock();
         for session in conns_guard.values() {
             if let Some(ref char) = session.character {
                 if char.name.to_lowercase() == char_lower {
@@ -245,7 +245,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let db_clone = db.clone();
     engine.register_fn("set_grouped", move |char_name: String, is_grouped: bool| -> bool {
         let char_lower = char_name.to_lowercase();
-        let mut conns_guard = conns.lock().unwrap();
+        let mut conns_guard = conns.lock();
         for session in conns_guard.values_mut() {
             if let Some(ref mut char) = session.character {
                 if char.name.to_lowercase() == char_lower {
@@ -268,7 +268,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         move |leader_name: String, message: String, exclude_name: String| {
             let leader_lower = leader_name.to_lowercase();
             let exclude_lower = exclude_name.to_lowercase();
-            let conns_guard = conns.lock().unwrap();
+            let conns_guard = conns.lock();
 
             for (_conn_id, session) in conns_guard.iter() {
                 if let Some(ref char) = session.character {
@@ -298,23 +298,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
-    // ========== Gold Functions for Split ==========
-
-    // get_character_gold(char_name) -> i64
-    // Returns the gold amount for a character
-    let conns = connections.clone();
-    engine.register_fn("get_character_gold", move |char_name: String| -> i64 {
-        let char_lower = char_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
-        for session in conns_guard.values() {
-            if let Some(ref char) = session.character {
-                if char.name.to_lowercase() == char_lower {
-                    return char.gold as i64;
-                }
-            }
-        }
-        0
-    });
+    // Gold reads/writes for split use get_character_gold / add_character_gold
+    // from characters.rs (purse-backed, session-first).
 
     // get_group_panel(char_name) -> Array of Maps, one per party member
     //
@@ -336,12 +321,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
         // Snapshot everyone online out of the lock in one pass, so neither the
         // chain walks nor the per-room mobile reads below happen while holding
-        // it. `std::sync::Mutex` is not reentrant and `group_leader` takes the
+        // it. `parking_lot::Mutex` is not reentrant and `group_leader` takes the
         // same lock.
         let (asker_room, online): (Option<uuid::Uuid>, Vec<crate::types::CharacterData>) = {
-            let Ok(guard) = conns.lock() else {
-                return rhai::Array::new();
-            };
+            let guard = conns.lock();
             let asker_room = guard.values().find_map(|s| {
                 s.character
                     .as_ref()
@@ -427,12 +410,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     rhai::Dynamic::from(asker_room.is_some_and(|r| r == c.current_room_id)),
                 );
                 m.insert("hp".into(), rhai::Dynamic::from(c.hp as i64));
-                m.insert("max_hp".into(), rhai::Dynamic::from(c.max_hp as i64));
+                m.insert("max_hp".into(), rhai::Dynamic::from(c.effective_max_hp() as i64));
                 // Band *and* colour come from `combat_text`, which owns every
                 // health-presentation table in the game. The script gets them
                 // as data and concatenates; it must never grow its own
                 // thresholds or its own palette.
-                let condition = crate::combat_text::Condition::from_hp(c.hp, c.max_hp);
+                let condition = crate::combat_text::Condition::from_hp(c.hp, c.effective_max_hp());
                 m.insert("condition".into(), rhai::Dynamic::from(condition.tag().to_string()));
                 m.insert(
                     "condition_color".into(),
@@ -470,27 +453,5 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 rhai::Dynamic::from(m)
             })
             .collect()
-    });
-
-    // add_character_gold(char_name, amount) -> bool
-    // Adds (or subtracts if negative) gold from a character
-    let conns = connections.clone();
-    let db_clone = db.clone();
-    engine.register_fn("add_character_gold", move |char_name: String, amount: i64| -> bool {
-        let char_lower = char_name.to_lowercase();
-        let mut conns_guard = conns.lock().unwrap();
-        for session in conns_guard.values_mut() {
-            if let Some(ref mut char) = session.character {
-                if char.name.to_lowercase() == char_lower {
-                    char.gold = (char.gold as i64 + amount) as i32;
-                    if char.gold < 0 {
-                        char.gold = 0;
-                    }
-                    let _ = db_clone.save_character_data(char.clone());
-                    return true;
-                }
-            }
-        }
-        false
     });
 }

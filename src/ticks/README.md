@@ -52,6 +52,7 @@ All tick runners are spawned from `main.rs` via `tokio::spawn()`.
 The `broadcast.rs` module provides internal messaging functions used across tick systems:
 
 - `send_message_to_character()` - Send message to a specific player
+- `live_character()` - Load a character session-first (use before mutate + save + sync)
 - `sync_character_to_session()` - Update session with character changes
 - `broadcast_to_room()` - Send message to all players in a room
 - `broadcast_to_room_awake()` - Send only to awake players

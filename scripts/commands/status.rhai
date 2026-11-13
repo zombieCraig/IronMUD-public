@@ -278,7 +278,7 @@ fn show_basic_status(char, connection_id) {
 
     // HP bar with color based on percentage. Equipment APPLY_MAXHIT bonuses
     // lift the cap; show the effective ceiling.
-    let eff_max_hp = get_effective_max_hp(char.name);
+    let eff_max_hp = char.effective_max_hp();
     let hp_pct = 100;
     if eff_max_hp > 0 {
         hp_pct = (char.hp * 100) / eff_max_hp;
@@ -653,7 +653,7 @@ fn show_detailed_status(char, connection_id) {
     // Vitals section
     output += color_or(ansi_green("--- Vitals ---"), "--- Vitals ---", connection_id) + "\n";
 
-    let eff_max_hp = get_effective_max_hp(char.name);
+    let eff_max_hp = char.effective_max_hp();
     let hp_pct = 100;
     if eff_max_hp > 0 {
         hp_pct = (char.hp * 100) / eff_max_hp;

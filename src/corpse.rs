@@ -100,7 +100,6 @@ impl CorpseBuilder {
             weapon_skill: None,
             on_hit_effects: Vec::new(),
             // Container fields - corpses are containers
-            container_contents: vec![],
             container_max_items: 1000,
             container_max_weight: 10000,
             container_closed: false,
@@ -287,10 +286,10 @@ fn pluralize_item_name(name: &str) -> String {
 /// gone or empty. Thin DB wrapper over [`format_corpse_contents`].
 pub fn describe_corpse_contents(db: &crate::db::Db, corpse_id: &Uuid) -> Option<String> {
     let corpse = db.get_item_data(corpse_id).ok().flatten()?;
-    let names: Vec<String> = corpse
-        .container_contents
-        .iter()
-        .filter_map(|id| db.get_item_data(id).ok().flatten())
+    let names: Vec<String> = db
+        .get_items_in_container(corpse_id)
+        .ok()?
+        .into_iter()
         .map(|item| item.name)
         .collect();
     format_corpse_contents(corpse.flags.corpse_gold, &names)

@@ -72,7 +72,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     {
         let state_clone = state.clone();
         engine.register_fn("is_language", move |key: String| -> bool {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             world.language_definitions.contains_key(&key.to_lowercase())
         });
     }
@@ -81,7 +81,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     {
         let state_clone = state.clone();
         engine.register_fn("is_lingua_franca", move |key: String| -> bool {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             world
                 .language_definitions
                 .get(&key.to_lowercase())
@@ -94,7 +94,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     {
         let state_clone = state.clone();
         engine.register_fn("get_language_display_name", move |key: String| -> String {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             world
                 .language_definitions
                 .get(&key.to_lowercase())
@@ -107,7 +107,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     {
         let state_clone = state.clone();
         engine.register_fn("get_language_keys", move || -> rhai::Array {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             world
                 .language_definitions
                 .keys()
@@ -123,7 +123,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         let state_clone = state.clone();
         engine.register_fn("resolve_language_key", move |input: String| -> String {
             let needle = input.to_lowercase();
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             if world.language_definitions.contains_key(&needle) {
                 return needle;
             }
@@ -142,7 +142,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         engine.register_fn(
             "garble_language",
             move |text: String, language_key: String, effective_skill: i64| -> String {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 let lang = match world.language_definitions.get(&language_key.to_lowercase()) {
                     Some(d) => d,
                     None => return "<garbled speech>".to_string(),
@@ -173,7 +173,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 if ch.is_admin {
                     return text;
                 }
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 let lang_lc = language_key.to_lowercase();
                 let lang = match world.language_definitions.get(&lang_lc) {
                     Some(d) => d,
@@ -206,7 +206,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                     mob.spoken_language = None;
                 } else {
                     let lc = key.to_lowercase();
-                    let world = state_clone.lock().unwrap();
+                    let world = state_clone.lock();
                     if !world.language_definitions.contains_key(&lc) {
                         return format!("unknown language `{}`", key);
                     }
@@ -251,7 +251,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 Ok(Some(c)) => c,
                 _ => return rhai::Array::new(),
             };
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             let mut entries: Vec<rhai::Dynamic> = Vec::new();
             for (key, def) in world.language_definitions.iter() {
                 let progress = ch.skills.get(key);

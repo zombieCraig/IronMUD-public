@@ -184,7 +184,10 @@ fn drop_gold_from_balance(char, amount, connection_id) {
     }
 
     // Subtract from balance
-    add_character_gold(char.name, -amount);
+    if !add_character_gold(char.name, -amount) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
 
     // Spawn gold pile in room (auto-merges with existing)
     let gold = spawn_gold_in_room(amount, char.current_room_id);

@@ -80,6 +80,50 @@ pub fn check_commission_pct(field: &str, val: i32) -> Result<i32, ApiError> {
 }
 
 /// Reject text fields whose UTF-8 byte length exceeds `max`.
+/// Longest vnum / identifier string.
+pub const VNUM_MAX: usize = 64;
+/// Longest DG script body (matches the in-game editor).
+pub const DG_BODY_MAX: usize = 32 * 1024;
+/// Most entries in a list field (keywords, seasons, links, stages, ...).
+pub const LIST_MAX: usize = 64;
+/// Most trusted builders on one area.
+pub const TRUSTED_BUILDERS_MAX: usize = 50;
+/// Largest request body the API accepts.
+pub const REQUEST_BODY_MAX: usize = 1024 * 1024;
+
+/// `check_text_len` for an optional field.
+pub fn check_opt_len(field: &str, value: &Option<String>, max: usize) -> Result<(), ApiError> {
+    match value {
+        Some(v) => check_text_len(field, v, max),
+        None => Ok(()),
+    }
+}
+
+/// At most `max_items` entries, each at most `max_len` characters.
+pub fn check_list(field: &str, values: &[String], max_items: usize, max_len: usize) -> Result<(), ApiError> {
+    if values.len() > max_items {
+        return Err(ApiError::InvalidInput(format!(
+            "{field} has {} entries; the maximum is {max_items}",
+            values.len()
+        )));
+    }
+    for v in values {
+        check_text_len(field, v, max_len)?;
+    }
+    Ok(())
+}
+
+/// At most `max` entries.
+pub fn check_count<T>(field: &str, values: &[T], max: usize) -> Result<(), ApiError> {
+    if values.len() > max {
+        return Err(ApiError::InvalidInput(format!(
+            "{field} has {} entries; the maximum is {max}",
+            values.len()
+        )));
+    }
+    Ok(())
+}
+
 pub fn check_text_len(field: &str, value: &str, max: usize) -> Result<(), ApiError> {
     if value.len() > max {
         return Err(ApiError::InvalidInput(format!(
@@ -88,4 +132,16 @@ pub fn check_text_len(field: &str, value: &str, max: usize) -> Result<(), ApiErr
         )));
     }
     Ok(())
+}
+
+/// Reject a trigger `script_name` that could escape `scripts/triggers/`.
+/// Allows `name`, `my-trigger_2`, and built-in `@template` names.
+pub fn check_script_name(name: &str) -> Result<(), ApiError> {
+    if crate::script::trigger_sandbox::is_valid_script_name(name) {
+        Ok(())
+    } else {
+        Err(ApiError::InvalidInput(format!(
+            "Invalid script_name '{name}': use letters, digits, '_' or '-' (optionally prefixed with '@' for a template)"
+        )))
+    }
 }

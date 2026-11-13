@@ -3,6 +3,8 @@
 // Usage: rcopy <source_vnum> [category]
 // Categories: all, flags, desc, seasonal, triggers, water, doors, extra
 
+import "olc_helpers" as olc;
+
 fn copy_room_flags(source, target_id) {
     let flags = source.flags;
     set_room_flag(target_id, "dark", flags.dark);
@@ -247,8 +249,7 @@ fn run_command(args, connection_id) {
     // Check area permissions for current room
     let room_area_id = current_room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to edit rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to edit rooms in this area.") {
             return;
         }
     }

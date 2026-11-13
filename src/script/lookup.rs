@@ -54,7 +54,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         map.insert("name".into(), rhai::Dynamic::from(name.clone()));
         map.insert("display".into(), rhai::Dynamic::from(display.clone()));
         map.insert("recognized".into(), rhai::Dynamic::from(true));
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let used: rhai::Array = world
             .spell_definitions
             .values()
@@ -92,7 +92,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         // implicit gate for all spells with `skill_required > 0`; other
         // combat skills (melee/ranged/stealth) don't gate spells in v1.
         let spells: rhai::Array = if lower == "magic" {
-            let world = state_clone.lock().unwrap();
+            let world = state_clone.lock();
             world
                 .spell_definitions
                 .values()
@@ -136,7 +136,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // Returns every published custom-skill key, sorted ascending.
     let state_clone = state.clone();
     engine.register_fn("list_custom_skills", move || -> rhai::Array {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         let mut keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
         keys.sort();
         keys.into_iter().map(rhai::Dynamic::from).collect()
@@ -147,7 +147,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // refuse ghost keys.
     let state_clone = state.clone();
     engine.register_fn("is_custom_skill", move |key: String| -> bool {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         world.custom_skill_definitions.contains_key(&key.to_lowercase())
     });
 
@@ -157,7 +157,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     let state_clone = state.clone();
     engine.register_fn("get_custom_skill_info", move |key: String| -> rhai::Map {
         let mut map = rhai::Map::new();
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         if let Some(def) = world.custom_skill_definitions.get(&key.to_lowercase()) {
             map.insert("key".into(), rhai::Dynamic::from(def.key.clone()));
             map.insert("description".into(), rhai::Dynamic::from(def.description.clone()));
@@ -196,7 +196,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             if cloned_db.save_custom_skill(&def).is_err() {
                 return false;
             }
-            let mut world = state_clone.lock().unwrap();
+            let mut world = state_clone.lock();
             world.custom_skill_definitions.insert(key_lc, def);
             true
         },
@@ -212,7 +212,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         let key_lc = key.to_lowercase();
         match cloned_db.delete_custom_skill(&key_lc) {
             Ok(true) => {
-                let mut world = state_clone.lock().unwrap();
+                let mut world = state_clone.lock();
                 world.custom_skill_definitions.remove(&key_lc);
                 true
             }

@@ -297,7 +297,7 @@ fn apply_damage_power(connection_id, char, info, result, mob_id, drain) {
         let healed = damage / 2;
         if healed > 0 {
             char.hp = char.hp + healed;
-            if char.hp > char.max_hp { char.hp = char.max_hp; }
+            if char.hp > char.effective_max_hp() { char.hp = char.effective_max_hp(); }
             save_character_data(char);
             send_client_message(connection_id, "\x1b[32mStolen life floods into you. [+" + healed + " hp]\x1b[0m");
         }
@@ -326,7 +326,7 @@ fn apply_self_buff_power(connection_id, char, info, result) {
 fn apply_heal_power(connection_id, char, info, result) {
     let healed = result["power"];
     char.hp = char.hp + healed;
-    if char.hp > char.max_hp { char.hp = char.max_hp; }
+    if char.hp > char.effective_max_hp() { char.hp = char.effective_max_hp(); }
     save_character_data(char);
     apply_buff(char.name, "regeneration", 1, 60, info["name"]);
 

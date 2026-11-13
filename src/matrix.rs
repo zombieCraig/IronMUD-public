@@ -15,12 +15,16 @@ use matrix_sdk::{
     room::Room,
     ruma::{
         OwnedRoomId,
+        events::Mentions,
         events::room::message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent},
     },
 };
 
-use crate::chat::ChatMessage;
-use crate::{SharedConnections, find_player_connection_by_name, get_online_players, send_client_message};
+use crate::SharedConnections;
+use crate::chat::{ChatMessage, handle_bridge_command, truncate_chars};
+
+/// Cap on outbound message length; Matrix events max out at 64 KiB.
+const MATRIX_MAX_CHARS: usize = 4000;
 
 /// Configuration for Matrix bot, loaded from environment variables
 #[derive(Clone)]
@@ -30,6 +34,9 @@ pub struct MatrixConfig {
     pub password: String,
     pub room_id: OwnedRoomId,
     pub avatar_path: Option<String>,
+    /// Where the login session (device + access token) is kept between
+    /// restarts. `MATRIX_SESSION_FILE`, else set by the caller.
+    pub session_path: Option<std::path::PathBuf>,
 }
 
 impl MatrixConfig {
@@ -65,6 +72,7 @@ impl MatrixConfig {
             password,
             room_id,
             avatar_path,
+            session_path: env::var("MATRIX_SESSION_FILE").ok().map(Into::into),
         })
     }
 }
@@ -82,20 +90,14 @@ pub async fn run_matrix_bot(
 ) {
     info!("Starting Matrix bot, connecting to {}", config.homeserver);
 
-    // Create the Matrix client
-    let client = match create_client(&config).await {
+    // Restore the saved session, or log in (which creates a new device)
+    let client = match connect(&config).await {
         Ok(c) => c,
         Err(e) => {
-            error!("Failed to create Matrix client: {}", e);
+            error!("Failed to log in to Matrix: {}", e);
             return;
         }
     };
-
-    // Log in
-    if let Err(e) = login(&client, &config).await {
-        error!("Failed to log in to Matrix: {}", e);
-        return;
-    }
 
     info!("Matrix bot logged in as {}", config.user_id);
 
@@ -153,31 +155,26 @@ pub async fn run_matrix_bot(
             }
 
             // Don't respond to our own messages
-            if ev.sender.localpart()
-                == target_room
-                    .client()
-                    .user_id()
-                    .map(|u| u.localpart())
-                    .unwrap_or_default()
-            {
+            // Compare full Matrix IDs: a same-named user on another
+            // homeserver shares our localpart but is not us.
+            if target_room.client().user_id() == Some(ev.sender.as_ref()) {
                 return;
             }
 
             // Skip messages sent before we started (avoids replaying old commands on reconnect)
             let msg_time_ms: u64 = ev.origin_server_ts.0.into();
             if msg_time_ms < startup_time_ms {
-                debug!(
-                    "Ignoring old message from {} (sent before bot startup)",
-                    ev.sender.localpart()
-                );
+                debug!("Ignoring old message from {} (sent before bot startup)", ev.sender);
                 return;
             }
 
             if let MessageType::Text(text) = ev.content.msgtype {
                 let body = text.body.trim();
-                let sender = ev.sender.localpart().to_string();
+                // The full MXID (@user:server), never the bare localpart:
+                // anyone can register `@alice` on their own homeserver.
+                let sender = ev.sender.to_string();
 
-                if let Some(response) = handle_matrix_command(body, &sender, &conns).await {
+                if let Some(response) = handle_bridge_command("Matrix", body, &sender, &conns) {
                     if let Err(e) = send_to_room(&target_room, &response).await {
                         error!("Failed to send response to Matrix: {}", e);
                     }
@@ -214,13 +211,86 @@ async fn create_client(config: &MatrixConfig) -> anyhow::Result<Client> {
     Ok(client)
 }
 
-/// Log in to Matrix
-async fn login(client: &Client, config: &MatrixConfig) -> anyhow::Result<()> {
+/// A logged-in client. Reuses the saved session when it's still valid;
+/// otherwise logs in with the password and saves the new session. Logging
+/// in on every restart registered a new device each time, which piles up
+/// on the bot's account.
+async fn connect(config: &MatrixConfig) -> anyhow::Result<Client> {
+    if let Some(session) = config.session_path.as_deref().and_then(load_session) {
+        if session_matches_user(&session, &config.user_id) {
+            let client = create_client(config).await?;
+            let restored = client
+                .matrix_auth()
+                .restore_session(session, matrix_sdk::store::RoomLoadSettings::default())
+                .await;
+            match restored {
+                Ok(()) => match client.whoami().await {
+                    Ok(_) => {
+                        info!("Matrix session restored");
+                        return Ok(client);
+                    }
+                    Err(e) => warn!("Saved Matrix session no longer valid ({}); logging in again", e),
+                },
+                Err(e) => warn!("Could not restore Matrix session ({}); logging in again", e),
+            }
+        }
+    }
+
+    let client = create_client(config).await?;
     client
         .matrix_auth()
         .login_username(&config.user_id, &config.password)
         .initial_device_display_name("IronMUD Bot")
         .await?;
+    if let (Some(path), Some(session)) = (&config.session_path, client.matrix_auth().session()) {
+        if let Err(e) = save_session(path, &session) {
+            warn!("Could not save Matrix session to {}: {}", path.display(), e);
+        }
+    }
+    Ok(client)
+}
+
+/// Whether a saved session belongs to the configured `MATRIX_USER`, which
+/// may be a full MXID (`@bot:server`) or just the localpart (`bot`).
+fn session_matches_user(session: &matrix_sdk::authentication::matrix::MatrixSession, configured: &str) -> bool {
+    let saved = &session.meta.user_id;
+    if configured.starts_with('@') {
+        saved.as_str() == configured
+    } else {
+        saved.localpart() == configured.split(':').next().unwrap_or(configured)
+    }
+}
+
+fn load_session(path: &std::path::Path) -> Option<matrix_sdk::authentication::matrix::MatrixSession> {
+    let text = std::fs::read_to_string(path).ok()?;
+    match serde_json::from_str(&text) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            warn!("Ignoring unreadable Matrix session file {}: {}", path.display(), e);
+            None
+        }
+    }
+}
+
+/// Write the session (it holds an access token) readable by owner only.
+fn save_session(
+    path: &std::path::Path,
+    session: &matrix_sdk::authentication::matrix::MatrixSession,
+) -> anyhow::Result<()> {
+    use std::io::Write;
+    let json = serde_json::to_vec(session)?;
+    let tmp = path.with_extension("tmp");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&tmp)?;
+    f.write_all(&json)?;
+    f.sync_all()?;
+    std::fs::rename(&tmp, path)?;
     Ok(())
 }
 
@@ -255,91 +325,42 @@ async fn setup_avatar(client: &Client, avatar_path: &str) -> anyhow::Result<()> 
 
 /// Send a text message to a Matrix room
 async fn send_to_room(room: &Room, message: &str) -> anyhow::Result<()> {
-    let content = RoomMessageEventContent::text_plain(message);
+    // An explicit empty `m.mentions` tells clients this message mentions no
+    // one, which turns off the legacy body-matching push rules: player text
+    // containing "@room" or a user's name can't ping the room.
+    let content =
+        RoomMessageEventContent::text_plain(truncate_chars(message, MATRIX_MAX_CHARS)).add_mentions(Mentions::new());
     room.send(content).await?;
     Ok(())
 }
 
-/// Handle incoming Matrix commands (!who, !tell)
-async fn handle_matrix_command(body: &str, sender: &str, connections: &SharedConnections) -> Option<String> {
-    if body.eq_ignore_ascii_case("!who") {
-        return Some(handle_who_command(connections));
-    }
+#[cfg(test)]
+mod session_file_tests {
+    use super::*;
 
-    if body.to_lowercase().starts_with("!tell ") {
-        let args = &body[6..].trim();
-        return Some(handle_tell_command(args, sender, connections));
-    }
-
-    if body.eq_ignore_ascii_case("!help") {
-        return Some(
-            "IronMUD Matrix Commands:\n\
-            !who - List online players\n\
-            !tell <player> <message> - Send a message to an online player\n\
-            !help - Show this help"
-                .to_string(),
-        );
-    }
-
-    None
-}
-
-/// Handle the !who command - list online players
-fn handle_who_command(connections: &SharedConnections) -> String {
-    let players = get_online_players(connections);
-
-    if players.is_empty() {
-        return "No players currently online.".to_string();
-    }
-
-    // Build player names with AFK status
-    let names: Vec<String> = {
-        let conns = connections.lock().unwrap();
-        players
-            .iter()
-            .map(|p| {
-                let is_afk = conns.values().any(|session| {
-                    if let Some(ref char) = session.character {
-                        char.name == p.name && session.afk
-                    } else {
-                        false
-                    }
-                });
-                if is_afk {
-                    format!("{} [AFK]", p.name)
-                } else {
-                    p.name.clone()
-                }
-            })
-            .collect()
-    };
-    format!("Players online ({}): {}", names.len(), names.join(", "))
-}
-
-/// Handle the !tell command - send a message to an online player
-fn handle_tell_command(args: &str, sender: &str, connections: &SharedConnections) -> String {
-    let parts: Vec<&str> = args.splitn(2, ' ').collect();
-
-    if parts.len() < 2 {
-        return "Usage: !tell <player> <message>".to_string();
-    }
-
-    let target_name = parts[0];
-    let message = parts[1];
-
-    if message.trim().is_empty() {
-        return "Usage: !tell <player> <message>".to_string();
-    }
-
-    // Find the player
-    match find_player_connection_by_name(connections, target_name) {
-        Some(conn_id) => {
-            let formatted_msg = format!("\n[Matrix] {} says: {}\n", sender, message);
-            send_client_message(connections, conn_id.to_string(), formatted_msg);
-            format!("Message sent to {}.", target_name)
+    #[test]
+    fn session_round_trips_through_an_owner_only_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("matrix_session.json");
+        let session: matrix_sdk::authentication::matrix::MatrixSession = serde_json::from_value(serde_json::json!({
+            "user_id": "@bot:example.org",
+            "device_id": "DEVICEID",
+            "access_token": "token",
+        }))
+        .unwrap();
+        assert!(session_matches_user(&session, "bot"));
+        assert!(session_matches_user(&session, "@bot:example.org"));
+        assert!(!session_matches_user(&session, "other"));
+        assert!(!session_matches_user(&session, "@bot:elsewhere.org"));
+        save_session(&path, &session).unwrap();
+        assert_eq!(load_session(&path).unwrap(), session);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
         }
-        None => {
-            format!("Player '{}' is not online.", target_name)
-        }
+        std::fs::write(&path, "not json").unwrap();
+        assert!(load_session(&path).is_none());
     }
 }

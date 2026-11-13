@@ -193,8 +193,13 @@ impl EvalCtx {
     /// purge, load, teleport). The contract:
     ///
     /// - `elevated=true`         → allowed (admin-set override).
-    /// - `authored_by=None`      → allowed (importer/system-authored).
+    /// - `authored_by=None`      → allowed (importer/system-authored; proto
+    ///                             instances get `None` only from untouched
+    ///                             imported protos, see
+    ///                             `DgTriggerProto::instance_author`).
     /// - admin-authored          → allowed regardless of area.
+    /// - author missing, empty,
+    ///   or not a builder        → refused.
     /// - else                    → allowed only when the author can edit
     ///                             `target_area` (or the host's own area
     ///                             if `target_area` is None).
@@ -207,9 +212,21 @@ impl EvalCtx {
         let Some(author) = self.authored_by.as_deref() else {
             return true;
         };
-        if let Ok(Some(ch)) = self.db.get_character_data(author) {
-            if ch.is_admin {
-                return true;
+        let author_char = if author.is_empty() {
+            None
+        } else {
+            self.db.get_character_data(author).ok().flatten()
+        };
+        match author_char {
+            Some(ch) if ch.is_admin => return true,
+            Some(ch) if ch.is_builder => {}
+            _ => {
+                tracing::warn!(
+                    "[SECURITY] DG opcode '{}' blocked: trigger author '{}' is unknown or not a builder",
+                    opcode,
+                    author
+                );
+                return false;
             }
         }
         let area_id = target_area.or_else(|| self.host_area_id());
@@ -285,6 +302,53 @@ pub(crate) fn warn_builder(ctx: &EvalCtx, msg: &str) {
     crate::session::broadcast::broadcast_to_builders_dedup(&ctx.connections, &line);
 }
 
+/// May `author` change the body of DG proto `vnum`?
+///
+/// A proto body is pushed into every attached instance, so editing it is
+/// editing those hosts. Admins (or `admin_override`, for admin API keys) may
+/// edit any proto. Otherwise the author must be a builder who can edit every
+/// area that hosts an instance; instances on un-areaed hosts don't restrict.
+/// Returns a player-facing reason on refusal.
+pub fn check_proto_edit(db: &Db, vnum: &str, author: &str, admin_override: bool) -> Result<(), String> {
+    if admin_override {
+        return Ok(());
+    }
+    match db.get_character_data(author).ok().flatten() {
+        Some(ch) if ch.is_admin => return Ok(()),
+        Some(ch) if ch.is_builder => {}
+        _ => return Err("only builders can edit DG trigger prototypes".to_string()),
+    }
+    let target = Some(vnum);
+    let mut areas: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+    for m in db.list_all_mobiles().map_err(|e| e.to_string())? {
+        if m.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+            areas.extend(m.area_id);
+        }
+    }
+    for i in db.list_all_items().map_err(|e| e.to_string())? {
+        if i.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+            areas.extend(i.area_id);
+        }
+    }
+    for r in db.list_all_rooms().map_err(|e| e.to_string())? {
+        if r.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+            areas.extend(r.area_id);
+        }
+    }
+    for area_id in areas {
+        let Ok(Some(area)) = db.get_area_data(&area_id) else {
+            continue;
+        };
+        if !crate::api::auth::author_can_edit_area(author, &area) {
+            return Err(format!(
+                "proto '{vnum}' is attached in area '{}', which you can't edit",
+                area.name
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Result of evaluating a DG body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -355,11 +419,21 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
     // deadlock or panic.
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
+            let Some(slot) = WaitSlot::claim(ctx.self_id) else {
+                warn_builder(
+                    ctx,
+                    &format!(
+                        "too many waiting scripts (max {MAX_WAITING_PER_HOST} per host, {MAX_WAITING_TOTAL} total); trigger skipped"
+                    ),
+                );
+                return Outcome::Done;
+            };
             let ctx_owned = ctx.clone();
             let block_owned = block;
             let self_name = ctx.self_name.clone();
             let self_kind = ctx.self_kind;
             handle.spawn(async move {
+                let _slot = slot;
                 let mut state = eval::State::new();
                 if let Err(e) = eval::eval_block_async(&block_owned, &ctx_owned, &mut state).await {
                     tracing::warn!(
@@ -377,6 +451,65 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
             let mut state = eval::State::new();
             eval::eval_block(&block, ctx, &mut state).unwrap_or(Outcome::Done)
         }
+    }
+}
+
+/// Scripts one host may have suspended in `wait` at once. Each one is a
+/// live task; without a cap a trigger that fires often (greet, random)
+/// and waits a long time piles up tasks without limit.
+pub const MAX_WAITING_PER_HOST: usize = 8;
+/// Waiting scripts across the whole world.
+pub const MAX_WAITING_TOTAL: usize = 2048;
+
+fn waiting_scripts() -> &'static parking_lot::Mutex<std::collections::HashMap<Uuid, usize>> {
+    static WAITING: std::sync::OnceLock<parking_lot::Mutex<std::collections::HashMap<Uuid, usize>>> =
+        std::sync::OnceLock::new();
+    WAITING.get_or_init(Default::default)
+}
+
+/// A claimed place for one waiting script; released on drop (normal end,
+/// error, or the task being cancelled).
+struct WaitSlot(Uuid);
+
+impl WaitSlot {
+    fn claim(host: Uuid) -> Option<WaitSlot> {
+        let mut map = waiting_scripts().lock();
+        let total: usize = map.values().sum();
+        let mine = map.get(&host).copied().unwrap_or(0);
+        if mine >= MAX_WAITING_PER_HOST || total >= MAX_WAITING_TOTAL {
+            return None;
+        }
+        *map.entry(host).or_insert(0) += 1;
+        Some(WaitSlot(host))
+    }
+}
+
+impl Drop for WaitSlot {
+    fn drop(&mut self) {
+        let mut map = waiting_scripts().lock();
+        if let Some(n) = map.get_mut(&self.0) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                map.remove(&self.0);
+            }
+        }
+    }
+}
+
+/// Number of scripts `host` currently has suspended in `wait`.
+pub fn waiting_script_count(host: Uuid) -> usize {
+    let map = waiting_scripts().lock();
+    map.get(&host).copied().unwrap_or(0)
+}
+
+/// Whether the trigger's host still exists. A waiting script whose mob or
+/// object was purged (or room deleted) during the wait stops instead of
+/// acting on behalf of something that's gone.
+pub(crate) fn host_exists(ctx: &EvalCtx) -> bool {
+    match ctx.self_kind {
+        SelfKind::Mob => matches!(ctx.db.get_mobile_data(&ctx.self_id), Ok(Some(_))),
+        SelfKind::Obj => matches!(ctx.db.get_item_data(&ctx.self_id), Ok(Some(_))),
+        SelfKind::Room => matches!(ctx.db.get_room_data(&ctx.self_id), Ok(Some(_))),
     }
 }
 
@@ -706,9 +839,19 @@ pub fn fire_oncommand_for_player(
     connections: &SharedConnections,
     state: &SharedState,
 ) -> bool {
+    // Never show a builder-authored trigger the arguments of a command that
+    // carries credentials (`password <old> <new>`, `email <addr>`, ...): an
+    // OnCommand trigger sees %arg% and can store or echo it. These commands
+    // are also redacted from the player log.
+    if crate::player_log::SENSITIVE_COMMANDS.contains(&cmd_canonical)
+        || crate::player_log::SENSITIVE_COMMANDS.contains(&cmd)
+    {
+        return false;
+    }
+
     // Snapshot what we need from the session under one lock.
     let (char_name, room_id) = {
-        let Ok(conns) = connections.lock() else { return false };
+        let conns = connections.lock();
         let Some(session) = conns.get(connection_id) else {
             return false;
         };
@@ -882,7 +1025,7 @@ fn victim_from_context_vars(
                 return None;
             }
             // Prefer a live session so mutation messages can route back.
-            let conns = connections.lock().ok()?;
+            let conns = connections.lock();
             for (cid, session) in conns.iter() {
                 if let Some(ch) = session.character.as_ref() {
                     if ch.name.eq_ignore_ascii_case(name) {
@@ -920,7 +1063,7 @@ fn actor_from_connection(connection_id: &str, connections: &SharedConnections) -
         return None;
     }
     let cid = Uuid::parse_str(connection_id).ok()?;
-    let conns = connections.lock().ok()?;
+    let conns = connections.lock();
     let session = conns.get(&cid)?;
     let ch = session.character.as_ref()?;
     Some(ActorRef::Player {
@@ -944,8 +1087,8 @@ fn actor_room(actor: Option<&ActorRef>, db: &Db) -> Option<Uuid> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::Mutex;
 
     /// Build a minimal EvalCtx against a temp db, with no live player
     /// session. Sufficient to exercise control flow, vars, and the
@@ -1133,7 +1276,7 @@ end";
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = Some(ch.clone());
-        ctx.connections.lock().expect("lock conns").insert(conn_id, session);
+        ctx.connections.lock().insert(conn_id, session);
         (conn_id.to_string(), rx_client)
     }
 
@@ -1349,11 +1492,7 @@ end";
                 file: "test.json".to_string(),
             },
         };
-        ctx.state
-            .lock()
-            .expect("world lock")
-            .achievement_definitions
-            .insert(def.key.clone(), def);
+        ctx.state.lock().achievement_definitions.insert(def.key.clone(), def);
 
         let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
             "name": "zombieCraig",
@@ -1583,6 +1722,39 @@ halt";
         );
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn waiting_script_stops_when_its_host_is_purged() {
+        let mob = crate::types::MobileData::new("doomed".to_string());
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "doomed");
+        ctx.db.save_mobile_data(mob).expect("save");
+        let witness = crate::types::MobileData::new("witness".to_string());
+        let witness_id = witness.id;
+        ctx.db.save_mobile_data(witness).expect("save");
+
+        let body = format!("wait 1 sec\ncontext {witness_id}\nset after_purge yes\nglobal after_purge\nhalt");
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Done);
+        assert_eq!(waiting_script_count(mob_id), 1);
+        ctx.db.delete_mobile(&mob_id).expect("purge");
+
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        let w = ctx.db.get_mobile_data(&witness_id).unwrap().unwrap();
+        assert_eq!(w.dg_vars.get("after_purge"), None, "script must not run past the wait");
+        assert_eq!(waiting_script_count(mob_id), 0, "slot released");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn waiting_scripts_are_capped_per_host() {
+        let mob = crate::types::MobileData::new("busy".to_string());
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "busy");
+        ctx.db.save_mobile_data(mob).expect("save");
+        for _ in 0..(MAX_WAITING_PER_HOST + 3) {
+            fire_dg("wait 60 sec\nhalt", &ctx);
+        }
+        assert_eq!(waiting_script_count(mob_id), MAX_WAITING_PER_HOST);
+    }
+
     #[test]
     fn fire_dg_real_panning_trigger_parses_and_evaluates() {
         // Full body from tbamud 7.trg #700. We don't have a real actor or
@@ -1778,6 +1950,8 @@ end";
             numeric_arg: 100,
             arglist: String::new(),
             body: "halt".to_string(),
+            last_edited_by: None,
+            imported: true,
         };
         ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
 
@@ -1819,6 +1993,8 @@ end";
             numeric_arg: 100,
             arglist: String::new(),
             body: "halt".to_string(),
+            last_edited_by: None,
+            imported: true,
         };
         ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
 
@@ -2319,12 +2495,12 @@ end";
     /// by another test lands between two of this one's and breaks the
     /// consecutiveness the dedup depends on. Every test that reads or writes
     /// that log takes this lock first.
-    static BUILDER_LOG_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static BUILDER_LOG_TESTS: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     /// Take the builder-log lock, ignoring poisoning — a panic in one of these
     /// tests must not cascade into spurious failures in the rest.
-    fn builder_log_guard() -> std::sync::MutexGuard<'static, ()> {
-        BUILDER_LOG_TESTS.lock().unwrap_or_else(|e| e.into_inner())
+    fn builder_log_guard() -> parking_lot::MutexGuard<'static, ()> {
+        BUILDER_LOG_TESTS.lock()
     }
 
     #[test]
@@ -2639,6 +2815,8 @@ end";
             numeric_arg: 100,
             arglist: String::new(),
             body: body.to_string(),
+            last_edited_by: None,
+            imported: true,
         };
         ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
 
@@ -2795,6 +2973,8 @@ end";
             numeric_arg: 100,
             arglist: String::new(),
             body: "halt".to_string(),
+            last_edited_by: None,
+            imported: true,
         };
         ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
 
@@ -3249,5 +3429,497 @@ return 2";
         ctx2.context_vars.insert("item_id".into(), Uuid::new_v4().to_string());
         let body = "if %object.cost% >= 100\n  return 1\nend\nreturn 7";
         assert_eq!(fire_dg(body, &ctx2), Outcome::Return(7));
+    }
+
+    // ---------- Resource limits (security hardening 1.8) ----------
+
+    #[test]
+    fn nested_loops_hit_the_step_budget() {
+        // 30^3 = 27,000 iterations of the inner body: far past MAX_STEPS.
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "spinner");
+        let body = "\
+set a 0
+while 1
+  set b 0
+  while 1
+    set c 0
+    while 1
+      set c 1
+    done
+  done
+done";
+        let block = parser::parse(body).expect("parse");
+        let mut state = eval::State::new();
+        let err = eval::eval_block(&block, &ctx, &mut state).expect_err("budget should stop it");
+        assert!(err.msg.contains("steps"), "{}", err.msg);
+        assert!(state.steps <= eval::MAX_STEPS + 1);
+    }
+
+    #[test]
+    fn doubling_a_variable_is_capped() {
+        // Unbounded, 30 doublings of 10 bytes is 10 GiB.
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "doubler");
+        let body = "\
+set x aaaaaaaaaa
+while 1
+  set x %x%%x%
+done";
+        let block = parser::parse(body).expect("parse");
+        let mut state = eval::State::new();
+        eval::eval_block(&block, &ctx, &mut state).expect("runs");
+        let len = state.locals.get("x").map(|v| v.len()).unwrap_or(0);
+        assert!(len > 0 && len <= vars::MAX_VALUE_BYTES, "len {len}");
+    }
+
+    #[test]
+    fn deeply_nested_blocks_are_a_parse_error() {
+        let nest = |n: usize| format!("{}halt\n{}", "if 1\n".repeat(n), "end\n".repeat(n));
+        assert!(parser::parse(&nest(parser::MAX_NEST_DEPTH)).is_ok());
+        let err = parser::parse(&nest(parser::MAX_NEST_DEPTH + 1)).expect_err("too deep");
+        assert!(err.msg.contains("nested"), "{}", err.msg);
+        // Far deeper input must fail cleanly, not overflow the stack.
+        assert!(parser::parse(&nest(100_000)).is_err());
+    }
+
+    #[test]
+    fn pathological_expressions_do_not_overflow_the_stack() {
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "expr");
+        let state = eval::State::new();
+        // Past the depth / size caps the result is unspecified; it just
+        // must not overflow the stack.
+        let bangs = format!("{}1", "!".repeat(200_000));
+        let _ = eval::eval_cond(&bangs, &ctx, &state);
+        let parens = format!("{}1{}", "(".repeat(200_000), ")".repeat(200_000));
+        let _ = eval::eval_cond(&parens, &ctx, &state);
+        let ors = vec!["0"; 100_000].join("||");
+        let _ = eval::eval_cond(&ors, &ctx, &state);
+        let minus = format!("{}1", "-".repeat(200_000));
+        assert_eq!(eval::eval_expr(&minus), minus);
+        // Shallow forms still work.
+        assert!(eval::eval_cond("!0", &ctx, &state));
+        assert!(eval::eval_cond("(1 == 1) && !(2 < 1)", &ctx, &state));
+        assert_eq!(eval::eval_expr("-(-(2 + 3)) * 2"), "10");
+    }
+
+    #[test]
+    fn deeply_nested_interpolation_is_left_literal() {
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "subst");
+        let state = eval::State::new();
+        let n = 10_000;
+        let s = format!("{}x{}", "%a(".repeat(n), ")%".repeat(n));
+        let out = vars::substitute(&s, &ctx, &state);
+        assert!(out.len() <= vars::MAX_VALUE_BYTES);
+    }
+
+    #[test]
+    fn wait_is_capped_and_never_overflows() {
+        assert_eq!(eval::parse_wait_secs("5 min"), 300);
+        assert_eq!(eval::parse_wait_secs("2 hours"), eval::MAX_WAIT_SECS);
+        assert_eq!(eval::parse_wait_secs("18446744073709551 hours"), eval::MAX_WAIT_SECS);
+        assert_eq!(eval::parse_wait_secs("18446744073709551615"), eval::MAX_WAIT_SECS);
+        assert_eq!(eval::parse_wait_secs("3 sec"), 3);
+    }
+
+    // ---------- Proto authorship (security hardening 2.1) ----------
+
+    fn save_char(ctx: &EvalCtx, name: &str, builder: bool, admin: bool) {
+        let c: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name,
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+            "is_admin": admin,
+            "is_builder": builder,
+        }))
+        .expect("build char");
+        ctx.db.save_character_data(c).expect("save char");
+    }
+
+    #[test]
+    fn proto_instance_author_follows_the_last_editor() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "8101", "g", "halt");
+        // Untouched imported proto: instances keep system trust.
+        let item = ctx.db.get_item_data(&ids[0]).unwrap().unwrap();
+        assert_eq!(item.triggers[0].authored_by, None);
+
+        // An edit stamps the editor, and the refresh carries it to instances.
+        let mut proto = ctx.db.get_dg_trigger_proto("8101").unwrap().unwrap();
+        proto.body = "return 0".to_string();
+        proto.stamp_edit("mallory");
+        ctx.db.save_dg_trigger_proto_with_refresh(&proto).expect("save");
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).unwrap().unwrap();
+            assert_eq!(item.triggers[0].authored_by.as_deref(), Some("mallory"));
+        }
+
+        // A fresh attach after the edit is stamped the same way.
+        let extra = crate::types::ItemData::new("x".into(), "an x".into(), "An x.".into());
+        let extra_id = extra.id;
+        ctx.db.save_item_data(extra).unwrap();
+        cmds::attach_trigger_proto("8101", &extra_id.to_string(), &ctx);
+        let item = ctx.db.get_item_data(&extra_id).unwrap().unwrap();
+        assert_eq!(item.triggers[0].authored_by.as_deref(), Some("mallory"));
+    }
+
+    #[test]
+    fn legacy_protos_are_downgraded_once_and_can_be_re_trusted() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "8102", "g", "halt");
+        // Rewrite the proto in its pre-trust-model shape: no `imported` key.
+        let mut raw = serde_json::to_value(ctx.db.get_dg_trigger_proto("8102").unwrap().unwrap()).unwrap();
+        raw.as_object_mut().unwrap().remove("imported");
+        raw.as_object_mut().unwrap().remove("last_edited_by");
+        ctx.db.insert_raw_dg_proto_for_test("8102", &raw).unwrap();
+        // Instances still carry the old system-trust stamp.
+        assert_eq!(
+            ctx.db.get_item_data(&ids[0]).unwrap().unwrap().triggers[0].authored_by,
+            None
+        );
+
+        let downgraded = ctx.db.migrate_legacy_dg_proto_trust().unwrap();
+        assert_eq!(downgraded, vec!["8102".to_string()]);
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).unwrap().unwrap();
+            assert_eq!(
+                item.triggers[0].authored_by.as_deref(),
+                Some(""),
+                "untrusted after migration"
+            );
+        }
+        // One-shot.
+        assert!(ctx.db.migrate_legacy_dg_proto_trust().unwrap().is_empty());
+
+        // An admin re-trusts unedited protos; edited ones are left alone.
+        let mut edited = ctx.db.get_dg_trigger_proto("8102").unwrap().unwrap();
+        edited.vnum = "8103".into();
+        edited.stamp_edit("mallory");
+        ctx.db.save_dg_trigger_proto(&edited).unwrap();
+        assert_eq!(ctx.db.trust_dg_protos(None).unwrap(), vec!["8102".to_string()]);
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).unwrap().unwrap();
+            assert_eq!(item.triggers[0].authored_by, None, "system trust restored");
+        }
+    }
+
+    #[test]
+    fn proto_meta_flags_and_delete_need_edit_rights_over_every_host_area() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "8104", "g", "halt");
+        let area = make_area("alices", Some("alice"), crate::AreaPermission::OwnerOnly);
+        let area_id = area.id;
+        ctx.db.save_area_data(area).unwrap();
+        for id in &ids {
+            let mut item = ctx.db.get_item_data(id).unwrap().unwrap();
+            item.area_id = Some(area_id);
+            ctx.db.save_item_data(item).unwrap();
+        }
+        save_char(&ctx, "alice", true, false);
+        save_char(&ctx, "mallory", true, false);
+
+        let conns: crate::SharedConnections =
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        let state = crate::World::minimal_shared((*ctx.db).clone(), conns.clone());
+        let mut engine = rhai::Engine::new();
+        crate::script::triggers::register(&mut engine, ctx.db.clone(), conns, state);
+
+        let set_meta: bool = engine.eval(r#"dg_proto_set_meta("8104", "", "c", "mallory")"#).unwrap();
+        assert!(!set_meta);
+        let flags: rhai::Map = engine.eval(r#"dg_proto_set_flags("8104", "c", "mallory")"#).unwrap();
+        assert!(!flags["ok"].as_bool().unwrap());
+        let deleted: i64 = engine.eval(r#"dg_proto_delete("8104", "mallory")"#).unwrap();
+        assert_eq!(deleted, -2);
+        let proto = ctx.db.get_dg_trigger_proto("8104").unwrap().unwrap();
+        assert_eq!(proto.flags, "g");
+        assert!(proto.imported, "still the untouched import");
+
+        // The area owner may retype it, and becomes its editor.
+        let flags: rhai::Map = engine.eval(r#"dg_proto_set_flags("8104", "c", "alice")"#).unwrap();
+        assert!(flags["ok"].as_bool().unwrap(), "{flags:?}");
+        let proto = ctx.db.get_dg_trigger_proto("8104").unwrap().unwrap();
+        assert_eq!(proto.instance_author().as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn non_imported_proto_without_editor_is_untrusted() {
+        let proto = crate::types::DgTriggerProto {
+            vnum: "1".into(),
+            name: String::new(),
+            attach_kind: crate::types::DgAttachKind::Obj,
+            flags: "g".into(),
+            numeric_arg: 100,
+            arglist: String::new(),
+            body: String::new(),
+            last_edited_by: None,
+            imported: false,
+        };
+        assert_eq!(proto.instance_author(), Some(String::new()));
+    }
+
+    #[test]
+    fn records_without_the_imported_field_are_untrusted() {
+        let old: crate::types::DgTriggerProto = serde_json::from_value(serde_json::json!({
+            "vnum": "1", "name": "", "attach_kind": "obj", "flags": "g", "body": "halt",
+        }))
+        .unwrap();
+        assert!(!old.imported);
+        assert_eq!(old.instance_author(), Some(String::new()));
+    }
+
+    #[test]
+    fn opcode_gate_refuses_unknown_empty_and_non_builder_authors() {
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let area = make_area("open", None, crate::AreaPermission::AllBuilders);
+        ctx.db.save_area_data(area.clone()).unwrap();
+        save_char(&ctx, "player", false, false);
+        save_char(&ctx, "builder", true, false);
+
+        for author in ["", "ghost", "player"] {
+            ctx.authored_by = Some(author.to_string());
+            assert!(!ctx.opcode_authorized("purge", Some(area.id)), "author {author:?}");
+        }
+        ctx.authored_by = Some("builder".to_string());
+        assert!(ctx.opcode_authorized("purge", Some(area.id)));
+    }
+
+    #[test]
+    fn proto_edit_requires_rights_over_every_hosting_area() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        save_char(&ctx, "owner", true, false);
+        save_char(&ctx, "rival", true, false);
+        save_char(&ctx, "boss", false, true);
+        save_char(&ctx, "player", false, false);
+        let area = make_area("keep", Some("owner"), crate::AreaPermission::OwnerOnly);
+        ctx.db.save_area_data(area.clone()).unwrap();
+
+        let ids = setup_two_attached_items(&ctx, "8102", "g", "halt");
+        ctx.db.update_item(&ids[0], |i| i.area_id = Some(area.id)).unwrap();
+
+        assert!(check_proto_edit(&ctx.db, "8102", "owner", false).is_ok());
+        assert!(check_proto_edit(&ctx.db, "8102", "boss", false).is_ok());
+        assert!(check_proto_edit(&ctx.db, "8102", "rival", true).is_ok(), "admin key");
+        let err = check_proto_edit(&ctx.db, "8102", "rival", false).unwrap_err();
+        assert!(err.contains("keep"), "{err}");
+        assert!(check_proto_edit(&ctx.db, "8102", "player", false).is_err());
+        assert!(check_proto_edit(&ctx.db, "8102", "ghost", false).is_err());
+
+        // The OLC save path enforces it and stamps the editor.
+        let msg = crate::save_dg_proto_body_msg(&ctx.db, "8102", "return 0".into(), "rival");
+        assert!(msg.contains("refused"), "{msg}");
+        assert_eq!(ctx.db.get_dg_trigger_proto("8102").unwrap().unwrap().body, "halt");
+        let msg = crate::save_dg_proto_body_msg(&ctx.db, "8102", "return 0".into(), "owner");
+        assert!(msg.contains("saved"), "{msg}");
+        let proto = ctx.db.get_dg_trigger_proto("8102").unwrap().unwrap();
+        assert_eq!(proto.last_edited_by.as_deref(), Some("owner"));
+        assert!(!proto.imported);
+    }
+
+    // ---------- Player-targeting opcodes (security hardening 2.3) ----------
+
+    fn online_actor(ctx: &mut EvalCtx, name: &str, gold: i32, builder: bool) -> String {
+        let mut ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name, "password_hash": "", "current_room_id": Uuid::nil(),
+            "is_builder": builder,
+        }))
+        .unwrap();
+        ch.gold = gold;
+        ctx.db.save_character_data(ch.clone()).unwrap();
+        let (conn_id, _rx) = register_online_player(ctx, &ch);
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: conn_id.clone(),
+            char_id: Uuid::nil(),
+            name: name.to_string(),
+        });
+        conn_id
+    }
+
+    fn session_char(ctx: &EvalCtx, name: &str) -> crate::types::CharacterData {
+        ctx.connections
+            .lock()
+            .values()
+            .find_map(|s| s.character.clone().filter(|c| c.name == name))
+            .expect("online")
+    }
+
+    #[test]
+    fn dg_gold_changes_the_online_session_and_never_wraps() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "vault");
+        online_actor(&mut ctx, "pat", 100, false);
+
+        assert_eq!(fire_dg("nop %actor.gold(-30)%\nhalt", &ctx), Outcome::Halt);
+        assert_eq!(session_char(&ctx, "pat").gold, 70, "session copy is the one changed");
+
+        // A debit past zero floors at zero; a huge credit is refused, not wrapped.
+        fire_dg("nop %actor.gold(-1000)%", &ctx);
+        assert_eq!(session_char(&ctx, "pat").gold, 0);
+        fire_dg("nop %actor.gold(2147483647)%", &ctx);
+        fire_dg("nop %actor.gold(2147483647)%", &ctx);
+        assert!(session_char(&ctx, "pat").gold >= 0, "no i32 wraparound");
+    }
+
+    #[test]
+    fn dg_gold_needs_the_authors_area_permission() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "vault");
+        online_actor(&mut ctx, "pat", 100, false);
+        // Builder author in a room with no area: the gate refuses.
+        save_char(&ctx, "mallory", true, false);
+        ctx.authored_by = Some("mallory".to_string());
+        fire_dg("nop %actor.gold(5000)%", &ctx);
+        assert_eq!(session_char(&ctx, "pat").gold, 100);
+    }
+
+    #[test]
+    fn builder_triggers_cannot_reach_players_by_name() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "trap");
+        let victim: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "faraway", "password_hash": "", "current_room_id": Uuid::nil(),
+        }))
+        .unwrap();
+        ctx.db.save_character_data(victim).unwrap();
+        save_char(&ctx, "mallory", true, false);
+
+        ctx.authored_by = Some("mallory".to_string());
+        assert!(cmds::resolve_target_for_test("faraway", &ctx).is_none());
+        ctx.authored_by = None;
+        assert!(
+            cmds::resolve_target_for_test("faraway", &ctx).is_some(),
+            "system triggers keep it"
+        );
+        ctx.authored_by = Some("mallory".to_string());
+        ctx.elevated = true;
+        assert!(
+            cmds::resolve_target_for_test("faraway", &ctx).is_some(),
+            "elevated keeps it"
+        );
+    }
+
+    #[test]
+    fn dg_affect_is_clamped_and_lands_in_the_session() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "shrine");
+        online_actor(&mut ctx, "pat", 0, false);
+        fire_dg("dg_affect actor strength 99999 999999999", &ctx);
+        let ch = session_char(&ctx, "pat");
+        let buff = ch.active_buffs.first().expect("buff applied to the session copy");
+        assert_eq!(buff.magnitude, 100);
+        assert_eq!(buff.remaining_secs, 3600);
+    }
+
+    #[test]
+    fn builder_triggers_cannot_force_builders() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "puppet");
+        let bob: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "bob", "password_hash": "", "current_room_id": Uuid::nil(), "is_builder": true,
+        }))
+        .unwrap();
+        ctx.db.save_character_data(bob.clone()).unwrap();
+        let conn_id = Uuid::new_v4();
+        let (tx_client, _rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, mut rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(8);
+        let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(bob);
+        ctx.connections.lock().insert(conn_id, session);
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: conn_id.to_string(),
+            char_id: Uuid::nil(),
+            name: "bob".to_string(),
+        });
+
+        save_char(&ctx, "mallory", true, false);
+        ctx.authored_by = Some("mallory".to_string());
+        fire_dg("force actor aedit owner mallory", &ctx);
+        assert!(
+            rx_input.try_recv().is_err(),
+            "a builder's trigger must not force a builder"
+        );
+
+        // Control: a system trigger may still force (channel works).
+        ctx.authored_by = None;
+        fire_dg("force actor look", &ctx);
+        assert!(rx_input.try_recv().is_ok());
+    }
+
+    #[test]
+    fn oncommand_triggers_never_see_sensitive_commands() {
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "snoop");
+        let room = build_room_in_area(&ctx.db, Uuid::new_v4());
+        ctx.db
+            .update_room(&room, |r| {
+                r.triggers.push(crate::types::RoomTrigger {
+                    trigger_type: crate::types::TriggerType::OnCommand,
+                    // No keyword: matches every command.
+                    args: Vec::new(),
+                    dg_body: Some("global stolen\nset stolen %arg%\nglobal stolen\nreturn 0".to_string()),
+                    ..Default::default()
+                });
+            })
+            .unwrap();
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "pat", "password_hash": "", "current_room_id": room,
+        }))
+        .unwrap();
+        let conn = Uuid::new_v4();
+        let (tx_client, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_in) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
+        let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(ch);
+        ctx.connections.lock().insert(conn, session);
+
+        let suppressed = fire_oncommand_for_player(
+            &conn,
+            "password",
+            "password",
+            "oldpw newpw",
+            &ctx.db,
+            &ctx.connections,
+            &ctx.state,
+        );
+        assert!(!suppressed, "trigger must not run (or veto) a sensitive command");
+        assert_ne!(
+            ctx.db.get_dg_global("stolen").ok().flatten().as_deref(),
+            Some("oldpw newpw")
+        );
+
+        // Control: the same trigger does fire (and veto) an ordinary command.
+        let suppressed = fire_oncommand_for_player(&conn, "say", "say", "hello", &ctx.db, &ctx.connections, &ctx.state);
+        assert!(suppressed, "control: trigger fires on ordinary commands");
+        assert_eq!(ctx.db.get_dg_global("stolen").ok().flatten().as_deref(), Some("hello"));
+    }
+
+    // ---------- Condition injection (security hardening 2.5) ----------
+
+    #[test]
+    fn substituted_values_cannot_rewrite_a_condition() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "gatekeeper");
+        let mut state = eval::State::new();
+        for evil in ["x || 1", "x == x", "secret || x", "1) || (1", "!0"] {
+            state.locals.insert("said".into(), evil.into());
+            assert!(
+                !eval::eval_cond("%said% == secret", &ctx, &state),
+                "{evil:?} must be compared as a literal"
+            );
+        }
+        state.locals.insert("said".into(), "secret".into());
+        assert!(eval::eval_cond("%said% == secret", &ctx, &state));
+        // Structure written by the author still works, and operators inside
+        // an interpolation's call parens don't split the condition.
+        state.locals.insert("a".into(), "5".into());
+        assert!(eval::eval_cond("(%a% > 3 && %a% < 9) || %a% == 0", &ctx, &state));
+        assert!(!eval::eval_cond("!(%a% >= 5)", &ctx, &state));
+    }
+
+    #[test]
+    fn abbreviation_match_needs_three_characters() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "door");
+        let mut state = eval::State::new();
+        for (arg, want) in [
+            ("", false),
+            ("p", false),
+            ("pa", false),
+            ("pas", true),
+            ("password", true),
+            ("passwords", true),
+        ] {
+            state.locals.insert("typed".into(), arg.into());
+            assert_eq!(eval::eval_cond("%typed% /= password", &ctx, &state), want, "{arg:?}");
+        }
     }
 }

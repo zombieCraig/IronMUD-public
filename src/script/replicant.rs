@@ -44,10 +44,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -65,10 +62,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -88,10 +82,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -186,10 +177,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return err_map("bad connection id"),
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return err_map("no character"),
@@ -224,10 +212,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return err_map("bad connection id"),
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return err_map("no character"),
@@ -297,10 +282,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
                 Ok(u) => u,
                 Err(_) => return err_map("bad item id"),
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -345,10 +327,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
             Ok(u) => u,
             Err(_) => return err_map("bad connection id"),
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return err_map("no character"),
@@ -442,7 +421,7 @@ fn read_replicant<T>(
     f: impl FnOnce(&ReplicantState) -> T,
 ) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock
         .get(&conn_id)
         .and_then(|s| s.character.as_ref())
@@ -458,7 +437,7 @@ fn mutate_replicant<T>(
     f: impl FnOnce(&mut crate::types::CharacterData, &mut ReplicantState) -> T,
 ) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let mut conns_lock = conns.lock().ok()?;
+    let mut conns_lock = conns.lock();
     let ch = conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut())?;
     let mut state = ch.replicant_state.take()?;
     let out = f(ch, &mut state);

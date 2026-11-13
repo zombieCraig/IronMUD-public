@@ -95,17 +95,7 @@ fn rhai_context_to_strmap(context: &rhai::Map) -> std::collections::HashMap<Stri
     out
 }
 
-/// Validate a trigger script name to prevent path traversal.
-/// Only allows alphanumeric characters, underscores, and hyphens.
-/// Template names (starting with @) are validated the same way for the part after @.
-fn is_valid_script_name(name: &str) -> bool {
-    let check = if let Some(stripped) = name.strip_prefix('@') {
-        stripped
-    } else {
-        name
-    };
-    !check.is_empty() && check.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
+use crate::script::trigger_sandbox::is_valid_script_name;
 
 /// Execute a built-in mobile trigger template
 /// Returns "continue" or "cancel"
@@ -120,7 +110,8 @@ fn execute_mobile_template(
     // Helper to send message to connection
     let send_msg = |msg: &str| {
         if let Ok(uuid) = uuid::Uuid::parse_str(connection_id) {
-            if let Ok(conns) = connections.lock() {
+            {
+                let conns = connections.lock();
                 if let Some(session) = conns.get(&uuid) {
                     let _ = session.sender.send(msg.to_string());
                 }
@@ -159,7 +150,8 @@ fn execute_mobile_template(
                 // Broadcast to mobile's current room
                 if let Some(room_id) = mobile.current_room_id {
                     let room_msg = format!("{} shouts: \"{}!\"\n", mobile.name, message);
-                    if let Ok(conns) = connections.lock() {
+                    {
+                        let conns = connections.lock();
                         for (_, session) in conns.iter() {
                             if let Some(ref char_data) = session.character {
                                 if char_data.current_room_id == room_id {
@@ -182,7 +174,8 @@ fn execute_mobile_template(
                         ];
                         for exit_opt in &exits {
                             if let Some(target_room_id) = exit_opt {
-                                if let Ok(conns) = connections.lock() {
+                                {
+                                    let conns = connections.lock();
                                     for (_, session) in conns.iter() {
                                         if let Some(ref char_data) = session.character {
                                             if char_data.current_room_id == *target_room_id {
@@ -216,7 +209,8 @@ fn execute_item_template(
     // Helper to send message to connection
     let send_msg = |msg: &str| {
         if let Ok(uuid) = uuid::Uuid::parse_str(connection_id) {
-            if let Ok(conns) = connections.lock() {
+            {
+                let conns = connections.lock();
                 if let Some(session) = conns.get(&uuid) {
                     let _ = session.sender.send(format!("{}\n", msg));
                 }
@@ -276,12 +270,11 @@ pub fn execute_room_template(
 ) -> String {
     // Helper to broadcast message to all players in the room
     let broadcast = |msg: &str| {
-        if let Ok(conns) = connections.lock() {
-            for (_, session) in conns.iter() {
-                if let Some(ref char_data) = session.character {
-                    if char_data.current_room_id == *room_id {
-                        let _ = session.sender.send(format!("{}\n", msg));
-                    }
+        let conns = connections.lock();
+        for (_, session) in conns.iter() {
+            if let Some(ref char_data) = session.character {
+                if char_data.current_room_id == *room_id {
+                    let _ = session.sender.send(format!("{}\n", msg));
                 }
             }
         }
@@ -709,9 +702,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return result_map;
             }
 
-            let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(c) => c,
                 Err(e) => {
                     result_map.insert("success".into(), false.into());
@@ -720,17 +711,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             };
 
-            let mut trigger_engine = rhai::Engine::new();
-            trigger_engine.set_max_expr_depths(128, 128);
-            trigger_engine.set_max_operations(100_000);
-            trigger_engine.set_max_string_size(100_000);
-            trigger_engine.set_max_array_size(1_000);
-            trigger_engine.set_max_map_size(1_000);
+            let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
             let conns_for_trigger = cloned_conns.clone();
             trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_trigger.lock() {
+                    {
+                        let conns = conns_for_trigger.lock();
                         if let Some(session) = conns.get(&uuid) {
                             let _ = session.sender.send(message);
                         }
@@ -741,7 +728,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let conns_for_char = cloned_conns.clone();
             trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_char.lock() {
+                    {
+                        let conns = conns_for_char.lock();
                         if let Some(session) = conns.get(&uuid) {
                             if let Some(ref char) = session.character {
                                 return rhai::Dynamic::from(char.clone());
@@ -787,12 +775,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     let mut scope = rhai::Scope::new();
                     let context = rhai::Map::new();
 
-                    match trigger_engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "run_trigger",
-                        (room_id.clone(), connection_id.clone(), context),
-                    ) {
+                    match crate::script::trigger_sandbox::guard_panic(|| {
+                        trigger_engine.call_fn::<rhai::Dynamic>(
+                            &mut scope,
+                            &ast,
+                            "run_trigger",
+                            (room_id.clone(), connection_id.clone(), context),
+                        )
+                    }) {
                         Ok(res) => {
                             result_map.insert("success".into(), true.into());
                             result_map.insert("result".into(), res.to_string().into());
@@ -903,7 +893,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
 
                 // Try to read and execute the script
-                let script_content = match std::fs::read_to_string(&script_path) {
+                let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                     Ok(content) => content,
                     Err(e) => {
                         tracing::warn!("Trigger script not found: {} - {}", script_path, e);
@@ -912,19 +902,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 };
 
                 // Create a new engine for trigger execution to avoid deadlock
-                let mut trigger_engine = rhai::Engine::new();
-                trigger_engine.set_max_expr_depths(128, 128);
-                trigger_engine.set_max_operations(100_000);
-                trigger_engine.set_max_string_size(100_000);
-                trigger_engine.set_max_array_size(1_000);
-                trigger_engine.set_max_map_size(1_000);
+                let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
                 // Register basic functions the trigger might need
                 let _conn_id = connection_id.clone();
                 let conns = cloned_conns.clone();
                 trigger_engine.register_fn("send_client_message", move |cid: String, message: String| {
                     if let Ok(conn_uuid) = uuid::Uuid::parse_str(&cid) {
-                        if let Some(session) = conns.lock().unwrap().get(&conn_uuid) {
+                        if let Some(session) = conns.lock().get(&conn_uuid) {
                             let _ = session.sender.send(message);
                         }
                     }
@@ -948,7 +933,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let conns3 = cloned_conns.clone();
                 trigger_engine.register_fn("get_player_character", move |cid: String| -> rhai::Dynamic {
                     if let Ok(conn_uuid) = uuid::Uuid::parse_str(&cid) {
-                        if let Some(session) = conns3.lock().unwrap().get(&conn_uuid) {
+                        if let Some(session) = conns3.lock().get(&conn_uuid) {
                             if let Some(ref char) = session.character {
                                 return rhai::Dynamic::from(char.clone());
                             }
@@ -1044,12 +1029,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         scope.push("connection_id", connection_id.clone());
                         scope.push("context", context.clone());
 
-                        match trigger_engine.call_fn::<rhai::Dynamic>(
-                            &mut scope,
-                            &ast,
-                            "run_trigger",
-                            (room_id.clone(), connection_id.clone(), context.clone()),
-                        ) {
+                        match crate::script::trigger_sandbox::guard_panic(|| {
+                            trigger_engine.call_fn::<rhai::Dynamic>(
+                                &mut scope,
+                                &ast,
+                                "run_trigger",
+                                (room_id.clone(), connection_id.clone(), context.clone()),
+                            )
+                        }) {
                             Ok(result) => {
                                 let result_str = result.to_string();
                                 if result_str == "cancel" {
@@ -1308,9 +1295,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return result_map;
             }
 
-            let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(c) => c,
                 Err(e) => {
                     result_map.insert("success".into(), false.into());
@@ -1319,17 +1304,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             };
 
-            let mut trigger_engine = rhai::Engine::new();
-            trigger_engine.set_max_expr_depths(128, 128);
-            trigger_engine.set_max_operations(100_000);
-            trigger_engine.set_max_string_size(100_000);
-            trigger_engine.set_max_array_size(1_000);
-            trigger_engine.set_max_map_size(1_000);
+            let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
             let conns_for_trigger = cloned_conns.clone();
             trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_trigger.lock() {
+                    {
+                        let conns = conns_for_trigger.lock();
                         if let Some(session) = conns.get(&uuid) {
                             let _ = session.sender.send(message);
                         }
@@ -1340,7 +1321,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let conns_for_char = cloned_conns.clone();
             trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_char.lock() {
+                    {
+                        let conns = conns_for_char.lock();
                         if let Some(session) = conns.get(&uuid) {
                             if let Some(ref char) = session.character {
                                 return rhai::Dynamic::from(char.clone());
@@ -1386,12 +1368,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     let mut scope = rhai::Scope::new();
                     let context = rhai::Map::new();
 
-                    match trigger_engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "run_trigger",
-                        (item_id.clone(), connection_id.clone(), context),
-                    ) {
+                    match crate::script::trigger_sandbox::guard_panic(|| {
+                        trigger_engine.call_fn::<rhai::Dynamic>(
+                            &mut scope,
+                            &ast,
+                            "run_trigger",
+                            (item_id.clone(), connection_id.clone(), context),
+                        )
+                    }) {
                         Ok(res) => {
                             result_map.insert("success".into(), true.into());
                             result_map.insert("result".into(), res.to_string().into());
@@ -1501,7 +1485,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                 // Load and execute trigger script
                 let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-                let script_content = match std::fs::read_to_string(&script_path) {
+                let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::warn!("Failed to load item trigger script {}: {}", script_path, e);
@@ -1510,18 +1494,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 };
 
                 // Create a new engine for trigger execution to avoid deadlock
-                let mut trigger_engine = rhai::Engine::new();
-                trigger_engine.set_max_expr_depths(128, 128);
-                trigger_engine.set_max_operations(100_000);
-                trigger_engine.set_max_string_size(100_000);
-                trigger_engine.set_max_array_size(1_000);
-                trigger_engine.set_max_map_size(1_000);
+                let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
                 // Register functions needed by triggers
                 let conns_for_trigger = cloned_conns.clone();
                 trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                        if let Ok(conns) = conns_for_trigger.lock() {
+                        {
+                            let conns = conns_for_trigger.lock();
                             if let Some(session) = conns.get(&uuid) {
                                 let _ = session.sender.send(message);
                             }
@@ -1532,7 +1512,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let conns_for_char = cloned_conns.clone();
                 trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                        if let Ok(conns) = conns_for_char.lock() {
+                        {
+                            let conns = conns_for_char.lock();
                             if let Some(session) = conns.get(&uuid) {
                                 if let Some(ref char) = session.character {
                                     return rhai::Dynamic::from(char.clone());
@@ -1586,10 +1567,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         Err(_) => return rhai::Dynamic::UNIT,
                     };
                     let room_id = {
-                        let conns_guard = match conns_for_local.lock() {
-                            Ok(g) => g,
-                            Err(_) => return rhai::Dynamic::UNIT,
-                        };
+                        let conns_guard = conns_for_local.lock();
                         match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
                             Some(c) => c.current_room_id,
                             None => return rhai::Dynamic::UNIT,
@@ -1629,7 +1607,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let conns_for_thirst = cloned_conns.clone();
                 trigger_engine.register_fn("get_character_thirst", move |connection_id: String| -> rhai::Dynamic {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                        if let Ok(conns) = conns_for_thirst.lock() {
+                        {
+                            let conns = conns_for_thirst.lock();
                             if let Some(session) = conns.get(&uuid) {
                                 if let Some(ref char) = session.character {
                                     let mut map = rhai::Map::new();
@@ -1670,12 +1649,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         scope.push("connection_id", connection_id.clone());
                         scope.push("context", context.clone());
 
-                        match trigger_engine.call_fn::<rhai::Dynamic>(
-                            &mut scope,
-                            &ast,
-                            "run_trigger",
-                            (item_id.clone(), connection_id.clone(), context.clone()),
-                        ) {
+                        match crate::script::trigger_sandbox::guard_panic(|| {
+                            trigger_engine.call_fn::<rhai::Dynamic>(
+                                &mut scope,
+                                &ast,
+                                "run_trigger",
+                                (item_id.clone(), connection_id.clone(), context.clone()),
+                            )
+                        }) {
                             Ok(result) => {
                                 let result_str = result.to_string();
                                 if result_str == "cancel" {
@@ -1968,10 +1949,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let script_path = format!("scripts/triggers/{}.rhai", script_name);
 
         // Check if file exists
-        match std::fs::read_to_string(&script_path) {
+        match crate::script::trigger_sandbox::read_trigger_script(&script_name) {
             Ok(content) => {
                 // Try to compile
-                let test_engine = rhai::Engine::new();
+                let test_engine = crate::script::trigger_sandbox::sandboxed_engine();
                 match test_engine.compile(&content) {
                     Ok(ast) => {
                         // Check if run_trigger function exists with 3 parameters
@@ -2026,7 +2007,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
 
         let script_path = format!("scripts/triggers/{}.rhai", script_name);
-        match std::fs::read_to_string(&script_path) {
+        match crate::script::trigger_sandbox::read_trigger_script(&script_name) {
             Ok(content) => {
                 result.insert("success".into(), true.into());
                 result.insert("content".into(), content.into());
@@ -2096,9 +2077,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return result_map;
             }
 
-            let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-
-            let script_content = match std::fs::read_to_string(&script_path) {
+            let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                 Ok(c) => c,
                 Err(e) => {
                     result_map.insert("success".into(), false.into());
@@ -2108,17 +2087,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             // Create trigger engine with all necessary functions
-            let mut trigger_engine = rhai::Engine::new();
-            trigger_engine.set_max_expr_depths(128, 128);
-            trigger_engine.set_max_operations(100_000);
-            trigger_engine.set_max_string_size(100_000);
-            trigger_engine.set_max_array_size(1_000);
-            trigger_engine.set_max_map_size(1_000);
+            let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
             let conns_for_trigger = cloned_conns.clone();
             trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_trigger.lock() {
+                    {
+                        let conns = conns_for_trigger.lock();
                         if let Some(session) = conns.get(&uuid) {
                             let _ = session.sender.send(message);
                         }
@@ -2129,7 +2104,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let conns_for_char = cloned_conns.clone();
             trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
                 if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                    if let Ok(conns) = conns_for_char.lock() {
+                    {
+                        let conns = conns_for_char.lock();
                         if let Some(session) = conns.get(&uuid) {
                             if let Some(ref char) = session.character {
                                 return rhai::Dynamic::from(char.clone());
@@ -2180,12 +2156,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     let mut scope = rhai::Scope::new();
                     let context = rhai::Map::new(); // Empty context for test
 
-                    match trigger_engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "run_trigger",
-                        (mobile_id.clone(), connection_id.clone(), context),
-                    ) {
+                    match crate::script::trigger_sandbox::guard_panic(|| {
+                        trigger_engine.call_fn::<rhai::Dynamic>(
+                            &mut scope,
+                            &ast,
+                            "run_trigger",
+                            (mobile_id.clone(), connection_id.clone(), context),
+                        )
+                    }) {
                         Ok(res) => {
                             result_map.insert("success".into(), true.into());
                             result_map.insert("result".into(), res.to_string().into());
@@ -2303,7 +2281,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                 // Load and execute trigger script
                 let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-                let script_content = match std::fs::read_to_string(&script_path) {
+                let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::warn!("Failed to load mobile trigger script {}: {}", script_path, e);
@@ -2312,18 +2290,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 };
 
                 // Create a new engine for trigger execution to avoid deadlock
-                let mut trigger_engine = rhai::Engine::new();
-                trigger_engine.set_max_expr_depths(128, 128);
-                trigger_engine.set_max_operations(100_000);
-                trigger_engine.set_max_string_size(100_000);
-                trigger_engine.set_max_array_size(1_000);
-                trigger_engine.set_max_map_size(1_000);
+                let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
                 // Register functions needed by triggers
                 let conns_for_trigger = cloned_conns.clone();
                 trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                        if let Ok(conns) = conns_for_trigger.lock() {
+                        {
+                            let conns = conns_for_trigger.lock();
                             if let Some(session) = conns.get(&uuid) {
                                 let _ = session.sender.send(message);
                             }
@@ -2334,7 +2308,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let conns_for_char = cloned_conns.clone();
                 trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                        if let Ok(conns) = conns_for_char.lock() {
+                        {
+                            let conns = conns_for_char.lock();
                             if let Some(session) = conns.get(&uuid) {
                                 if let Some(ref char) = session.character {
                                     return rhai::Dynamic::from(char.clone());
@@ -2387,12 +2362,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         scope.push("connection_id", connection_id.clone());
                         scope.push("context", context.clone());
 
-                        match trigger_engine.call_fn::<rhai::Dynamic>(
-                            &mut scope,
-                            &ast,
-                            "run_trigger",
-                            (mobile_id.clone(), connection_id.clone(), context.clone()),
-                        ) {
+                        match crate::script::trigger_sandbox::guard_panic(|| {
+                            trigger_engine.call_fn::<rhai::Dynamic>(
+                                &mut scope,
+                                &ast,
+                                "run_trigger",
+                                (mobile_id.clone(), connection_id.clone(), context.clone()),
+                            )
+                        }) {
                             Ok(result) => {
                                 let result_str = result.to_string();
                                 if result_str == "cancel" {
@@ -3027,60 +3004,80 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 numeric_arg: 100,
                 arglist: String::new(),
                 body: String::new(),
+                last_edited_by: None,
+                imported: false,
             };
             cloned_db.save_dg_trigger_proto(&proto).is_ok()
         },
     );
 
-    // dg_proto_save_body(vnum, body) -> Map { ok, refreshed, error, warnings }
+    // dg_proto_save_body(vnum, body, author) -> Map { ok, refreshed, error, warnings }
     //   Run-the-analyzer + persist + refresh path. On ParseError, save is
     //   refused and attached instances are unchanged (ok=false, error set).
-    //   Non-fatal issues come back as warnings. Used by the
-    //   collecting_dg_proto_body OLC mode on .save.
+    //   Non-fatal issues come back as warnings. `author` must pass
+    //   `dg::check_proto_edit` and is stamped as the proto's editor, which
+    //   attached instances run as.
     let cloned_db = db.clone();
-    engine.register_fn("dg_proto_save_body", move |vnum: String, body: String| -> rhai::Map {
-        let mut result = rhai::Map::new();
-        let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
-            Ok(Some(p)) => p,
-            _ => {
+    engine.register_fn(
+        "dg_proto_save_body",
+        move |vnum: String, body: String, author: String| -> rhai::Map {
+            let mut result = rhai::Map::new();
+            let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+                Ok(Some(p)) => p,
+                _ => {
+                    result.insert("ok".into(), false.into());
+                    result.insert("error".into(), "unknown proto vnum".to_string().into());
+                    result.insert("refreshed".into(), 0i64.into());
+                    result.insert("warnings".into(), rhai::Array::new().into());
+                    return result;
+                }
+            };
+            if let Err(why) = crate::script::dg::check_proto_edit(&cloned_db, vnum.trim(), &author, false) {
                 result.insert("ok".into(), false.into());
-                result.insert("error".into(), "unknown proto vnum".to_string().into());
+                result.insert("error".into(), why.into());
                 result.insert("refreshed".into(), 0i64.into());
                 result.insert("warnings".into(), rhai::Array::new().into());
                 return result;
             }
-        };
-        proto.body = body;
-        match cloned_db.save_dg_trigger_proto_with_refresh(&proto) {
-            Ok((refreshed, warnings)) => {
-                let warn_arr: rhai::Array = warnings.into_iter().map(rhai::Dynamic::from).collect();
-                result.insert("ok".into(), true.into());
-                result.insert("error".into(), "".to_string().into());
-                result.insert("refreshed".into(), (refreshed as i64).into());
-                result.insert("warnings".into(), warn_arr.into());
+            proto.body = body;
+            proto.stamp_edit(&author);
+            match cloned_db.save_dg_trigger_proto_with_refresh(&proto) {
+                Ok((refreshed, warnings)) => {
+                    let warn_arr: rhai::Array = warnings.into_iter().map(rhai::Dynamic::from).collect();
+                    result.insert("ok".into(), true.into());
+                    result.insert("error".into(), "".to_string().into());
+                    result.insert("refreshed".into(), (refreshed as i64).into());
+                    result.insert("warnings".into(), warn_arr.into());
+                }
+                Err(e) => {
+                    result.insert("ok".into(), false.into());
+                    result.insert("error".into(), e.to_string().into());
+                    result.insert("refreshed".into(), 0i64.into());
+                    result.insert("warnings".into(), rhai::Array::new().into());
+                }
             }
-            Err(e) => {
-                result.insert("ok".into(), false.into());
-                result.insert("error".into(), e.to_string().into());
-                result.insert("refreshed".into(), 0i64.into());
-                result.insert("warnings".into(), rhai::Array::new().into());
-            }
-        }
-        result
-    });
+            result
+        },
+    );
 
-    // dg_proto_set_meta(vnum, name, flags) -> bool
+    // dg_proto_set_meta(vnum, name, flags, author) -> bool
     //   Update proto name and/or flags without touching the body. Flag
     //   changes still trigger a refresh sweep (structural — adds/removes
     //   trigger types on attached instances). Pass "" to leave a field as-is.
+    //   `author` must pass `dg::check_proto_edit`: flags change when every
+    //   attached instance fires, in every area hosting one. A flag change
+    //   also makes `author` the proto's editor (instances run as them).
     let cloned_db = db.clone();
     engine.register_fn(
         "dg_proto_set_meta",
-        move |vnum: String, name: String, flags: String| -> bool {
+        move |vnum: String, name: String, flags: String, author: String| -> bool {
             let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
                 Ok(Some(p)) => p,
                 _ => return false,
             };
+            if crate::script::dg::check_proto_edit(&cloned_db, vnum.trim(), &author, false).is_err() {
+                return false;
+            }
             let mut changed = false;
             if !name.is_empty() {
                 proto.name = name.trim().to_string();
@@ -3088,6 +3085,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
             if !flags.is_empty() {
                 proto.flags = flags.trim().to_string();
+                proto.stamp_edit(&author);
                 changed = true;
             }
             if !changed {
@@ -3117,11 +3115,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     //   Validates that the resulting flag string parses to at least one
     //   type for the proto's kind. Returns `ok=true` with `refreshed`
     //   count on success; `ok=false` with `error` set on unknown vnum,
-    //   empty/invalid flags, unknown type name, or save failure.
+    //   empty/invalid flags, unknown type name, permission, or save failure.
+    //
+    //   `author` must pass `dg::check_proto_edit` and becomes the proto's
+    //   editor, like a body save: retyping a trusted body changes when it
+    //   runs in every area that hosts an instance.
     let cloned_db = db.clone();
     engine.register_fn(
         "dg_proto_set_flags",
-        move |vnum: String, new_flags: String| -> rhai::Map {
+        move |vnum: String, new_flags: String, author: String| -> rhai::Map {
             let mut result = rhai::Map::new();
             let new_flags = new_flags.trim().to_string();
             if new_flags.is_empty() {
@@ -3137,6 +3139,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return result;
                 }
             };
+            if let Err(why) = crate::script::dg::check_proto_edit(&cloned_db, vnum.trim(), &author, false) {
+                result.insert("ok".into(), false.into());
+                result.insert("error".into(), why.into());
+                return result;
+            }
             // Translate friendly type names to letters if any token > 1 char.
             use crate::import::engines::tba::trg_map;
             let tokens: Vec<&str> = new_flags
@@ -3190,6 +3197,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return result;
             }
             proto.flags = canonical_flags;
+            proto.stamp_edit(&author);
             if cloned_db.save_dg_trigger_proto(&proto).is_err() {
                 result.insert("ok".into(), false.into());
                 result.insert("error".into(), "save failed".to_string().into());
@@ -3202,14 +3210,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
-    // dg_proto_delete(vnum) -> int (count of orphaned trigger instances)
+    // dg_proto_delete(vnum, author) -> int (count of orphaned trigger instances)
     //   Removes the proto from the registry and orphans every attached
     //   instance (clears source_proto_vnum, preserves body). Returns -1
-    //   if the vnum is unknown.
+    //   if the vnum is unknown, -2 if `author` fails `dg::check_proto_edit`.
     let cloned_db = db.clone();
-    engine.register_fn("dg_proto_delete", move |vnum: String| -> i64 {
-        if matches!(cloned_db.get_dg_trigger_proto(vnum.trim()), Ok(None)) {
+    engine.register_fn("dg_proto_delete", move |vnum: String, author: String| -> i64 {
+        if !matches!(cloned_db.get_dg_trigger_proto(vnum.trim()), Ok(Some(_))) {
             return -1;
+        }
+        if crate::script::dg::check_proto_edit(&cloned_db, vnum.trim(), &author, false).is_err() {
+            return -2;
         }
         let orphaned = cloned_db.orphan_attached_dg_triggers(vnum.trim()).unwrap_or(0);
         let _ = cloned_db.delete_dg_trigger_proto(vnum.trim());
@@ -3256,6 +3267,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 numeric_arg: t.chance,
                 arglist: t.args.join(" "),
                 body,
+                imported: t.authored_by.is_none(),
+                last_edited_by: t.authored_by.clone(),
             };
             if cloned_db.save_dg_trigger_proto(&proto).is_err() {
                 return false;
@@ -3302,6 +3315,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 numeric_arg: t.chance,
                 arglist: t.args.join(" "),
                 body,
+                imported: t.authored_by.is_none(),
+                last_edited_by: t.authored_by.clone(),
             };
             if cloned_db.save_dg_trigger_proto(&proto).is_err() {
                 return false;
@@ -3348,6 +3363,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 numeric_arg: t.chance,
                 arglist: t.args.join(" "),
                 body,
+                imported: t.authored_by.is_none(),
+                last_edited_by: t.authored_by.clone(),
             };
             if cloned_db.save_dg_trigger_proto(&proto).is_err() {
                 return false;
@@ -3536,7 +3553,7 @@ pub fn fire_mobile_triggers_from_rust(
 
         // Load and execute trigger script
         let script_path = format!("scripts/triggers/{}.rhai", trigger.script_name);
-        let script_content = match std::fs::read_to_string(&script_path) {
+        let script_content = match crate::script::trigger_sandbox::read_trigger_script(&trigger.script_name) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Failed to load mobile trigger script {}: {}", script_path, e);
@@ -3545,18 +3562,14 @@ pub fn fire_mobile_triggers_from_rust(
         };
 
         // Create a new engine for trigger execution to avoid deadlock
-        let mut trigger_engine = rhai::Engine::new();
-        trigger_engine.set_max_expr_depths(128, 128);
-        trigger_engine.set_max_operations(100_000);
-        trigger_engine.set_max_string_size(100_000);
-        trigger_engine.set_max_array_size(1_000);
-        trigger_engine.set_max_map_size(1_000);
+        let mut trigger_engine = crate::script::trigger_sandbox::sandboxed_engine();
 
         // Register functions needed by triggers
         let conns_for_trigger = connections.clone();
         trigger_engine.register_fn("send_client_message", move |conn_id: String, message: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                if let Ok(conns) = conns_for_trigger.lock() {
+                {
+                    let conns = conns_for_trigger.lock();
                     if let Some(session) = conns.get(&uuid) {
                         let _ = session.sender.send(message);
                     }
@@ -3567,7 +3580,8 @@ pub fn fire_mobile_triggers_from_rust(
         let conns_for_char = connections.clone();
         trigger_engine.register_fn("get_player_character", move |conn_id: String| -> rhai::Dynamic {
             if let Ok(uuid) = uuid::Uuid::parse_str(&conn_id) {
-                if let Ok(conns) = conns_for_char.lock() {
+                {
+                    let conns = conns_for_char.lock();
                     if let Some(session) = conns.get(&uuid) {
                         if let Some(ref char) = session.character {
                             return rhai::Dynamic::from(char.clone());
@@ -3628,12 +3642,14 @@ pub fn fire_mobile_triggers_from_rust(
                 scope.push("connection_id", connection_id_owned.clone());
                 scope.push("context", rhai_context.clone());
 
-                match trigger_engine.call_fn::<rhai::Dynamic>(
-                    &mut scope,
-                    &ast,
-                    "run_trigger",
-                    (mobile_id_owned, connection_id_owned, rhai_context),
-                ) {
+                match crate::script::trigger_sandbox::guard_panic(|| {
+                    trigger_engine.call_fn::<rhai::Dynamic>(
+                        &mut scope,
+                        &ast,
+                        "run_trigger",
+                        (mobile_id_owned, connection_id_owned, rhai_context),
+                    )
+                }) {
                     Ok(result) => {
                         let result_str = result.to_string();
                         if result_str == "cancel" {

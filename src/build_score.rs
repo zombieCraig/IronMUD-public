@@ -451,14 +451,9 @@ pub fn process_build_score_tick(
         _ => {}
     }
 
-    // An error, not a silent skip: a swallowed poisoned lock means the scan
-    // ran, the counters and milestones were written, and nothing was installed
-    // — so `build` and `world` report "not surveyed yet" forever while the tick
-    // logs success every five minutes. `process_leaderboard_tick` treats the
-    // same failure as fatal.
-    let mut world = state
-        .lock()
-        .map_err(|_| anyhow::anyhow!("world lock poisoned installing builder scores"))?;
+    // Install the scan. (parking_lot locks don't poison, so this can't
+    // silently skip and leave `build`/`world` stuck on "not surveyed yet".)
+    let mut world = state.lock();
     world.build_scores = scores;
     world.world_report = crate::world_rating::WorldReport {
         generated_at: now,

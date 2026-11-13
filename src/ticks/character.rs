@@ -50,7 +50,7 @@ fn process_thirst_tick(db: &db::Db, connections: &SharedConnections, _state: &Sh
         .unwrap_or(1)
         .max(1);
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
         if let Some(ref mut char) = session.character {
@@ -193,7 +193,7 @@ fn process_hunger_tick(db: &db::Db, connections: &SharedConnections, _state: &Sh
         .unwrap_or(1)
         .max(1);
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
         if let Some(ref mut char) = session.character {
@@ -345,11 +345,11 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
     // merged-trait lookup below never holds the World and Connections locks at
     // once (deadlock rule). These maps are tiny and change only on reload.
     let (race_defs, class_defs) = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         (world.race_definitions.clone(), world.class_definitions.clone())
     };
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
         if let Some(ref mut char) = session.character {
@@ -454,49 +454,16 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 0
             };
 
-            // Max HP traits (effective cap)
-            let has_tough = char.traits.iter().any(|t| t == "tough");
-            let has_sickly = char.traits.iter().any(|t| t == "sickly");
-            // CircleMUD APPLY_MAXHIT parity: equipment max-HP bonuses lift the
-            // ceiling. Stamped on `active_buffs` at wear time, so unwear takes
-            // effect immediately when the buff is stripped.
-            let eq_max_hp_bonus: i32 = char
-                .active_buffs
-                .iter()
-                .filter(|b| b.effect_type == EffectType::MaxHpBonus)
-                .map(|b| b.magnitude)
-                .sum();
-            let mut effective_max_hp = char.max_hp + eq_max_hp_bonus;
-            if has_vigorous {
-                effective_max_hp = effective_max_hp * 115 / 100;
-            } // +15%
-            if has_tough {
-                effective_max_hp = effective_max_hp * 120 / 100;
-            } // +20%
-            if has_frail {
-                effective_max_hp = effective_max_hp * 80 / 100;
-            } // -20%
-            if has_sickly {
-                effective_max_hp = effective_max_hp * 90 / 100;
-            } // -10%
-
-            // Torso wound caps max HP (broken ribs limit vitality)
-            let torso_penalty = char
-                .wounds
-                .iter()
-                .filter(|w| w.body_part == BodyPart::Torso)
-                .map(|w| w.level.penalty())
-                .max()
-                .unwrap_or(0);
-            if torso_penalty > 0 {
-                effective_max_hp = (effective_max_hp * (100 - torso_penalty) / 100).max(1);
-                if char.hp > effective_max_hp {
-                    char.hp = effective_max_hp;
-                    modified = true;
-                    let _ = session
-                        .sender
-                        .send("\nYour cracked ribs limit your vitality.\n".to_string());
-                }
+            // Effective cap: base + MaxHpBonus buffs, traits, torso wound.
+            // Same number every heal path and display uses.
+            let effective_max_hp = char.effective_max_hp();
+            let torso_penalty = char.worst_wound_penalty(BodyPart::Torso);
+            if torso_penalty > 0 && char.hp > effective_max_hp {
+                char.hp = effective_max_hp;
+                modified = true;
+                let _ = session
+                    .sender
+                    .send("\nYour cracked ribs limit your vitality.\n".to_string());
             }
 
             if char.hp < effective_max_hp && hp_regen_final > 0 {
@@ -705,7 +672,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
 
             if modified {
                 let _ = db.save_character_data(char.clone());
-                session.sync_msdp_vitals(state);
+                session.sync_msdp_vitals(db);
             }
         }
     }
@@ -736,27 +703,29 @@ fn get_stamina_message(old: i32, new: i32, max: i32) -> Option<&'static str> {
 pub const HUNTING_TICK_INTERVAL_SECS: u64 = 5;
 
 /// Background task that processes player hunting auto-follow periodically
-pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
+pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(HUNTING_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("hunting");
 
-        if let Err(e) = process_hunting_tick(&db, &connections, &state) {
+        if let Err(e) = process_hunting_tick(&db, &connections) {
             error!("Hunting tick error: {}", e);
         }
     }
 }
 
 /// Process hunting auto-follow for all logged-in players with active hunt targets
-fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
-    use super::broadcast::{broadcast_to_room_except_awake, send_message_to_character, sync_character_to_session};
+fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+    use super::broadcast::{
+        broadcast_to_room_except_awake, live_character, send_message_to_character, sync_character_to_session,
+    };
     use super::mobile::get_opposite_direction_rust;
 
     // Collect hunters from session data (avoid holding lock during processing)
     let hunters: Vec<(String, String, uuid::Uuid)> = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns
             .iter()
             .filter_map(|(_, session)| {
@@ -790,7 +759,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
 
         // Check if target player is already in this room (check sessions)
         let target_here = {
-            let conns = connections.lock().unwrap();
+            let conns = connections.lock();
             conns.iter().any(|(_, session)| {
                 if let Some(ref c) = session.character {
                     c.current_room_id == current_room_id
@@ -804,10 +773,10 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
 
         if target_here {
             // Target found - stop hunting
-            if let Ok(Some(mut char)) = db.get_character_data(&char_name) {
+            if let Ok(Some(mut char)) = live_character(connections, db, &char_name) {
                 char.hunting_target.clear();
                 let _ = db.save_character_data(char.clone());
-                sync_character_to_session(connections, &char, state);
+                sync_character_to_session(connections, &char, db);
             }
             send_message_to_character(connections, &char_name, &format!("You have found {}!", hunt_target));
             continue;
@@ -864,7 +833,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
                 };
                 // Check if target player is in adjacent room
                 let found = {
-                    let conns = connections.lock().unwrap();
+                    let conns = connections.lock();
                     conns.iter().any(|(_, session)| {
                         if let Some(ref c) = session.character {
                             c.current_room_id == exit_id && c.name.to_lowercase() == target_lower
@@ -887,7 +856,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
         };
 
         // Get character data for stamina check and movement
-        let mut char = match db.get_character_data(&char_name)? {
+        let mut char = match live_character(connections, db, &char_name)? {
             Some(c) => c,
             None => continue,
         };
@@ -900,7 +869,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
         {
             char.hunting_target.clear();
             let _ = db.save_character_data(char.clone());
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
             send_message_to_character(connections, &char_name, "You are too exhausted to continue hunting.");
             continue;
         }
@@ -940,7 +909,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
         }
         char.current_room_id = target_room_id;
         let _ = db.save_character_data(char.clone());
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
 
         // Send tracking message
         send_message_to_character(
@@ -988,11 +957,11 @@ pub async fn run_drowning_tick(db: db::Db, connections: SharedConnections, state
 
 /// Process breath/drowning for all logged-in players
 fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
-    use super::broadcast::{send_message_to_character, sync_character_to_session};
+    use super::broadcast::{live_character, send_message_to_character, sync_character_to_session};
 
     // Collect player data outside the lock to avoid holding it during db operations
     let players: Vec<(String, uuid::Uuid)> = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns
             .iter()
             .filter_map(|(_, session)| {
@@ -1015,7 +984,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &S
             None => continue,
         };
 
-        let mut char = match db.get_character_data(&char_name)? {
+        let mut char = match live_character(connections, db, &char_name)? {
             Some(c) => c,
             None => continue,
         };
@@ -1032,7 +1001,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &S
                 if char.breath < char.max_breath {
                     char.breath = char.max_breath;
                     db.save_character_data(char.clone())?;
-                    sync_character_to_session(connections, &char, state);
+                    sync_character_to_session(connections, &char, db);
                 }
                 continue;
             }
@@ -1134,7 +1103,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &S
             }
 
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
         } else {
             // Not underwater: recover breath
             if char.breath < char.max_breath {
@@ -1159,7 +1128,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &S
                 }
 
                 db.save_character_data(char.clone())?;
-                sync_character_to_session(connections, &char, state);
+                sync_character_to_session(connections, &char, db);
             }
         }
     }
@@ -1210,7 +1179,7 @@ fn process_slow_move_tick(db: &db::Db, connections: &SharedConnections) -> Resul
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     for (_conn_id, session) in conns.iter_mut() {
         let Some(ref mut char) = session.character else {
             continue;

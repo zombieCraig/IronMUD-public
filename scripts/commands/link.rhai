@@ -2,6 +2,8 @@
 // Usage: link <direction> <room_id> [both]
 // Links an exit to an existing room
 
+import "olc_helpers" as olc;
+
 fn get_opposite_direction(dir) {
     if dir == "north" { return "south"; }
     if dir == "south" { return "north"; }
@@ -69,8 +71,7 @@ fn run_command(args, connection_id) {
     // Check area permissions if current room belongs to an area
     let room_area_id = current_room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to link exits from rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to link exits from rooms in this area.") {
             return;
         }
     }
@@ -91,8 +92,7 @@ fn run_command(args, connection_id) {
     if bidirectional {
         let target_area_id = target_room.area_id;
         if target_area_id != "" {
-            if !can_edit_area(target_area_id, char.name) {
-                send_client_message(connection_id, "You don't have permission to link exits to rooms in that area. Use without 'both' for one-way link.");
+            if !olc::require_area_edit(connection_id, target_area_id, char.name, "You don't have permission to link exits to rooms in that area. Use without 'both' for one-way link.") {
                 return;
             }
         }

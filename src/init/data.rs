@@ -151,7 +151,7 @@ fn resolve_languages_path(preset: Option<String>) -> String {
 
 /// Load game data (classes, traits, race suggestions) from scripts/data/*.json
 pub fn load_game_data(state: SharedState) -> Result<()> {
-    let mut world = state.lock().unwrap();
+    let mut world = state.lock();
 
     // Determine presets from settings
     let class_preset = world.db.get_setting("class_preset").unwrap_or(None);

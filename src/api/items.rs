@@ -717,10 +717,7 @@ async fn list_items(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut items = state
-        .db
-        .list_all_items()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut items = state.db.list_all_items()?;
 
     // Filter by item_type if provided
     if let Some(ref type_str) = query.item_type {
@@ -753,8 +750,7 @@ async fn list_prototypes(
 
     let items: Vec<ItemData> = state
         .db
-        .list_all_items()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_items()?
         .into_iter()
         .filter(|i| i.is_prototype)
         .collect();
@@ -780,8 +776,7 @@ async fn list_prototypes_summary(
 
     let items: Vec<ItemData> = state
         .db
-        .list_all_items()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_items()?
         .into_iter()
         .filter(|i| i.is_prototype)
         .collect();
@@ -823,8 +818,7 @@ async fn get_item(
 
     let item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     Ok(Json(ItemResponse {
@@ -846,8 +840,7 @@ async fn get_item_by_vnum(
 
     let item = state
         .db
-        .get_item_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Item with vnum '{}' not found", vnum)))?;
 
     Ok(Json(ItemResponse {
@@ -868,12 +861,7 @@ async fn create_item(
     }
 
     // Check vnum uniqueness
-    if state
-        .db
-        .get_item_by_vnum(&req.vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_some()
-    {
+    if state.db.get_item_by_vnum(&req.vnum)?.is_some() {
         return Err(ApiError::VnumInUse(format!("Vnum '{}' is already in use", req.vnum)));
     }
 
@@ -1015,7 +1003,6 @@ async fn create_item(
             .clone()
             .map(|v| v.into_iter().map(Into::into).collect())
             .unwrap_or_default(),
-        container_contents: Vec::new(),
         container_max_items: 0,
         container_max_weight: 0,
         container_closed: false,
@@ -1136,10 +1123,7 @@ async fn create_item(
 
     // Attribution: see src/attribution.rs.
     item.stamp_created(&user.api_key.owner_character);
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     notify_builders(
         &state.connections,
@@ -1168,8 +1152,7 @@ async fn update_item(
 
     let mut item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     // Sandbox: if the prototype already belongs to an area, the caller
@@ -1528,10 +1511,7 @@ async fn update_item(
 
     // Attribution: see src/attribution.rs.
     item.stamp_edited(&user.api_key.owner_character);
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
@@ -1572,18 +1552,14 @@ async fn delete_item(
 
     let item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, item.area_id)?;
 
     let item_name = item.vnum.clone().unwrap_or_else(|| item.id.to_string());
 
-    state
-        .db
-        .delete_item(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_item(&uuid)?;
 
     notify_builders(
         &state.connections,
@@ -1642,11 +1618,12 @@ async fn add_trigger(
 
     let mut item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, item.area_id)?;
+
+    super::validate::check_script_name(&req.script_name)?;
 
     let trigger_type = parse_item_trigger_type(&req.trigger_type)?;
 
@@ -1663,10 +1640,7 @@ async fn add_trigger(
         source_proto_vnum: None,
     });
 
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
@@ -1691,8 +1665,7 @@ async fn remove_trigger(
 
     let mut item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, item.area_id)?;
@@ -1703,10 +1676,7 @@ async fn remove_trigger(
 
     item.triggers.remove(index);
 
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
@@ -1732,8 +1702,7 @@ async fn add_extra_desc(
 
     let mut item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, item.area_id)?;
@@ -1748,10 +1717,7 @@ async fn add_extra_desc(
         description: req.description,
     });
 
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
@@ -1776,8 +1742,7 @@ async fn remove_extra_desc(
 
     let mut item = state
         .db
-        .get_item_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, item.area_id)?;
@@ -1794,10 +1759,7 @@ async fn remove_extra_desc(
         )));
     }
 
-    state
-        .db
-        .save_item_data(item.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_item_data(item.clone())?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
@@ -1822,8 +1784,7 @@ async fn spawn_item(
     // Get the prototype
     let prototype = state
         .db
-        .get_item_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_item_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Item prototype '{}' not found", vnum)))?;
 
     if !prototype.is_prototype {
@@ -1836,24 +1797,24 @@ async fn spawn_item(
 
     let room = state
         .db
-        .get_room_data(&room_uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&room_uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
 
     // Spawning into a room must be authorized against that room's area —
     // an item-prototype's owning area is irrelevant for the destination check.
     authorize_existing_area(&state.db, &user, room.area_id)?;
 
-    // Clone the prototype to create an instance
-    let mut instance = prototype.clone();
-    instance.id = Uuid::new_v4();
-    instance.is_prototype = false;
-    instance.location = ItemLocation::Room(room_uuid);
-
-    state
+    // Through the spawn chokepoint so `world_max_count` / `unique` hold.
+    let spawned = state.db.spawn_item_from_prototype(&vnum)?.ok_or_else(|| {
+        ApiError::Conflict(format!(
+            "Item '{}' is at its world-wide limit (world_max_count / unique)",
+            vnum
+        ))
+    })?;
+    let instance = state
         .db
-        .save_item_data(instance.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .update_item(&spawned.id, |i| i.location = ItemLocation::Room(room_uuid))?
+        .ok_or_else(|| ApiError::Internal("spawned item vanished".into()))?;
 
     notify_builders(
         &state.connections,

@@ -240,7 +240,7 @@ pub fn process_mutation_tick(
     connections: &SharedConnections,
     defs: &HashMap<String, MutationDefinition>,
 ) -> Result<()> {
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     for (_conn_id, session) in conns.iter_mut() {
         let ch = match session.character.as_mut() {
             Some(c) => c,
@@ -352,7 +352,7 @@ pub fn apply_rot_tick_to_character(
 pub fn process_rot_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     use rand::Rng;
     let now = unix_now();
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     for (_conn_id, session) in conns.iter_mut() {
         let ch = match session.character.as_mut() {
             Some(c) => c,

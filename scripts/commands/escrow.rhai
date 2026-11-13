@@ -159,7 +159,10 @@ fn handle_retrieve(escrows, parts, char, connection_id) {
     }
 
     // Deduct gold
-    add_character_gold(char.name, -fee);
+    if !add_character_gold(char.name, -fee) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
 
     // Retrieve items
     if retrieve_escrow_items(escrow.id, dest_id) {

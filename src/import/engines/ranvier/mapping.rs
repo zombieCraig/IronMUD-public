@@ -683,10 +683,11 @@ fn emit_mobile(
                         None => continue,
                     };
                     if name.eq_ignore_ascii_case("gold") {
-                        let max = cmap.get("max").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        let min = cmap.get("min").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let max = cmap.get("max").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let min = cmap.get("min").and_then(|v| v.as_i64()).unwrap_or(0);
                         // Take midpoint as the prototype's representative gold.
-                        gold = (min + max) / 2;
+                        // i128 so the sum can't overflow; clamp into gold's range.
+                        gold = ((min as i128 + max as i128) / 2).clamp(0, i32::MAX as i128) as i32;
                     } else {
                         warnings.push(Warning::new(
                             WarningKind::UnsupportedFlag,

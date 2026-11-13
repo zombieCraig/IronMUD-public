@@ -16,9 +16,8 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Validate password length (minimum 4 characters)
-    if new_password.len() < 4 {
-        send_client_message(connection_id, "Password must be at least 4 characters long.");
+    if new_password.len() < min_password_len() {
+        send_client_message(connection_id, "Password must be at least " + min_password_len() + " characters long.");
         return;
     }
 

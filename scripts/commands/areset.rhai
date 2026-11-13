@@ -2,6 +2,8 @@
 // Manual area reset - triggers all spawn points in an area
 // Usage: areset <area_id>
 
+import "olc_helpers" as olc;
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -20,7 +22,11 @@ fn run_command(args, connection_id) {
     }
 
     if area == () {
-        send_client_message(connection_id, "Area not found: " + area_id);
+        send_client_message(connection_id, "Area not found: " + args);
+        return;
+    }
+
+    if !olc::require_area_edit(connection_id, area.id, char.name, "You don't have permission to reset this area.") {
         return;
     }
 

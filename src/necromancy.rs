@@ -263,7 +263,7 @@ mod tests {
     /// Nobody online — these tests assert on DB state, not on the messages
     /// `report_xp` would send.
     fn conns() -> SharedConnections {
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()))
+        std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()))
     }
 
     fn make_char(db: &Db, name: &str, room: Uuid, mana: i32, necro: i32, magic: i32) {

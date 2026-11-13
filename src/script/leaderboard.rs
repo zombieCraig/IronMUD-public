@@ -64,9 +64,7 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     // alias table.
     let cloned_state = state.clone();
     engine.register_fn("get_leaderboard", move |key: String| -> Map {
-        let Ok(world) = cloned_state.lock() else {
-            return not_found(&key);
-        };
+        let world = cloned_state.lock();
         match world.leaderboards.resolve(&key) {
             Some(b) => board_to_map(b, true),
             None => not_found(&key),
@@ -80,9 +78,7 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     // kill boards would otherwise return the whole cache to draw a menu.
     let cloned_state = state.clone();
     engine.register_fn("get_leaderboard_index", move || -> Array {
-        let Ok(world) = cloned_state.lock() else {
-            return Array::new();
-        };
+        let world = cloned_state.lock();
         let boards = &world.leaderboards;
         boards
             .ordered_keys()
@@ -101,9 +97,7 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     // else in the game will ever tell them so.
     let cloned_state = state.clone();
     engine.register_fn("get_leaderboard_placings", move |char_name: String| -> Array {
-        let Ok(world) = cloned_state.lock() else {
-            return Array::new();
-        };
+        let world = cloned_state.lock();
         world
             .leaderboards
             .placings_for(&char_name)
@@ -123,9 +117,7 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     engine.register_fn(
         "get_leaderboard_placing",
         move |char_name: String, key: String| -> i64 {
-            let Ok(world) = cloned_state.lock() else {
-                return 0;
-            };
+            let world = cloned_state.lock();
             match world.leaderboards.resolve(&key) {
                 Some(b) => b.placing(&char_name).unwrap_or(0) as i64,
                 None => 0,
@@ -139,9 +131,9 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     // yet, which is the only "not ready" state a script has to handle.
     let cloned_state = state.clone();
     engine.register_fn("get_leaderboard_generated_at", move || -> i64 {
-        match cloned_state.lock() {
-            Ok(world) => world.leaderboards.generated_at,
-            Err(_) => 0,
+        {
+            let world = cloned_state.lock();
+            world.leaderboards.generated_at
         }
     });
 
@@ -150,9 +142,9 @@ pub fn register(engine: &mut Engine, state: SharedState) {
     // Characters the last scan considered, after admins were excluded.
     let cloned_state = state.clone();
     engine.register_fn("get_leaderboard_population", move || -> i64 {
-        match cloned_state.lock() {
-            Ok(world) => world.leaderboards.characters_scanned as i64,
-            Err(_) => 0,
+        {
+            let world = cloned_state.lock();
+            world.leaderboards.characters_scanned as i64
         }
     });
 }

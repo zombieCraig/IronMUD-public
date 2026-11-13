@@ -58,7 +58,7 @@ impl QuotaKind {
 /// quota-checked — orphans don't belong to an area, so there's no cap.
 pub fn check_area_quota(db: &Db, area_id: Option<Uuid>, kind: QuotaKind) -> Result<(), ApiError> {
     let Some(uuid) = area_id else { return Ok(()) };
-    let area = match db.get_area_data(&uuid).map_err(|e| ApiError::Internal(e.to_string()))? {
+    let area = match db.get_area_data(&uuid)? {
         Some(a) => a,
         // Dangling area_id: caller already passed authorize_existing_area;
         // skip the quota check rather than block on a missing record.
@@ -75,9 +75,7 @@ pub fn check_area_quota(db: &Db, area_id: Option<Uuid>, kind: QuotaKind) -> Resu
             cap
         )));
     }
-    let current = kind
-        .current_count(db, &uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let current = kind.current_count(db, &uuid)?;
     if current >= cap as usize {
         return Err(ApiError::Conflict(format!(
             "Area '{}' has reached its {} cap ({} / {}). Raise it via aedit or remove existing entries.",

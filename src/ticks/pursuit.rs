@@ -9,13 +9,12 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, SharedState,
-    db,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, db,
 };
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, send_message_to_character,
-    sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, live_character,
+    send_message_to_character, sync_character_to_session,
 };
 use super::mobile::{
     filter_exits_by_stay_zone, get_opposite_direction_rust, get_valid_wander_exits, propagate_mobile_followers,
@@ -25,21 +24,21 @@ use super::mobile::{
 pub const PURSUIT_TICK_INTERVAL_SECS: u64 = 10;
 
 /// Background task that processes mob pursuit periodically
-pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
+pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(PURSUIT_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("pursuit");
 
-        if let Err(e) = process_pursuit_tick(&db, &connections, &state) {
+        if let Err(e) = process_pursuit_tick(&db, &connections) {
             error!("Pursuit tick error: {}", e);
         }
     }
 }
 
 /// Process pursuit for all mobs with active pursuit state
-fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
+fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -164,7 +163,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
 
                 if !is_safe {
                     // Enter combat at ranged distance (mirrors aggressive mob pattern)
-                    if let Ok(Some(mut char)) = db.get_character_data(&player_name) {
+                    if let Ok(Some(mut char)) = live_character(connections, db, &player_name) {
                         if !char.god_mode && !ironmud::check_build_mode(db, &player_name, &target_room_id) {
                             // Wake sleeping players
                             if char.position == CharacterPosition::Sleeping {
@@ -217,7 +216,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
                                     c.combat.distances.insert(mob_id, CombatDistance::Ranged);
                                 })?;
                                 if let Some(fresh) = after {
-                                    sync_character_to_session(connections, &fresh, state);
+                                    sync_character_to_session(connections, &fresh, db);
                                 }
 
                                 broadcast_to_room_awake(
@@ -258,7 +257,8 @@ fn find_player_in_room_by_name(
     room_id: &uuid::Uuid,
     target_name: &str,
 ) -> Option<String> {
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id && char.name.to_lowercase() == target_name.to_lowercase() {

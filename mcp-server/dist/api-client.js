@@ -96,28 +96,28 @@ export class IronMUDApiClient {
         return this.listRequest("/areas");
     }
     async getArea(id) {
-        return this.request("get", `/areas/${id}`);
+        return this.request("get", `/areas/${encodeURIComponent(String(id))}`);
     }
     async getAreaByPrefix(prefix) {
-        return this.request("get", `/areas/by-prefix/${prefix}`);
+        return this.request("get", `/areas/by-prefix/${encodeURIComponent(String(prefix))}`);
     }
     async createArea(data) {
         return this.request("post", "/areas", data);
     }
     async updateArea(id, data) {
-        return this.request("put", `/areas/${id}`, data);
+        return this.request("put", `/areas/${encodeURIComponent(String(id))}`, data);
     }
     async deleteArea(id) {
-        await this.request("delete", `/areas/${id}`);
+        await this.request("delete", `/areas/${encodeURIComponent(String(id))}`);
     }
     async resetArea(id) {
-        return this.request("post", `/areas/${id}/reset`);
+        return this.request("post", `/areas/${encodeURIComponent(String(id))}/reset`);
     }
     async listAreaRooms(areaId) {
-        return this.listRequest(`/areas/${areaId}/rooms`);
+        return this.listRequest(`/areas/${encodeURIComponent(String(areaId))}/rooms`);
     }
     async getAreaOverview(areaId) {
-        return this.request("get", `/areas/${areaId}/overview`);
+        return this.request("get", `/areas/${encodeURIComponent(String(areaId))}/overview`);
     }
     // Rooms
     async listRooms(limit, offset) {
@@ -139,7 +139,7 @@ export class IronMUDApiClient {
         return this.listRequest(`/rooms/summary${query ? `?${query}` : ""}`);
     }
     async getRoom(id) {
-        return this.request("get", `/rooms/${id}`);
+        return this.request("get", `/rooms/${encodeURIComponent(String(id))}`);
     }
     async getRoomByVnum(vnum) {
         return this.request("get", `/rooms/by-vnum/${encodeURIComponent(vnum)}`);
@@ -148,34 +148,34 @@ export class IronMUDApiClient {
         return this.request("post", "/rooms", data);
     }
     async updateRoom(id, data) {
-        return this.request("put", `/rooms/${id}`, data);
+        return this.request("put", `/rooms/${encodeURIComponent(String(id))}`, data);
     }
     async deleteRoom(id) {
-        await this.request("delete", `/rooms/${id}`);
+        await this.request("delete", `/rooms/${encodeURIComponent(String(id))}`);
     }
     async setRoomExit(roomId, direction, data) {
-        return this.request("put", `/rooms/${roomId}/exits/${direction}`, data);
+        return this.request("put", `/rooms/${encodeURIComponent(String(roomId))}/exits/${encodeURIComponent(String(direction))}`, data);
     }
     async removeRoomExit(roomId, direction) {
-        return this.request("delete", `/rooms/${roomId}/exits/${direction}`);
+        return this.request("delete", `/rooms/${encodeURIComponent(String(roomId))}/exits/${encodeURIComponent(String(direction))}`);
     }
     async addRoomDoor(roomId, direction, data) {
-        return this.request("put", `/rooms/${roomId}/doors/${direction}`, data);
+        return this.request("put", `/rooms/${encodeURIComponent(String(roomId))}/doors/${encodeURIComponent(String(direction))}`, data);
     }
     async removeRoomDoor(roomId, direction) {
-        return this.request("delete", `/rooms/${roomId}/doors/${direction}`);
+        return this.request("delete", `/rooms/${encodeURIComponent(String(roomId))}/doors/${encodeURIComponent(String(direction))}`);
     }
     async addRoomTrigger(roomId, data) {
-        return this.request("post", `/rooms/${roomId}/triggers`, data);
+        return this.request("post", `/rooms/${encodeURIComponent(String(roomId))}/triggers`, data);
     }
     async removeRoomTrigger(roomId, index) {
-        return this.request("delete", `/rooms/${roomId}/triggers/${index}`);
+        return this.request("delete", `/rooms/${encodeURIComponent(String(roomId))}/triggers/${encodeURIComponent(String(index))}`);
     }
     async addRoomExtraDesc(roomId, data) {
-        return this.request("post", `/rooms/${roomId}/extra`, data);
+        return this.request("post", `/rooms/${encodeURIComponent(String(roomId))}/extra`, data);
     }
     async removeRoomExtraDesc(roomId, keyword) {
-        return this.request("delete", `/rooms/${roomId}/extra/${encodeURIComponent(keyword)}`);
+        return this.request("delete", `/rooms/${encodeURIComponent(String(roomId))}/extra/${encodeURIComponent(keyword)}`);
     }
     // Items
     async listItems(limit, offset, itemType) {
@@ -200,7 +200,7 @@ export class IronMUDApiClient {
         return this.listRequest(`/items/prototypes/summary${query ? `?${query}` : ""}`);
     }
     async getItem(id) {
-        return this.request("get", `/items/${id}`);
+        return this.request("get", `/items/${encodeURIComponent(String(id))}`);
     }
     async getItemByVnum(vnum) {
         return this.request("get", `/items/by-vnum/${encodeURIComponent(vnum)}`);
@@ -209,25 +209,25 @@ export class IronMUDApiClient {
         return this.request("post", "/items", data);
     }
     async updateItem(id, data) {
-        return this.requestWithMeta("put", `/items/${id}`, data);
+        return this.requestWithMeta("put", `/items/${encodeURIComponent(String(id))}`, data);
     }
     async deleteItem(id) {
-        await this.request("delete", `/items/${id}`);
+        await this.request("delete", `/items/${encodeURIComponent(String(id))}`);
     }
     async spawnItem(vnum, data) {
         return this.request("post", `/items/${encodeURIComponent(vnum)}/spawn`, data);
     }
     async addItemTrigger(itemId, data) {
-        return this.requestWithMeta("post", `/items/${itemId}/triggers`, data);
+        return this.requestWithMeta("post", `/items/${encodeURIComponent(String(itemId))}/triggers`, data);
     }
     async removeItemTrigger(itemId, index) {
-        return this.requestWithMeta("delete", `/items/${itemId}/triggers/${index}`);
+        return this.requestWithMeta("delete", `/items/${encodeURIComponent(String(itemId))}/triggers/${encodeURIComponent(String(index))}`);
     }
     async addItemExtraDesc(itemId, data) {
-        return this.requestWithMeta("post", `/items/${itemId}/extra`, data);
+        return this.requestWithMeta("post", `/items/${encodeURIComponent(String(itemId))}/extra`, data);
     }
     async removeItemExtraDesc(itemId, keyword) {
-        return this.requestWithMeta("delete", `/items/${itemId}/extra/${encodeURIComponent(keyword)}`);
+        return this.requestWithMeta("delete", `/items/${encodeURIComponent(String(itemId))}/extra/${encodeURIComponent(keyword)}`);
     }
     // Mobiles
     async listMobiles(limit, offset) {
@@ -250,7 +250,7 @@ export class IronMUDApiClient {
         return this.listRequest(`/mobiles/prototypes/summary${query ? `?${query}` : ""}`);
     }
     async getMobile(id) {
-        return this.request("get", `/mobiles/${id}`);
+        return this.request("get", `/mobiles/${encodeURIComponent(String(id))}`);
     }
     async getMobileByVnum(vnum) {
         return this.request("get", `/mobiles/by-vnum/${encodeURIComponent(vnum)}`);
@@ -259,50 +259,50 @@ export class IronMUDApiClient {
         return this.request("post", "/mobiles", data);
     }
     async updateMobile(id, data) {
-        return this.requestWithMeta("put", `/mobiles/${id}`, data);
+        return this.requestWithMeta("put", `/mobiles/${encodeURIComponent(String(id))}`, data);
     }
     async deleteMobile(id) {
-        await this.request("delete", `/mobiles/${id}`);
+        await this.request("delete", `/mobiles/${encodeURIComponent(String(id))}`);
     }
     async addMobileDialogue(mobileId, data) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/dialogue`, data);
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue`, data);
     }
     async removeMobileDialogue(mobileId, keyword) {
-        return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue/${encodeURIComponent(keyword)}`);
+        return this.requestWithMeta("delete", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue/${encodeURIComponent(keyword)}`);
     }
     // Granular dialogue-tree editing
     async setDialogueTreeRoot(mobileId, nodeName) {
-        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/root`, { node_name: nodeName });
+        return this.requestWithMeta("put", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/root`, { node_name: nodeName });
     }
     async addDialogueNode(mobileId, data) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/dialogue_tree/nodes`, data);
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes`, data);
     }
     async updateDialogueNode(mobileId, nodeName, data) {
-        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`, data);
+        return this.requestWithMeta("put", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`, data);
     }
     async removeDialogueNode(mobileId, nodeName) {
-        return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`);
+        return this.requestWithMeta("delete", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`);
     }
     async addDialogueChoice(mobileId, nodeName, data) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`, data);
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`, data);
     }
     async updateDialogueChoice(mobileId, nodeName, index, data) {
-        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`, data);
+        return this.requestWithMeta("put", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${encodeURIComponent(String(index))}`, data);
     }
     async removeDialogueChoice(mobileId, nodeName, index) {
-        return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`);
+        return this.requestWithMeta("delete", `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${encodeURIComponent(String(index))}`);
     }
     async addMobileRoutine(mobileId, data) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/routine`, data);
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/routine`, data);
     }
     async removeMobileRoutine(mobileId, index) {
-        return this.requestWithMeta("delete", `/mobiles/${mobileId}/routine/${index}`);
+        return this.requestWithMeta("delete", `/mobiles/${encodeURIComponent(String(mobileId))}/routine/${encodeURIComponent(String(index))}`);
     }
     async addMobileTrigger(mobileId, data) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/triggers`, data);
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/triggers`, data);
     }
     async removeMobileTrigger(mobileId, index) {
-        return this.requestWithMeta("delete", `/mobiles/${mobileId}/triggers/${index}`);
+        return this.requestWithMeta("delete", `/mobiles/${encodeURIComponent(String(mobileId))}/triggers/${encodeURIComponent(String(index))}`);
     }
     async spawnMobile(vnum, data) {
         return this.request("post", `/mobiles/${encodeURIComponent(vnum)}/spawn`, data);
@@ -318,7 +318,7 @@ export class IronMUDApiClient {
         return this.listRequest(`/mobiles/presets${query ? `?${query}` : ""}`);
     }
     async applyMobilePreset(mobileId, presetId) {
-        return this.requestWithMeta("post", `/mobiles/${mobileId}/preset`, { preset_id: presetId });
+        return this.requestWithMeta("post", `/mobiles/${encodeURIComponent(String(mobileId))}/preset`, { preset_id: presetId });
     }
     // Spawn Points
     async listSpawnPoints(areaId) {
@@ -329,22 +329,22 @@ export class IronMUDApiClient {
         return this.listRequest(`/spawn-points${query ? `?${query}` : ""}`);
     }
     async getSpawnPoint(id) {
-        return this.request("get", `/spawn-points/${id}`);
+        return this.request("get", `/spawn-points/${encodeURIComponent(String(id))}`);
     }
     async createSpawnPoint(data) {
         return this.request("post", "/spawn-points", data);
     }
     async updateSpawnPoint(id, data) {
-        return this.request("put", `/spawn-points/${id}`, data);
+        return this.request("put", `/spawn-points/${encodeURIComponent(String(id))}`, data);
     }
     async deleteSpawnPoint(id) {
-        await this.request("delete", `/spawn-points/${id}`);
+        await this.request("delete", `/spawn-points/${encodeURIComponent(String(id))}`);
     }
     async addSpawnDependency(spawnPointId, data) {
-        return this.request("post", `/spawn-points/${spawnPointId}/dependencies`, data);
+        return this.request("post", `/spawn-points/${encodeURIComponent(String(spawnPointId))}/dependencies`, data);
     }
     async removeSpawnDependency(spawnPointId, index) {
-        return this.request("delete", `/spawn-points/${spawnPointId}/dependencies/${index}`);
+        return this.request("delete", `/spawn-points/${encodeURIComponent(String(spawnPointId))}/dependencies/${encodeURIComponent(String(index))}`);
     }
     // Transports
     async listTransports() {
@@ -366,7 +366,7 @@ export class IronMUDApiClient {
         return this.request("post", `/transports/${encodeURIComponent(transportId)}/stops`, data);
     }
     async removeTransportStop(transportId, index) {
-        return this.request("delete", `/transports/${encodeURIComponent(transportId)}/stops/${index}`);
+        return this.request("delete", `/transports/${encodeURIComponent(transportId)}/stops/${encodeURIComponent(String(index))}`);
     }
     async connectTransport(transportId, stopIndex) {
         return this.request("post", `/transports/${encodeURIComponent(transportId)}/connect`, { stop_index: stopIndex });
@@ -379,7 +379,7 @@ export class IronMUDApiClient {
         return this.listRequest("/plants");
     }
     async getPlantPrototype(id) {
-        return this.request("get", `/plants/${id}`);
+        return this.request("get", `/plants/${encodeURIComponent(String(id))}`);
     }
     async getPlantPrototypeByVnum(vnum) {
         return this.request("get", `/plants/by-vnum/${encodeURIComponent(vnum)}`);
@@ -388,10 +388,10 @@ export class IronMUDApiClient {
         return this.request("post", "/plants", data);
     }
     async updatePlantPrototype(id, data) {
-        return this.request("put", `/plants/${id}`, data);
+        return this.request("put", `/plants/${encodeURIComponent(String(id))}`, data);
     }
     async deletePlantPrototype(id) {
-        await this.request("delete", `/plants/${id}`);
+        await this.request("delete", `/plants/${encodeURIComponent(String(id))}`);
     }
     // Recipes (crafting & cooking)
     async listRecipes() {
@@ -427,13 +427,13 @@ export class IronMUDApiClient {
     }
     // Area forage tables
     async listForageTables(areaId) {
-        return this.request("get", `/areas/${areaId}/forage`);
+        return this.request("get", `/areas/${encodeURIComponent(String(areaId))}/forage`);
     }
     async addForageEntry(areaId, data) {
-        return this.request("post", `/areas/${areaId}/forage`, data);
+        return this.request("post", `/areas/${encodeURIComponent(String(areaId))}/forage`, data);
     }
     async removeForageEntry(areaId, forageType, vnum) {
-        return this.request("delete", `/areas/${areaId}/forage/${forageType}/${encodeURIComponent(vnum)}`);
+        return this.request("delete", `/areas/${encodeURIComponent(String(areaId))}/forage/${encodeURIComponent(String(forageType))}/${encodeURIComponent(vnum)}`);
     }
     // Bug Reports (approved only - see admin approval gate)
     // === Bounties (the builder help-wanted board) ===
@@ -449,14 +449,14 @@ export class IronMUDApiClient {
         return this.listRequest(`/bounties${query ? `?${query}` : ""}`);
     }
     async getBounty(ticket) {
-        return this.request("get", `/bounties/${ticket}`);
+        return this.request("get", `/bounties/${encodeURIComponent(String(ticket))}`);
     }
     // === Content auditor ===
     //
     // Read-only. `auditWorld` and `auditArea` are full-world reads — deliberate
     // sweeps, not something to poll.
     async auditEntity(kind, key) {
-        return this.request("get", `/audit/${kind}/${encodeURIComponent(key)}`);
+        return this.request("get", `/audit/${encodeURIComponent(String(kind))}/${encodeURIComponent(key)}`);
     }
     async auditArea(key) {
         return this.request("get", `/audit/area/${encodeURIComponent(key)}`);
@@ -503,10 +503,10 @@ export class IronMUDApiClient {
     // It is deliberately not a parameter: submitting is what decides who gets
     // paid.
     async claimBounty(ticket) {
-        return this.outcomeRequest(`/bounties/${ticket}/claim`, {});
+        return this.outcomeRequest(`/bounties/${encodeURIComponent(String(ticket))}/claim`, {});
     }
     async submitBounty(ticket, linked) {
-        return this.outcomeRequest(`/bounties/${ticket}/submit`, { linked });
+        return this.outcomeRequest(`/bounties/${encodeURIComponent(String(ticket))}/submit`, { linked });
     }
     async listBugReports(status) {
         const params = new URLSearchParams();
@@ -516,19 +516,19 @@ export class IronMUDApiClient {
         return this.listRequest(`/bugs${query ? `?${query}` : ""}`);
     }
     async getBugReport(id) {
-        return this.request("get", `/bugs/${id}`);
+        return this.request("get", `/bugs/${encodeURIComponent(String(id))}`);
     }
     async getBugReportByTicket(num) {
-        return this.request("get", `/bugs/by-ticket/${num}`);
+        return this.request("get", `/bugs/by-ticket/${encodeURIComponent(String(num))}`);
     }
     async updateBugReport(id, data) {
-        return this.request("put", `/bugs/${id}`, data);
+        return this.request("put", `/bugs/${encodeURIComponent(String(id))}`, data);
     }
     async addBugNote(id, data) {
-        return this.request("post", `/bugs/${id}/notes`, data);
+        return this.request("post", `/bugs/${encodeURIComponent(String(id))}/notes`, data);
     }
     async deleteBugReport(id) {
-        await this.request("delete", `/bugs/${id}`);
+        await this.request("delete", `/bugs/${encodeURIComponent(String(id))}`);
     }
     // Achievements
     async listAchievements() {

@@ -109,7 +109,10 @@ fn run_command(args, connection_id) {
 
     // Actually create the lease
     // Deduct gold first
-    add_character_gold(char.name, -cost);
+    if !add_character_gold(char.name, -cost) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", cost);
 
     // Create the lease (this instances the rooms)

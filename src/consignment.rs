@@ -172,12 +172,19 @@ pub fn process_expired_consignments(
             let _ = db.save_item_data(item);
         }
 
-        let listing_id = listing.id;
-        if let Err(e) = db.update_character(&listing.seller_name, |c| {
-            c.consignment_ids.retain(|id| *id != listing_id);
+        // Session-first: an online seller's session copy would otherwise
+        // overwrite a DB-only write and lose the escrow id.
+        if crate::script::achievements::apply_to_character(db, connections, &listing.seller_name, |c| {
             c.escrow_ids.push(escrow_id);
-        }) {
-            tracing::error!("Failed to update seller after consignment expiry: {}", e);
+            true
+        })
+        .is_none()
+        {
+            tracing::error!(
+                "Failed to record escrow {} for {} after consignment expiry",
+                escrow_id,
+                listing.seller_name
+            );
         }
         let _ = db.delete_consignment(&listing.id);
 

@@ -55,9 +55,7 @@ impl KillCredit {
 /// Mirrors what the `get_group_leader` Rhai binding used to do inline; that
 /// binding now calls this so there is one implementation of the chain walk.
 pub fn group_leader(connections: &SharedConnections, char_name: &str) -> String {
-    let Ok(conns) = connections.lock() else {
-        return String::new();
-    };
+    let conns = connections.lock();
     let char_lower = char_name.to_lowercase();
 
     let following_of = |name: &str| -> Option<String> {
@@ -104,9 +102,7 @@ pub fn group_leader(connections: &SharedConnections, char_name: &str) -> String 
 /// party-credit work exists to fix, surviving one level deeper.
 pub fn group_members_in_room(connections: &SharedConnections, leader_name: &str, room_id: &Uuid) -> Vec<String> {
     let candidates: Vec<String> = {
-        let Ok(conns) = connections.lock() else {
-            return Vec::new();
-        };
+        let conns = connections.lock();
         conns
             .values()
             .filter_map(|s| {
@@ -117,7 +113,7 @@ pub fn group_members_in_room(connections: &SharedConnections, leader_name: &str,
     };
 
     // `group_leader` takes the lock itself, so the candidate scan above has to
-    // finish first — `std::sync::Mutex` is not reentrant.
+    // finish first — `parking_lot::Mutex` is not reentrant.
     candidates
         .into_iter()
         .filter(|name| group_leader(connections, name).eq_ignore_ascii_case(leader_name))
@@ -159,7 +155,8 @@ pub fn party_in_room(connections: &SharedConnections, char_name: &str, room_id: 
     };
 
     // The leader only counts if they are actually here.
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         let leader_lower = leader.to_lowercase();
         let leader_here = conns.values().any(|s| {
             s.character
@@ -184,9 +181,7 @@ pub fn party_in_room(connections: &SharedConnections, char_name: &str, room_id: 
 /// Someone who typed `follow` and was never grouped is neither, and is a
 /// spectator for every purpose in this module.
 fn is_grouped_or_leader(connections: &SharedConnections, char_name: &str) -> bool {
-    let Ok(conns) = connections.lock() else {
-        return false;
-    };
+    let conns = connections.lock();
     conns.values().any(|s| {
         s.character
             .as_ref()
@@ -216,9 +211,7 @@ pub fn in_same_party(connections: &SharedConnections, a: &str, b: &str) -> bool 
         return false;
     }
 
-    let Ok(conns) = connections.lock() else {
-        return false;
-    };
+    let conns = connections.lock();
     let grouped = |name: &str| -> bool {
         if name.eq_ignore_ascii_case(&leader_a) {
             return true; // the leader is trivially in their own party
@@ -289,8 +282,9 @@ pub fn kill_credit(
 mod tests {
     use super::*;
     use crate::{PlayerSession, types::CharacterData};
+    use parking_lot::Mutex;
     use std::collections::HashMap as Map;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn conns_with(chars: Vec<CharacterData>) -> SharedConnections {
         let mut map = Map::new();

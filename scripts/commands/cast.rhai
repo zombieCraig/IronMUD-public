@@ -357,7 +357,7 @@ fn cast_heal(connection_id, char, spell, target_arg) {
 
     let old_hp = target.hp;
     target.hp += heal_amount;
-    let target_eff_max_hp = get_effective_max_hp(target.name);
+    let target_eff_max_hp = target.effective_max_hp();
     if target.hp > target_eff_max_hp {
         target.hp = target_eff_max_hp;
     }

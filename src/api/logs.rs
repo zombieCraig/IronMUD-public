@@ -86,10 +86,12 @@ pub struct PlayerLogResponse {
 /// Player logs hold everything players typed, including private tells, so
 /// they need an admin key rather than the read permission builders get.
 fn require_admin(user: &AuthenticatedUser) -> Result<(), ApiError> {
-    if user.api_key.permissions.admin {
+    if user.api_key.permissions.can_read_player_logs() {
         Ok(())
     } else {
-        Err(ApiError::Forbidden("Player logs require an admin API key".into()))
+        Err(ApiError::Forbidden(
+            "Player logs require an admin API key with the player_logs scope".into(),
+        ))
     }
 }
 

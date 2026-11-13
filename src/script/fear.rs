@@ -134,7 +134,7 @@ pub fn try_apply_fear_to_character<R: Rng + ?Sized>(
     if db.save_character_data(character.clone()).is_err() {
         return FearOutcome::NotFound;
     }
-    let mut conns_guard = connections.lock().unwrap();
+    let mut conns_guard = connections.lock();
     for (_id, session) in conns_guard.iter_mut() {
         if let Some(ref mut sc) = session.character {
             if sc.name.eq_ignore_ascii_case(char_name) {
@@ -213,8 +213,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn base_char() -> CharacterData {
         serde_json::from_value(serde_json::json!({

@@ -86,8 +86,9 @@ fn notify(connections: &SharedConnections, char_name: &str, message: &str) {
 
 /// Mirror the saved character into the live session so the client sees the new
 /// room and HP without waiting for another tick, and keep MSDP coherent.
-fn sync_to_session(connections: &SharedConnections, char: &CharacterData, state: &SharedState) {
-    if let Ok(mut conns) = connections.lock() {
+fn sync_to_session(connections: &SharedConnections, char: &CharacterData, db: &crate::db::Db) {
+    {
+        let mut conns = connections.lock();
         for session in conns.values_mut() {
             let matches = session
                 .character
@@ -95,7 +96,7 @@ fn sync_to_session(connections: &SharedConnections, char: &CharacterData, state:
                 .is_some_and(|c| c.name.eq_ignore_ascii_case(&char.name));
             if matches {
                 session.character = Some(char.clone());
-                session.sync_msdp_vitals(state);
+                session.sync_msdp_vitals(db);
                 return;
             }
         }
@@ -144,27 +145,23 @@ pub fn process_player_death(
         Some(&char_name),
     );
 
-    let mut corpse = crate::corpse::CorpseBuilder::for_player(&char_name, *room_id, char.gold as i64).build();
+    let corpse = crate::corpse::CorpseBuilder::for_player(&char_name, *room_id, char.gold as i64).build();
     let corpse_id = corpse.id;
 
     // Inventory and equipment both move into the corpse. The source of truth
     // for each is `ItemLocation`, so the move is a location rewrite.
     if let Ok(inventory_items) = db.get_items_in_inventory(&char_name) {
         for item in inventory_items {
-            let item_id = item.id;
             let mut updated_item = item;
             updated_item.location = ItemLocation::Container(corpse_id);
             let _ = db.save_item_data(updated_item);
-            corpse.container_contents.push(item_id);
         }
     }
     if let Ok(equipped_items) = db.get_equipped_items(&char_name) {
         for item in equipped_items {
-            let item_id = item.id;
             let mut updated_item = item;
             updated_item.location = ItemLocation::Container(corpse_id);
             let _ = db.save_item_data(updated_item);
-            corpse.container_contents.push(item_id);
         }
     }
     db.save_item_data(corpse)?;
@@ -210,7 +207,7 @@ pub fn process_player_death(
     char.food_sick = false;
 
     db.save_character_data(char.clone())?;
-    sync_to_session(connections, char, state);
+    sync_to_session(connections, char, db);
 
     notify(connections, &char_name, "You awaken at your spawn point...");
     notify(connections, &char_name, &format!("You have {} HP.", char.hp));
@@ -297,7 +294,7 @@ mod tests {
         let (db, _temp) = temp_db();
         let room = Uuid::new_v4();
         let mut ch = victim_at(&db, "trapped", room);
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
 
         kill_player_at_room(&std::sync::Arc::new(db.clone()), &conns, &state, &mut ch, &room).expect("death resolves");
@@ -310,7 +307,7 @@ mod tests {
     fn the_two_entry_points_agree() {
         let (db, _temp) = temp_db();
         let room = Uuid::new_v4();
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
 
         let mut a = victim_at(&db, "direct", room);
@@ -337,7 +334,7 @@ mod tests {
         let item_id = item.id;
         db.save_item_data(item).expect("save item");
 
-        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
         process_player_death(&db, &conns, &state, &mut ch, &room).expect("death resolves");
 
@@ -352,6 +349,12 @@ mod tests {
             .expect("a corpse was dropped");
         assert_eq!(corpse.flags.corpse_gold, 137);
         assert!(corpse.flags.corpse_is_player);
-        assert!(corpse.container_contents.contains(&item_id), "the dagger went with it");
+        let inside: Vec<_> = db
+            .get_items_in_container(&corpse.id)
+            .unwrap()
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
+        assert!(inside.contains(&item_id), "the dagger went with it");
     }
 }

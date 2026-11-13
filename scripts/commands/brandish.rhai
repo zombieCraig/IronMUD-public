@@ -131,7 +131,7 @@ fn fire_staff_spell(connection_id, char, spell) {
         let amt = spell["heal_base"];
         if amt < 1 { amt = 1; }
         target.hp += amt;
-        if target.hp > target.max_hp { target.hp = target.max_hp; }
+        if target.hp > target.effective_max_hp() { target.hp = target.effective_max_hp(); }
         save_character_data(target);
         let refreshed = get_character_data(char.name);
         if type_of(refreshed) != "()" {

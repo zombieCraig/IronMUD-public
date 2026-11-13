@@ -407,10 +407,10 @@ fn cmd_damage(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                ch.hp = (ch.hp - amount).max(0);
-                let _ = ctx.db.save_character_data(ch);
-            }
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
+                ch.hp = ch.hp.saturating_sub(amount).max(0);
+                true
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
@@ -502,10 +502,10 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     }
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
                 ch.current_room_id = dest_id;
-                let _ = ctx.db.save_character_data(ch);
-            }
+                true
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             let _ = ctx.db.move_mobile_to_room(&mobile_id, &dest_id);
@@ -713,13 +713,11 @@ fn remove_dg_effect(effect: crate::EffectType, target_tok: &str, ctx: &EvalCtx) 
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
                 let before = ch.active_buffs.len();
                 ch.active_buffs.retain(|b| b.effect_type != effect);
-                if ch.active_buffs.len() != before {
-                    let _ = ctx.db.save_character_data(ch);
-                }
-            }
+                ch.active_buffs.len() != before
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
@@ -787,10 +785,10 @@ fn apply_dg_damage(target_tok: &str, amount: i32, ctx: &EvalCtx) {
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                ch.hp = (ch.hp - amount).max(0);
-                let _ = ctx.db.save_character_data(ch);
-            }
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
+                ch.hp = ch.hp.saturating_sub(amount).max(0);
+                true
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
@@ -810,11 +808,11 @@ fn apply_dg_heal(target_tok: &str, amount: i32, ctx: &EvalCtx) {
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                let cap = ch.max_hp;
-                ch.hp = (ch.hp + amount).min(cap);
-                let _ = ctx.db.save_character_data(ch);
-            }
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
+                let cap = ch.effective_max_hp();
+                ch.hp = ch.hp.saturating_add(amount).min(cap);
+                true
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
@@ -870,14 +868,13 @@ fn cmd_dg_morality(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                let new_val = (ch.morality as i64).saturating_add(delta as i64).clamp(
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
+                ch.morality = (ch.morality as i64).saturating_add(delta as i64).clamp(
                     crate::morality::MORALITY_MIN as i64,
                     crate::morality::MORALITY_MAX as i64,
                 ) as i32;
-                ch.morality = new_val;
-                let _ = ctx.db.save_character_data(ch);
-            }
+                true
+            });
         }
         ActorRef::Mob { .. } => {
             // Mobs don't carry morality in this slice.
@@ -968,6 +965,10 @@ fn apply_dg_effect(
     let Some(actor) = resolve_target(target_tok, ctx) else {
         return Ok(());
     };
+    // Bound what a trigger can grant or inflict: an uncapped magnitude or a
+    // near-permanent duration is a god-mode buff (or a permanent debuff).
+    let magnitude = magnitude.clamp(-MAX_DG_EFFECT_MAGNITUDE, MAX_DG_EFFECT_MAGNITUDE);
+    let duration = duration.clamp(1, MAX_DG_EFFECT_SECS);
     let buff = crate::ActiveBuff {
         effect_type: effect,
         magnitude,
@@ -991,7 +992,9 @@ fn apply_dg_effect(
             }
         }
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+            // Session first: a DB-only write to an online player is undone
+            // by the next regen-tick flush.
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
                 if let Some(existing) = ch.active_buffs.iter_mut().find(|b| b.effect_type == effect) {
                     existing.magnitude = existing.magnitude.max(magnitude);
                     existing.remaining_secs = duration;
@@ -999,12 +1002,17 @@ fn apply_dg_effect(
                 } else {
                     ch.active_buffs.push(buff);
                 }
-                let _ = ctx.db.save_character_data(ch);
-            }
+                true
+            });
         }
     }
     Ok(())
 }
+
+/// Largest |magnitude| a DG `dg_cast`/`dg_affect` buff may carry.
+const MAX_DG_EFFECT_MAGNITUDE: i32 = 100;
+/// Longest a DG-applied buff may last, in seconds.
+const MAX_DG_EFFECT_SECS: i32 = 3600;
 
 /// Apply combat stun to a target. Magnitude = number of rounds (capped at 5).
 /// `base_chance` (0-100) is passed through `roll_status_application` so
@@ -1033,7 +1041,7 @@ fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, noresist: bool
             }
         }
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
                 if !noresist
                     && !crate::script::combat::roll_status_application(
                         &ch.active_buffs,
@@ -1042,11 +1050,11 @@ fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, noresist: bool
                         &mut rng,
                     )
                 {
-                    return Ok(());
+                    return false;
                 }
                 ch.combat.stun_rounds_remaining = (ch.combat.stun_rounds_remaining + rounds).min(5);
-                let _ = ctx.db.save_character_data(ch);
-            }
+                true
+            });
         }
     }
     Ok(())
@@ -1075,23 +1083,22 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         // the full opcode_authorized call. opcode_authorized may call
         // back into the db, which doesn't deadlock with connections
         // but releasing early keeps the lock window tight.
-        let (cid, target_area, target_is_admin) = {
+        let (cid, target_area, target_is_admin, target_is_builder) = {
             let Ok(cid) = uuid::Uuid::parse_str(&connection_id) else {
                 return Ok(());
             };
-            let Ok(conns) = ctx.connections.lock() else {
-                return Ok(());
-            };
+            let conns = ctx.connections.lock();
             let Some(session) = conns.get(&cid) else {
                 return Ok(());
             };
             let ch = session.character.as_ref();
             let is_admin = ch.is_some_and(|c| c.is_admin);
+            let is_builder = ch.is_some_and(|c| c.is_builder);
             let area = ch
                 .map(|c| c.current_room_id)
                 .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
                 .and_then(|r| r.area_id);
-            (cid, area, is_admin)
+            (cid, area, is_admin, is_builder)
         };
         // Refuse to force-inject commands into admin sessions. DG
         // triggers are builder-authored; allowing them to puppeteer
@@ -1105,11 +1112,24 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             super::warn_builder(ctx, &format!("force blocked: cannot force admin '{name}'"));
             return Ok(());
         }
+        // Builders too, unless the trigger is system or admin-elevated: a
+        // forced `aedit`/`redit`/`trust` runs with the target's builder
+        // rights, so one builder's trigger could edit another's areas.
+        if target_is_builder && !(ctx.elevated || ctx.authored_by.is_none()) {
+            tracing::warn!(
+                "[SECURITY] DG force blocked: trigger attempted to force builder '{}' to run '{}'",
+                name,
+                cmdline
+            );
+            super::warn_builder(ctx, &format!("force blocked: cannot force builder '{name}'"));
+            return Ok(());
+        }
         if !ctx.opcode_authorized("force", target_area) {
             super::warn_builder(ctx, "force blocked: author lacks permission for target's area");
             return Ok(());
         }
-        if let Ok(conns) = ctx.connections.lock() {
+        {
+            let conns = ctx.connections.lock();
             if let Some(session) = conns.get(&cid) {
                 let _ = session
                     .input_sender
@@ -1368,7 +1388,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         last_fired: 0,
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
-                        authored_by: None,
+                        authored_by: proto.instance_author(),
                         elevated: false,
                         source_proto_vnum: Some(proto.vnum.clone()),
                     });
@@ -1390,7 +1410,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         args: arglist_to_args(&proto.arglist),
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
-                        authored_by: None,
+                        authored_by: proto.instance_author(),
                         elevated: false,
                         source_proto_vnum: Some(proto.vnum.clone()),
                     });
@@ -1414,7 +1434,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         args: arglist_to_args(&proto.arglist),
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
-                        authored_by: None,
+                        authored_by: proto.instance_author(),
                         elevated: false,
                         source_proto_vnum: Some(proto.vnum.clone()),
                     });
@@ -1645,12 +1665,12 @@ fn write_custom_skill_via(
     };
     match actor {
         ActorRef::Player { name, .. } => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+            crate::script::achievements::apply_to_character(&ctx.db, &ctx.connections, &name, |ch| {
                 let current = ch.custom_skills.get(&key).copied().unwrap_or(0);
                 let next = compute(current, value);
-                ch.custom_skills.insert(key, next);
-                let _ = ctx.db.save_character_data(ch);
-            }
+                ch.custom_skills.insert(key.clone(), next);
+                true
+            });
         }
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut m)) = ctx.db.get_mobile_data(&mobile_id) {
@@ -1863,9 +1883,7 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 }
 
 fn deliver_to_player(ctx: &EvalCtx, player_name: &str, line: String) {
-    let Ok(conns) = ctx.connections.lock() else {
-        return;
-    };
+    let conns = ctx.connections.lock();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name.eq_ignore_ascii_case(player_name) {
@@ -1886,6 +1904,11 @@ fn deliver_to_player(ctx: &EvalCtx, player_name: &str, line: String) {
 /// - exact UUID → look up character/mob
 /// - exact actor/victim name (`%actor%` was already substituted to the name)
 /// - special tokens `actor`, `victim`
+#[cfg(test)]
+pub(crate) fn resolve_target_for_test(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
+    resolve_target(tok, ctx)
+}
+
 fn resolve_target(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
     let tok = tok.trim();
     if tok.is_empty() {
@@ -1919,6 +1942,12 @@ fn resolve_target(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
         if cand.name().eq_ignore_ascii_case(tok) {
             return Some(cand.clone());
         }
+    }
+    // The by-name fallback reaches any player in the game, online or not, so
+    // a builder trigger could force/teleport/damage players who never came
+    // near it. Only system (imported) and admin-elevated triggers get it.
+    if !(ctx.elevated || ctx.authored_by.is_none()) {
+        return None;
     }
     if let Ok(Some(ch)) = ctx.db.get_character_data(tok) {
         return Some(ActorRef::Player {

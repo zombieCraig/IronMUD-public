@@ -816,6 +816,15 @@ fn handle_config(connection_id, args, admin_char) {
     }
     let value_in = value_parts.join(" ");
     
+    // Only the keys above can be changed in game. Credentials and internal
+    // state stay offline-only (`ironmud-admin settings set`).
+    let settable = false;
+    for k in allowed_keys { if k == key { settable = true; break; } }
+    if !settable {
+        send_client_message(connection_id, key + " can't be changed in game. Use `ironmud-admin settings set " + key + "` on the server.");
+        return;
+    }
+
     if value_in == "''" || value_in == "\"\"" {
         if delete_setting(key) {
             send_client_message(connection_id, "Deleted setting " + key + ".");
@@ -851,7 +860,7 @@ fn handle_config(connection_id, args, admin_char) {
 // values pass through so "(not set)" / deletion still read correctly.
 fn mask_secret(key, value) {
     let lk = key.to_lower();
-    if lk == "smtp_pass" || lk == "smtp_password" {
+    if lk.contains("pass") || lk.contains("secret") || lk.contains("token") {
         if value == "" { return value; }
         return "********";
     }
@@ -1516,8 +1525,8 @@ fn handle_heal(connection_id, args, admin_char) {
         return;
     }
 
-    // Heal HP and stamina (use effective max to honor APPLY_MAXHIT bonuses).
-    target_char.hp = get_effective_max_hp(target_char.name);
+    // Heal HP and stamina (effective max: item bonuses, traits, torso wound).
+    target_char.hp = target_char.effective_max_hp();
     target_char.stamina = target_char.max_stamina;
 
     // Clear unconscious/bleedout state

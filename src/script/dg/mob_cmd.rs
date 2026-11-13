@@ -404,11 +404,11 @@ fn do_give(rest: &str, ctx: &EvalCtx) {
     if let Some(cid) = crate::session::find_player_connection_by_name(&ctx.connections, &player_tok) {
         // Resolve player name and room.
         let name_opt = {
-            ctx.connections.lock().ok().and_then(|c| {
-                c.get(&cid)
-                    .and_then(|s| s.character.as_ref())
-                    .map(|ch| (ch.name.clone(), ch.current_room_id))
-            })
+            ctx.connections
+                .lock()
+                .get(&cid)
+                .and_then(|s| s.character.as_ref())
+                .map(|ch| (ch.name.clone(), ch.current_room_id))
         };
         if let Some((player_name, player_room)) = name_opt {
             if Some(player_room) == ctx.self_room {
@@ -1062,8 +1062,9 @@ fn social_emote_text(verb: &str, self_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::types::{CombatState, ItemData, ItemLocation, MobileData, RoomData};
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn make_ctx(room_id: Uuid, mob: &MobileData, _label: &str) -> EvalCtx {
         let temp = tempfile::tempdir().expect("create temp dir");

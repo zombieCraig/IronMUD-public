@@ -151,6 +151,9 @@ impl TelnetState {
     }
 }
 
+/// Maximum CSI parameter bytes buffered before the sequence is abandoned.
+pub const MAX_CSI_PARAM_BYTES: usize = 32;
+
 /// State for parsing ANSI escape sequences and UTF-8 multi-byte characters across TCP reads
 #[derive(Debug, Clone, Default)]
 pub enum EscapeState {
@@ -362,6 +365,12 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 }
                 // Parameter bytes (digits, semicolons)
                 b'0'..=b'9' | b';' => {
+                    // Cap parameter bytes: no key sequence we decode is longer
+                    // than a handful of bytes, and an unbounded buffer lets a
+                    // pre-auth client grow memory without limit.
+                    if params.len() >= MAX_CSI_PARAM_BYTES {
+                        return (EscapeState::Normal, None);
+                    }
                     params.push(byte);
                     (EscapeState::GotCsi(params), None)
                 }
@@ -738,6 +747,29 @@ pub fn build_ttype_send() -> Vec<u8> {
     vec![IAC, SB, OPT_TTYPE, TTYPE_SEND, IAC, SE]
 }
 
+/// MSDP variables the server can report. `REPORT` requests for anything else
+/// are ignored, so a client can't grow its session's report set without
+/// bound by asking for endless made-up names.
+pub const MSDP_REPORTABLE: &[&str] = &[
+    "HEALTH",
+    "HEALTH_MAX",
+    "STAMINA",
+    "STAMINA_MAX",
+    "MANA",
+    "MANA_MAX",
+    "GOLD",
+    "BANK_GOLD",
+    "LEVEL",
+    "ROOM_NAME",
+    "OPPONENT_NAME",
+    "OPPONENT_HEALTH",
+];
+
+/// The canonical name of `var` if the server can report it.
+pub fn msdp_reportable(var: &str) -> Option<&'static str> {
+    MSDP_REPORTABLE.iter().copied().find(|v| v.eq_ignore_ascii_case(var))
+}
+
 /// Build MSDP variable update sequence
 ///
 /// Format: IAC SB MSDP MSDP_VAR <name> MSDP_VAL <value> IAC SE
@@ -969,6 +1001,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn msdp_report_allowlist_matches_what_the_server_sends() {
+        assert_eq!(msdp_reportable("health"), Some("HEALTH"));
+        assert_eq!(msdp_reportable("NOT_A_VAR"), None);
+        // Every variable sync_msdp_vitals can send must be requestable.
+        let src = include_str!("lib.rs");
+        for chunk in src.split("reported.contains(\"").skip(1) {
+            let name = &chunk[..chunk.find('"').unwrap()];
+            assert!(msdp_reportable(name).is_some(), "{name} missing from MSDP_REPORTABLE");
+        }
+    }
+
+    #[test]
     fn test_parse_normal_data() {
         let mut parser = TelnetParser::new();
         let input = b"hello world";
@@ -1064,6 +1108,24 @@ mod tests {
     }
 
     // Tests for escape sequence parsing
+
+    #[test]
+    fn test_csi_params_are_capped() {
+        // A pre-auth client streaming `ESC [` + endless digits must not grow
+        // the parameter buffer without bound.
+        let (mut state, _) = parse_key_byte(EscapeState::Normal, CHAR_ESC);
+        state = parse_key_byte(state, b'[').0;
+        for _ in 0..10_000 {
+            state = parse_key_byte(state, b'1').0;
+            if let EscapeState::GotCsi(ref p) = state {
+                assert!(p.len() <= MAX_CSI_PARAM_BYTES);
+            }
+        }
+        // Parser recovers: the next plain byte is a normal character.
+        let (state, event) = parse_key_byte(state, b'a');
+        assert!(matches!(state, EscapeState::Normal));
+        assert_eq!(event, Some(KeyEvent::Char('a')));
+    }
 
     #[test]
     fn test_parse_arrow_up() {

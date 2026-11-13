@@ -69,7 +69,9 @@ TCP Input → command channel → scripts/commands/{cmd}.rhai → Rhai functions
 
 ## Critical: Deadlock Prevention
 
-The codebase uses `std::sync::Mutex` which is **NOT reentrant**.
+The codebase uses `parking_lot::Mutex` (`.lock()` returns the guard directly — no `.unwrap()`, no
+poisoning), which is **NOT reentrant**: re-locking on the same thread hangs. Run with
+`cargo run --features deadlock-detection` to get a backtrace of any lock cycle every 10s.
 
 **The Pattern:**
 1. `handle_connection` clones the AST and releases World lock BEFORE `engine.call_fn`
@@ -79,6 +81,11 @@ The codebase uses `std::sync::Mutex` which is **NOT reentrant**.
 **If you add new Rhai functions that need both World and Connections:**
 - Never hold both locks simultaneously
 - Clone needed data, release lock, then acquire the other
+
+**Lock order rule:** never acquire World while holding Connections. If code must touch both, snapshot
+from Connections and drop it first, or take World → clone → drop → then Connections. Anything called
+with the Connections lock held (e.g. `PlayerSession::sync_msdp_vitals`, `sync_character_to_session`)
+must not lock World — pass a `Db` handle instead (`Db` is a cheap clone and needs no lock).
 
 ## Rhai Gotchas
 
@@ -100,6 +107,12 @@ fn get_value(x) {
     return "default";
 }
 ```
+
+### Trigger Scripts
+Run `scripts/triggers/*.rhai` only through `src/script/trigger_sandbox.rs`: `read_trigger_script(name)`
+(validates the name, caches by mtime), `sandboxed_engine()` (limits, no `eval`, no imports), and wrap
+`call_fn` in `guard_panic(|| ...)`. Never `format!("scripts/triggers/{}.rhai")` + `read_to_string` or a
+bare `Engine::new()` for builder-controlled scripts, and never run one while holding the World lock.
 
 ### Other Gotchas
 - `trim()` is NOT a built-in Rhai string method - use `== ""` for empty checks
@@ -158,8 +171,22 @@ let mobile = get_mobile_data(target_id);
 // Now safe to modify and save
 ```
 
+### Concurrent Writes: CAS, Claim-First, Chokepoints
+Ticks, commands, DG scripts and the API all write the same records at once.
+- **CAS updates, not get→modify→save**, for records others may be writing: `db.update_item`,
+  `update_mobile`, `update_room`, `update_character` retry a closure until the compare-and-swap lands.
+  The closure may run more than once — no side effects inside it.
+- **Claim first, then pay/credit.** Take the thing with an operation that tells you whether *you* got
+  it (`db.claim_gold_item`, `script::shops::remove_shop_item`), then charge or credit; on a failed
+  charge, put it back. Never credit from a value you read before claiming.
+- **Chokepoints:** gold/bank only via `src/purse.rs`; online players' character writes via
+  `script::achievements::apply_to_character` (session first).
+- **Container contents = items whose `location` is `Container(id)`.** There is no contents list on the
+  container; read with `db.get_items_in_container` (indexed). Moving an item is one write of its
+  location (`move_item_to_container` / `remove_item_from_container`).
+
 ### Tick System Considerations (in `src/ticks/mod.rs`)
 Multiple tick systems run concurrently (spawn, combat, wander, time, etc.). Be aware of:
 - Stale data if entity loaded at iteration start vs mid-iteration changes
-- Mutex poisoning if panic occurs while holding locks
+- A tick that panics is restarted by `ticks::supervise` (locks are `parking_lot`, no poisoning), but state it was halfway through writing stays half-written
 - Each tick has `run_*_tick()` (async loop) and `process_*()` (core logic)

@@ -263,13 +263,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             if let Ok(uuid) = uuid::Uuid::parse_str(&transport_id) {
                 match cloned_db.get_transport(uuid) {
                     Ok(Some(mut transport)) => {
-                        let idx = index as usize;
-                        if idx < transport.stops.len() {
-                            transport.stops.remove(idx);
-                            cloned_db.save_transport(&transport).is_ok()
-                        } else {
-                            false
+                        if index < 0 || transport.remove_stop(index as usize).is_none() {
+                            return false;
                         }
+                        cloned_db.save_transport(&transport).is_ok()
                     }
                     _ => false,
                 }
@@ -595,7 +592,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                             return cloned_db.save_transport(&transport).is_ok();
                         }
 
-                        let stop = &transport.stops[transport.current_stop_index];
+                        let Some(stop) = transport.current_stop() else {
+                            return false;
+                        };
                         let stop_room_id = stop.room_id;
                         let exit_direction = stop.exit_direction.clone();
 

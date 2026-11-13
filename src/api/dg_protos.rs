@@ -5,6 +5,7 @@
 //! The body is run through the DG analyzer on create/update — parse errors
 //! reject the write, non-fatal issues come back as `warnings`.
 
+use crate::api::validate::{DG_BODY_MAX, NAME_MAX, SHORT_DESC_MAX, VNUM_MAX, check_opt_len, check_text_len};
 use axum::{
     Json, Router,
     extract::{Extension, Path, State},
@@ -108,10 +109,7 @@ async fn list_protos(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    let protos = state
-        .db
-        .list_dg_trigger_protos()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let protos = state.db.list_dg_trigger_protos()?;
     let data = protos
         .into_iter()
         .map(|p| DgProtoSummary {
@@ -132,11 +130,7 @@ async fn get_proto(
     if !can_read(&user) {
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
-    match state
-        .db
-        .get_dg_trigger_proto(vnum.trim())
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    match state.db.get_dg_trigger_proto(vnum.trim())? {
         Some(p) => Ok(Json(DgProtoResponse {
             success: true,
             data: to_view(p),
@@ -168,6 +162,11 @@ async fn create_proto(
     Extension(user): Extension<AuthenticatedUser>,
     Json(req): Json<CreateDgProtoRequest>,
 ) -> Result<Json<DgProtoResponse>, ApiError> {
+    check_text_len("vnum", &req.vnum, VNUM_MAX)?;
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("flags", &req.flags, NAME_MAX)?;
+    check_text_len("body", &req.body, DG_BODY_MAX)?;
+    check_opt_len("arglist", &req.arglist, SHORT_DESC_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
@@ -175,12 +174,7 @@ async fn create_proto(
     if vnum.is_empty() {
         return Err(ApiError::InvalidInput("vnum is required".into()));
     }
-    if state
-        .db
-        .get_dg_trigger_proto(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_some()
-    {
+    if state.db.get_dg_trigger_proto(&vnum)?.is_some() {
         return Err(ApiError::Conflict(format!("DG proto '{}' already exists", vnum)));
     }
     let kind = parse_kind(&req.kind)?;
@@ -192,6 +186,8 @@ async fn create_proto(
         numeric_arg: req.numeric_arg.unwrap_or(100),
         arglist: req.arglist.unwrap_or_default(),
         body: req.body,
+        last_edited_by: Some(user.api_key.owner_character.clone()),
+        imported: false,
     };
     // Use the save-with-refresh path so the analyzer rejects parse errors
     // even on create — a malformed body shouldn't make it into the store.
@@ -227,20 +223,21 @@ async fn update_proto(
     Path(vnum): Path<String>,
     Json(req): Json<UpdateDgProtoRequest>,
 ) -> Result<Json<DgProtoResponse>, ApiError> {
+    check_opt_len("name", &req.name, NAME_MAX)?;
+    check_opt_len("flags", &req.flags, NAME_MAX)?;
+    check_opt_len("body", &req.body, DG_BODY_MAX)?;
+    check_opt_len("arglist", &req.arglist, SHORT_DESC_MAX)?;
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let vnum = vnum.trim().to_string();
-    let mut proto = match state
-        .db
-        .get_dg_trigger_proto(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    let mut proto = match state.db.get_dg_trigger_proto(&vnum)? {
         Some(p) => p,
         None => {
             return Err(ApiError::NotFound(format!("DG proto '{}' not found", vnum)));
         }
     };
+    authorize_proto_edit(&state, &user, &vnum)?;
     if let Some(name) = req.name {
         proto.name = name.trim().to_string();
     }
@@ -252,6 +249,7 @@ async fn update_proto(
     }
     if let Some(body) = req.body {
         proto.body = body;
+        proto.stamp_edit(&user.api_key.owner_character);
     }
     if let Some(n) = req.numeric_arg {
         proto.numeric_arg = n;
@@ -287,21 +285,27 @@ async fn delete_proto(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let vnum = vnum.trim().to_string();
-    let existed = state
-        .db
-        .get_dg_trigger_proto(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_some();
+    let existed = state.db.get_dg_trigger_proto(&vnum)?.is_some();
     if !existed {
         return Err(ApiError::NotFound(format!("DG proto '{}' not found", vnum)));
     }
-    state
-        .db
-        .delete_dg_trigger_proto(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    authorize_proto_edit(&state, &user, &vnum)?;
+    state.db.delete_dg_trigger_proto(&vnum)?;
     notify_builders(
         &state.connections,
         &format!("[API] {} deleted DG proto '{}'", user.api_key.owner_character, vnum),
     );
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// Editing a proto edits every host it's attached to: require the key's
+/// character to be allowed to edit all of their areas (admin keys bypass).
+fn authorize_proto_edit(state: &ApiState, user: &AuthenticatedUser, vnum: &str) -> Result<(), ApiError> {
+    crate::script::dg::check_proto_edit(
+        &state.db,
+        vnum,
+        &user.api_key.owner_character,
+        user.api_key.permissions.admin,
+    )
+    .map_err(ApiError::Forbidden)
 }

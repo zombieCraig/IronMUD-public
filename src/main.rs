@@ -2,27 +2,26 @@
 
 use anyhow::Result;
 use clap::Parser;
+use parking_lot::Mutex;
 use rhai::Engine;
 use rhai::module_resolvers::FileModuleResolver;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::time::Duration;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 mod ticks;
 
 use ironmud::{
     SharedConnections, ShutdownCommand, World, broadcast_to_all_players,
     chat::ChatMessage,
-    claude::{ClaudeConfig, ClaudeRequest, run_claude_task},
+    claude::{ClaudeConfig, run_ai_task},
     db,
-    discord::{DiscordConfig, run_discord_bot},
     game::Entity,
-    gemini::{GeminiConfig, GeminiRequest, run_gemini_task},
-    load_command_metadata, load_game_data, load_scripts,
-    matrix::{MatrixConfig, run_matrix_bot},
-    register_socials_in_command_metadata, run_server, save_all_players, watch_scripts,
+    gemini::GeminiConfig,
+    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata, run_server,
+    save_all_players, watch_scripts,
 };
 
 use ironmud::script;
@@ -52,9 +51,11 @@ struct Args {
     #[arg(long, default_value = "4001")]
     api_port: u16,
 
-    /// REST API bind address (e.g. 127.0.0.1 to restrict to loopback)
-    #[arg(long, default_value = "0.0.0.0", env = "IRONMUD_API_BIND")]
-    api_bind: String,
+    /// REST API bind address (e.g. 127.0.0.1 to restrict to loopback).
+    /// Unset currently means 0.0.0.0 with a deprecation warning; the default
+    /// will become 127.0.0.1.
+    #[arg(long, env = "IRONMUD_API_BIND")]
+    api_bind: Option<String>,
 
     /// Unix control socket path (defaults to <database-dir>/control.sock)
     #[arg(long, env = "IRONMUD_CONTROL_SOCKET")]
@@ -128,6 +129,19 @@ async fn main() -> Result<()> {
     // stored field still matters now the auditor reads vnums.
     db.migrate_prototypes_to_vnum_areas()?;
 
+    // DG protos from before the trust model can't be told apart (importer vs
+    // builder), so they lose system trust until re-saved or re-trusted.
+    match db.migrate_legacy_dg_proto_trust() {
+        Ok(v) if !v.is_empty() => warn!(
+            "DG trust migration: {} legacy proto(s) now run untrusted until a builder re-saves them. \
+             If they came from an importer, restore system trust with `ironmud-admin dg-proto trust --all-unedited`: {}",
+            v.len(),
+            v.join(", ")
+        ),
+        Ok(_) => {}
+        Err(e) => error!("DG trust migration failed: {}", e),
+    }
+
     // Rebuild vnum index from existing room data
     db.rebuild_vnum_index()?;
 
@@ -184,7 +198,7 @@ async fn main() -> Result<()> {
         world_report: Default::default(),
         build_scores: Default::default(),
         audit_ctx: Default::default(),
-        engine,
+        engine: Arc::new(engine),
         db,
         connections: connections.clone(),
         scripts: HashMap::new(),
@@ -213,9 +227,9 @@ async fn main() -> Result<()> {
 
     // Register types and functions
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world
-            .engine
+            .engine_mut()
             .register_type_with_name::<Entity>("Entity")
             .register_get("id", |entity: &mut Entity| entity.id.to_string())
             .register_get("name", |entity: &mut Entity| entity.name.clone())
@@ -223,7 +237,7 @@ async fn main() -> Result<()> {
 
         // Register Rhai functions - pass SharedConnections and SharedState
         script::register_rhai_functions(
-            &mut world.engine,
+            world.engine_mut(),
             Arc::new(cloned_db_for_rhai),
             connections.clone(),
             state.clone(),
@@ -231,22 +245,24 @@ async fn main() -> Result<()> {
 
         // Expose the heartbeat registry to Rhai for the `admin ticks`
         // command. Bin-side only (the registry lives in src/ticks/).
-        world.engine.register_fn("get_tick_heartbeats", || -> rhai::Array {
-            ticks::heartbeat::snapshot()
-                .into_iter()
-                .map(|s| {
-                    let mut m = rhai::Map::new();
-                    m.insert("name".into(), rhai::Dynamic::from(s.name.to_string()));
-                    m.insert("age_secs".into(), rhai::Dynamic::from(s.age().as_secs() as i64));
-                    m.insert(
-                        "expected_secs".into(),
-                        rhai::Dynamic::from(s.expected_interval.as_secs() as i64),
-                    );
-                    m.insert("stale".into(), rhai::Dynamic::from(s.is_stale()));
-                    rhai::Dynamic::from(m)
-                })
-                .collect()
-        });
+        world
+            .engine_mut()
+            .register_fn("get_tick_heartbeats", || -> rhai::Array {
+                ticks::heartbeat::snapshot()
+                    .into_iter()
+                    .map(|s| {
+                        let mut m = rhai::Map::new();
+                        m.insert("name".into(), rhai::Dynamic::from(s.name.to_string()));
+                        m.insert("age_secs".into(), rhai::Dynamic::from(s.age().as_secs() as i64));
+                        m.insert(
+                            "expected_secs".into(),
+                            rhai::Dynamic::from(s.expected_interval.as_secs() as i64),
+                        );
+                        m.insert("stale".into(), rhai::Dynamic::from(s.is_stale()));
+                        rhai::Dynamic::from(m)
+                    })
+                    .collect()
+            });
     }
 
     // Load and watch scripts
@@ -258,251 +274,276 @@ async fn main() -> Result<()> {
     // heartbeat watchdog has known thresholds to compare against. Also
     // spawn the watchdog itself — it stays silent unless a tick goes stale.
     register_all_heartbeats();
+
+    // Debug builds with `--features deadlock-detection`: report lock cycles
+    // (e.g. World <-> Connections taken in opposite orders) with backtraces.
+    #[cfg(feature = "deadlock-detection")]
+    std::thread::spawn(|| {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            let deadlocks = parking_lot::deadlock::check_deadlock();
+            for (i, threads) in deadlocks.iter().enumerate() {
+                for t in threads {
+                    tracing::error!("Deadlock #{} thread {:?}:\n{:?}", i, t.thread_id(), t.backtrace());
+                }
+            }
+        }
+    });
     let watchdog_connections = connections.clone();
-    tokio::spawn(async move {
-        run_heartbeat_watchdog(watchdog_connections).await;
+    ticks::supervise::supervise("heartbeat_watchdog", connections.clone(), move || {
+        run_heartbeat_watchdog(watchdog_connections.clone())
     });
 
     // Start background spawn tick
     let spawn_connections = connections.clone();
     let spawn_state = state.clone();
-    tokio::spawn(async move {
-        run_spawn_tick(tick_db, spawn_connections, spawn_state).await;
+    ticks::supervise::supervise("spawn", connections.clone(), move || {
+        run_spawn_tick(tick_db.clone(), spawn_connections.clone(), spawn_state.clone())
     });
 
     // Start background periodic trigger tick
     let tick_connections = connections.clone();
     let trigger_state = state.clone();
-    tokio::spawn(async move {
-        run_periodic_trigger_tick(tick_db2, tick_connections, trigger_state).await;
+    ticks::supervise::supervise("periodic_trigger", connections.clone(), move || {
+        run_periodic_trigger_tick(tick_db2.clone(), tick_connections.clone(), trigger_state.clone())
     });
 
     // Start background time tick (game time advancement)
     let time_connections = connections.clone();
-    tokio::spawn(async move {
-        run_time_tick(tick_db3, time_connections).await;
+    ticks::supervise::supervise("time", connections.clone(), move || {
+        run_time_tick(tick_db3.clone(), time_connections.clone())
     });
 
     // Start background thirst tick (player thirst updates)
     let thirst_connections = connections.clone();
     let thirst_state = state.clone();
-    tokio::spawn(async move {
-        run_thirst_tick(tick_db4, thirst_connections, thirst_state).await;
+    ticks::supervise::supervise("thirst", connections.clone(), move || {
+        run_thirst_tick(tick_db4.clone(), thirst_connections.clone(), thirst_state.clone())
     });
 
     // Start background regen tick (stamina and HP regeneration)
     let regen_connections = connections.clone();
     let regen_state = state.clone();
-    tokio::spawn(async move {
-        run_regen_tick(tick_db5, regen_connections, regen_state).await;
+    ticks::supervise::supervise("regen", connections.clone(), move || {
+        run_regen_tick(tick_db5.clone(), regen_connections.clone(), regen_state.clone())
     });
 
     // Start background wander tick (mobile wandering)
     let wander_connections = connections.clone();
     let wander_state = state.clone();
-    tokio::spawn(async move {
-        run_wander_tick(tick_db6, wander_connections, wander_state).await;
+    ticks::supervise::supervise("wander", connections.clone(), move || {
+        run_wander_tick(tick_db6.clone(), wander_connections.clone(), wander_state.clone())
     });
 
     // Start background combat tick (combat round processing)
     let combat_connections = connections.clone();
     let combat_state = state.clone();
-    tokio::spawn(async move {
-        run_combat_tick(tick_db7, combat_connections, combat_state).await;
+    ticks::supervise::supervise("combat", connections.clone(), move || {
+        run_combat_tick(tick_db7.clone(), combat_connections.clone(), combat_state.clone())
     });
 
     // Start background corpse decay tick (corpse cleanup)
     let corpse_connections = connections.clone();
-    tokio::spawn(async move {
-        run_corpse_decay_tick(tick_db8, corpse_connections).await;
+    ticks::supervise::supervise("corpse_decay", connections.clone(), move || {
+        run_corpse_decay_tick(tick_db8.clone(), corpse_connections.clone())
     });
 
     // Start background exposure tick (weather/temperature effects)
     let exposure_connections = connections.clone();
-    tokio::spawn(async move {
-        run_exposure_tick(tick_db9, exposure_connections).await;
+    ticks::supervise::supervise("exposure", connections.clone(), move || {
+        run_exposure_tick(tick_db9.clone(), exposure_connections.clone())
     });
 
     // Start background transport tick (elevator/bus/train movement)
     let transport_connections = connections.clone();
-    tokio::spawn(async move {
-        run_transport_tick(tick_db10, transport_connections).await;
+    ticks::supervise::supervise("transport", connections.clone(), move || {
+        run_transport_tick(tick_db10.clone(), transport_connections.clone())
     });
 
     // Start background rent tick (property rent auto-payment)
     let rent_connections = connections.clone();
-    tokio::spawn(async move {
-        run_rent_tick(tick_db11, rent_connections).await;
+    ticks::supervise::supervise("rent", connections.clone(), move || {
+        run_rent_tick(tick_db11.clone(), rent_connections.clone())
     });
 
     // Start background hunger tick (player hunger updates)
     let hunger_connections = connections.clone();
     let hunger_state = state.clone();
-    tokio::spawn(async move {
-        run_hunger_tick(tick_db12, hunger_connections, hunger_state).await;
+    ticks::supervise::supervise("hunger", connections.clone(), move || {
+        run_hunger_tick(tick_db12.clone(), hunger_connections.clone(), hunger_state.clone())
     });
 
     // Start background spoilage tick (food spoilage accumulation)
     let spoilage_connections = connections.clone();
-    tokio::spawn(async move {
-        run_spoilage_tick(tick_db13, spoilage_connections).await;
+    ticks::supervise::supervise("spoilage", connections.clone(), move || {
+        run_spoilage_tick(tick_db13.clone(), spoilage_connections.clone())
     });
 
     // Start background mobile effects tick (poison emotes, etc.)
     let mobile_effects_connections = connections.clone();
     let mobile_effects_state = state.clone();
-    tokio::spawn(async move {
-        run_mobile_effects_tick(tick_db14, mobile_effects_connections, mobile_effects_state).await;
+    ticks::supervise::supervise("mobile_effects", connections.clone(), move || {
+        run_mobile_effects_tick(
+            tick_db14.clone(),
+            mobile_effects_connections.clone(),
+            mobile_effects_state.clone(),
+        )
     });
 
     // Start background pursuit tick (mob pursuit after sniping)
     let pursuit_connections = connections.clone();
-    let pursuit_state = state.clone();
-    tokio::spawn(async move {
-        run_pursuit_tick(tick_db15, pursuit_connections, pursuit_state).await;
+    ticks::supervise::supervise("pursuit", connections.clone(), move || {
+        run_pursuit_tick(tick_db15.clone(), pursuit_connections.clone())
     });
 
     // Start background routine tick (mobile daily routines)
     let routine_connections = connections.clone();
-    tokio::spawn(async move {
-        run_routine_tick(tick_db16, routine_connections).await;
+    ticks::supervise::supervise("routine", connections.clone(), move || {
+        run_routine_tick(tick_db16.clone(), routine_connections.clone())
     });
 
     // Start background garden tick (plant growth and maintenance)
     let garden_connections = connections.clone();
-    tokio::spawn(async move {
-        run_garden_tick(tick_db17, garden_connections).await;
+    ticks::supervise::supervise("garden", connections.clone(), move || {
+        run_garden_tick(tick_db17.clone(), garden_connections.clone())
     });
 
     // Start background hunting tick (auto-follow target movement)
     let hunting_connections = connections.clone();
-    let hunting_state = state.clone();
-    tokio::spawn(async move {
-        run_hunting_tick(tick_db18, hunting_connections, hunting_state).await;
+    ticks::supervise::supervise("hunting", connections.clone(), move || {
+        run_hunting_tick(tick_db18.clone(), hunting_connections.clone())
     });
 
     // Start background drowning tick (breath depletion and drowning damage)
     let drowning_connections = connections.clone();
     let drowning_state = state.clone();
-    tokio::spawn(async move {
-        run_drowning_tick(tick_db19, drowning_connections, drowning_state).await;
+    ticks::supervise::supervise("drowning", connections.clone(), move || {
+        run_drowning_tick(tick_db19.clone(), drowning_connections.clone(), drowning_state.clone())
     });
 
     // Start background slow-move tick (releases players from delayed exits)
     let slow_move_connections = connections.clone();
     let slow_move_state = state.clone();
-    tokio::spawn(async move {
-        run_slow_move_tick(tick_db28, slow_move_connections, slow_move_state).await;
+    ticks::supervise::supervise("slow_move", connections.clone(), move || {
+        run_slow_move_tick(
+            tick_db28.clone(),
+            slow_move_connections.clone(),
+            slow_move_state.clone(),
+        )
     });
 
     // Start background bleeding tick (wound damage accumulation)
     let bleeding_connections = connections.clone();
     let bleeding_state = state.clone();
-    tokio::spawn(async move {
-        run_bleeding_tick(tick_db20, bleeding_connections, bleeding_state).await;
+    ticks::supervise::supervise("bleeding", connections.clone(), move || {
+        run_bleeding_tick(tick_db20.clone(), bleeding_connections.clone(), bleeding_state.clone())
     });
 
     // Start background simulation tick (NPC needs simulation)
     let simulation_connections = connections.clone();
-    tokio::spawn(async move {
-        run_simulation_tick(tick_db21, simulation_connections).await;
+    ticks::supervise::supervise("simulation", connections.clone(), move || {
+        run_simulation_tick(tick_db21.clone(), simulation_connections.clone())
     });
 
     // Start background migration tick (emergent migrant population)
     let migration_connections = connections.clone();
     let migration_data_dir = std::path::PathBuf::from("scripts/data");
-    tokio::spawn(async move {
-        run_migration_tick(tick_db22, migration_connections, migration_data_dir).await;
+    ticks::supervise::supervise("migration", connections.clone(), move || {
+        run_migration_tick(
+            tick_db22.clone(),
+            migration_connections.clone(),
+            migration_data_dir.clone(),
+        )
     });
 
     // Start background aging tick (advance age, old-age natural death)
     let aging_connections = connections.clone();
-    tokio::spawn(async move {
-        run_aging_tick(tick_db23, aging_connections).await;
+    ticks::supervise::supervise("aging", connections.clone(), move || {
+        run_aging_tick(tick_db23.clone(), aging_connections.clone())
     });
 
     // Start background donation-decay tick (donated items rot in donation rooms)
     let donation_connections = connections.clone();
-    tokio::spawn(async move {
-        run_donation_decay_tick(tick_db24, donation_connections).await;
+    ticks::supervise::supervise("donation_decay", connections.clone(), move || {
+        run_donation_decay_tick(tick_db24.clone(), donation_connections.clone())
     });
 
     // Start background quest-expiry tick (drop time-limited quests after duration_secs)
     let quest_connections = connections.clone();
-    tokio::spawn(async move {
-        run_quest_tick(tick_db25, quest_connections).await;
+    ticks::supervise::supervise("quest", connections.clone(), move || {
+        run_quest_tick(tick_db25.clone(), quest_connections.clone())
     });
 
     // Start background sun-burn tick (vampires take damage outdoors during the day)
     let sun_connections = connections.clone();
-    tokio::spawn(async move {
-        run_sun_tick(tick_db26, sun_connections).await;
+    ticks::supervise::supervise("sun", connections.clone(), move || {
+        run_sun_tick(tick_db26.clone(), sun_connections.clone())
     });
 
     // Start background blood-decay tick (vampires lose blood over time;
     // empty pools roll hunger frenzy against humanity + clan banes)
     let blood_connections = connections.clone();
     let blood_state = state.clone();
-    tokio::spawn(async move {
-        run_blood_tick(tick_db27, blood_connections, blood_state).await;
+    ticks::supervise::supervise("blood", connections.clone(), move || {
+        run_blood_tick(tick_db27.clone(), blood_connections.clone(), blood_state.clone())
     });
 
     // Start background rage tick (werewolf rage decay, frenzy rolls against
     // tribe banes, form-buff reassertion)
     let rage_connections = connections.clone();
     let rage_state = state.clone();
-    tokio::spawn(async move {
-        run_rage_tick(tick_db34, rage_connections, rage_state).await;
+    ticks::supervise::supervise("rage", connections.clone(), move || {
+        run_rage_tick(tick_db34.clone(), rage_connections.clone(), rage_state.clone())
     });
 
     // Start background resolve tick (replicant breakdown expiry + sleep regen)
     let resolve_connections = connections.clone();
-    tokio::spawn(async move {
-        run_resolve_tick(tick_db29, resolve_connections).await;
+    ticks::supervise::supervise("resolve", connections.clone(), move || {
+        run_resolve_tick(tick_db29.clone(), resolve_connections.clone())
     });
 
     // Start background chassis tick (synth malfunction stages + System
     // Shutdown countdown; expired countdowns die via the death pipeline)
     let chassis_connections = connections.clone();
     let chassis_state = state.clone();
-    tokio::spawn(async move {
-        run_chassis_tick(tick_db33, chassis_connections, chassis_state).await;
+    ticks::supervise::supervise("chassis", connections.clone(), move || {
+        run_chassis_tick(tick_db33.clone(), chassis_connections.clone(), chassis_state.clone())
     });
 
     // Start background psyche tick (cyberpsychosis episodes + CHA erosion)
     let psyche_connections = connections.clone();
-    tokio::spawn(async move {
-        run_psyche_tick(tick_db30, psyche_connections).await;
+    ticks::supervise::supervise("psyche", connections.clone(), move || {
+        run_psyche_tick(tick_db30.clone(), psyche_connections.clone())
     });
 
     // Start background mutation tick (re-asserts passive mutation effects)
     let mutation_connections = connections.clone();
     let mutation_state = state.clone();
-    tokio::spawn(async move {
-        run_mutation_tick(tick_db31, mutation_connections, mutation_state).await;
+    ticks::supervise::supervise("mutation", connections.clone(), move || {
+        run_mutation_tick(tick_db31.clone(), mutation_connections.clone(), mutation_state.clone())
     });
 
     // Start background rot tick (world contamination: gain in rotted rooms,
     // slow decay with permanent-scarring risk in clean ones — every race)
     let rot_connections = connections.clone();
-    tokio::spawn(async move {
-        run_rot_tick(tick_db32, rot_connections).await;
+    ticks::supervise::supervise("rot", connections.clone(), move || {
+        run_rot_tick(tick_db32.clone(), rot_connections.clone())
     });
 
     // Start background worship anger tick (missed god tribute escalates:
     // warning -> curse -> smite -> opt-in permanent smite)
     let worship_connections = connections.clone();
     let worship_state = state.clone();
-    tokio::spawn(async move {
-        run_worship_tick(tick_db35, worship_connections, worship_state).await;
+    ticks::supervise::supervise("worship", connections.clone(), move || {
+        run_worship_tick(tick_db35.clone(), worship_connections.clone(), worship_state.clone())
     });
 
     // Start background leaderboard tick (full character scan, rebuilds the
     // cached `top` boards). Deliberately the slowest read in the server and
     // deliberately never on a command path.
     let leaderboard_state = state.clone();
-    tokio::spawn(async move {
-        run_leaderboard_tick(tick_db36, leaderboard_state).await;
+    ticks::supervise::supervise("leaderboard", connections.clone(), move || {
+        run_leaderboard_tick(tick_db36.clone(), leaderboard_state.clone())
     });
 
     // Start background builder-score tick. Same shape and same cadence as the
@@ -512,8 +553,12 @@ async fn main() -> Result<()> {
     // has to go through the session copy.
     let build_score_connections = connections.clone();
     let build_score_state = state.clone();
-    tokio::spawn(async move {
-        run_build_score_tick(tick_db37, build_score_connections, build_score_state).await;
+    ticks::supervise::supervise("build_score", connections.clone(), move || {
+        run_build_score_tick(
+            tick_db37.clone(),
+            build_score_connections.clone(),
+            build_score_state.clone(),
+        )
     });
 
     // Start control socket listener for out-of-process admin commands.
@@ -542,21 +587,13 @@ async fn main() -> Result<()> {
         description: "A vast, empty void.".to_string(),
     };
     {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         let serialized_entity = serde_json::to_vec(&entity)?;
         world.db.insert(entity_id.as_bytes(), serialized_entity)?;
     }
     */
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-
-    let state2 = state.clone();
-    let addr = format!("0.0.0.0:{}", args.port);
-    let telnet_server = tokio::spawn(async move {
-        let listener = TcpListener::bind(&addr).await.unwrap();
-        info!("IronMUD Gateway listening on {}", addr);
-        run_server(state2, listener, shutdown_rx).await;
-    });
 
     // Start REST API if enabled via environment variable
     // Disabled by default - set IRONMUD_API_ENABLED=true to enable
@@ -567,7 +604,17 @@ async fn main() -> Result<()> {
         let api_connections = connections.clone();
         let api_world = state.clone();
         let api_port = args.api_port;
-        let api_bind = args.api_bind.clone();
+        let api_bind = match args.api_bind.clone() {
+            Some(b) => b,
+            None => {
+                warn!(
+                    "IRONMUD_API_BIND is not set; the REST API is listening on all interfaces (0.0.0.0). \
+                     This default is deprecated and will change to 127.0.0.1. Set IRONMUD_API_BIND=0.0.0.0 \
+                     to keep remote access (put TLS in front of it), or 127.0.0.1 for loopback only."
+                );
+                "0.0.0.0".to_string()
+            }
+        };
         tokio::spawn(async move {
             let api_state = std::sync::Arc::new(ironmud::api::ApiState {
                 db: api_db,
@@ -576,39 +623,64 @@ async fn main() -> Result<()> {
             });
             ironmud::api::run_api_server(api_state, &api_bind, api_port).await;
         });
-        info!("REST API listening on {}:{}", args.api_bind, args.api_port);
+        info!(
+            "REST API listening on {}:{}",
+            args.api_bind.as_deref().unwrap_or("0.0.0.0"),
+            args.api_port
+        );
     } else {
         info!("REST API disabled (set IRONMUD_API_ENABLED=true to enable)");
     }
 
     // Create chat bridge channel (single channel for all chat backends)
     let (chat_tx, chat_rx) = tokio::sync::mpsc::unbounded_channel::<ChatMessage>();
+    #[cfg_attr(not(any(feature = "matrix", feature = "discord")), allow(unused_mut))]
     let mut backend_senders: Vec<tokio::sync::mpsc::UnboundedSender<ChatMessage>> = Vec::new();
 
     // Matrix backend
-    if let Some(matrix_config) = MatrixConfig::from_env() {
+    #[cfg(feature = "matrix")]
+    if let Some(mut matrix_config) = ironmud::matrix::MatrixConfig::from_env() {
+        if matrix_config.session_path.is_none() {
+            matrix_config.session_path = Some(
+                std::path::Path::new(&args.database)
+                    .parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .join("matrix_session.json"),
+            );
+        }
         let (matrix_tx, matrix_rx) = tokio::sync::mpsc::unbounded_channel::<ChatMessage>();
         backend_senders.push(matrix_tx);
         let matrix_connections = connections.clone();
         tokio::spawn(async move {
-            run_matrix_bot(matrix_config, matrix_connections, matrix_rx).await;
+            ironmud::matrix::run_matrix_bot(matrix_config, matrix_connections, matrix_rx).await;
         });
         info!("Matrix bot started");
     } else {
         info!("Matrix integration disabled (MATRIX_HOMESERVER, MATRIX_USER, MATRIX_PASSWORD, MATRIX_ROOM not all set)");
     }
+    #[cfg(not(feature = "matrix"))]
+    if std::env::var("MATRIX_HOMESERVER").is_ok() {
+        tracing::warn!("MATRIX_* is set but this build has no Matrix support (built without the `matrix` feature)");
+    }
 
     // Discord backend
-    if let Some(discord_config) = DiscordConfig::from_env() {
+    #[cfg(feature = "discord")]
+    if let Some(discord_config) = ironmud::discord::DiscordConfig::from_env() {
         let (discord_tx, discord_rx) = tokio::sync::mpsc::unbounded_channel::<ChatMessage>();
         backend_senders.push(discord_tx);
         let discord_connections = connections.clone();
         tokio::spawn(async move {
-            run_discord_bot(discord_config, discord_connections, discord_rx).await;
+            ironmud::discord::run_discord_bot(discord_config, discord_connections, discord_rx).await;
         });
         info!("Discord bot started");
     } else {
         info!("Discord integration disabled (DISCORD_TOKEN, DISCORD_CHANNEL_ID not all set)");
+    }
+    #[cfg(not(feature = "discord"))]
+    if std::env::var("DISCORD_TOKEN").is_ok() {
+        tracing::warn!(
+            "DISCORD_TOKEN is set but this build has no Discord support (built without the `discord` feature)"
+        );
     }
 
     // Start chat bridge (fans out messages to all backends)
@@ -625,9 +697,9 @@ async fn main() -> Result<()> {
 
     // Store chat sender in World for disconnect notifications, and register with Rhai
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world.chat_sender = Some(chat_tx.clone());
-        script::set_chat_sender(&mut world.engine, chat_tx);
+        script::set_chat_sender(world.engine_mut(), chat_tx);
     }
 
     // Create shutdown command channel for admin shutdown
@@ -635,7 +707,7 @@ async fn main() -> Result<()> {
     // Create shutdown cancellation channel (false = not cancelled, true = cancelled)
     let (shutdown_cancel_tx, shutdown_cancel_rx) = tokio::sync::watch::channel(false);
     {
-        let mut world = state.lock().unwrap();
+        let mut world = state.lock();
         world.shutdown_sender = Some(admin_shutdown_tx);
         world.shutdown_cancel_sender = Some(shutdown_cancel_tx);
     }
@@ -644,42 +716,39 @@ async fn main() -> Result<()> {
     let claude_configured = std::env::var("CLAUDE_API_KEY").is_ok();
     let gemini_configured = std::env::var("GEMINI_API_KEY").is_ok();
 
-    if claude_configured && gemini_configured {
-        // Both configured - error and disable both
+    let ai_sender = if claude_configured && gemini_configured {
         error!(
             "Both CLAUDE_API_KEY and GEMINI_API_KEY are set. Only one AI provider can be used at a time. Disabling AI integration."
         );
-        // Register a dummy Claude sender that will never receive anything
-        let (claude_tx, _) = tokio::sync::mpsc::unbounded_channel::<ClaudeRequest>();
-        let mut world = state.lock().unwrap();
-        script::set_claude_sender(&mut world.engine, claude_tx, connections.clone());
-    } else if let Some(claude_config) = ClaudeConfig::from_env() {
-        // Claude enabled
-        let (claude_tx, claude_rx) = tokio::sync::mpsc::unbounded_channel::<ClaudeRequest>();
-        let claude_connections = connections.clone();
-        tokio::spawn(async move {
-            run_claude_task(claude_config, claude_connections, claude_rx).await;
-        });
+        None
+    } else if let Some(config) = ClaudeConfig::from_env() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(run_ai_task(config, connections.clone(), rx));
         info!("AI integration enabled (Claude)");
-        let mut world = state.lock().unwrap();
-        script::set_claude_sender(&mut world.engine, claude_tx, connections.clone());
-    } else if let Some(gemini_config) = GeminiConfig::from_env() {
-        // Gemini enabled
-        let (gemini_tx, gemini_rx) = tokio::sync::mpsc::unbounded_channel::<GeminiRequest>();
-        let gemini_connections = connections.clone();
-        tokio::spawn(async move {
-            run_gemini_task(gemini_config, gemini_connections, gemini_rx).await;
-        });
+        Some(tx)
+    } else if let Some(config) = GeminiConfig::from_env() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(run_ai_task(config, connections.clone(), rx));
         info!("AI integration enabled (Gemini)");
-        let mut world = state.lock().unwrap();
-        script::set_gemini_sender(&mut world.engine, gemini_tx, connections.clone());
+        Some(tx)
     } else {
-        // No AI configured - register dummy sender
         info!("AI integration disabled (no API key set)");
-        let (claude_tx, _) = tokio::sync::mpsc::unbounded_channel::<ClaudeRequest>();
-        let mut world = state.lock().unwrap();
-        script::set_claude_sender(&mut world.engine, claude_tx, connections.clone());
+        None
+    };
+    {
+        let mut world = state.lock();
+        script::set_ai_sender(world.engine_mut(), ai_sender, connections.clone());
     }
+
+    // Accept players only once every Rhai function is registered: command
+    // handlers share the engine, and it can't be mutated after that.
+    let state2 = state.clone();
+    let addr = format!("0.0.0.0:{}", args.port);
+    let telnet_server = tokio::spawn(async move {
+        let listener = TcpListener::bind(&addr).await.unwrap();
+        info!("IronMUD Gateway listening on {}", addr);
+        run_server(state2, listener, shutdown_rx).await;
+    });
 
     // Wait for shutdown signal (SIGINT, SIGTERM, or admin command)
     // Loop to handle cancelled shutdowns (allows re-waiting for signals)
@@ -692,35 +761,36 @@ async fn main() -> Result<()> {
 
         loop {
             tokio::select! {
-                _ = sigint.recv() => {
-                    info!("SIGINT received, shutting down...");
-                    break;
-                }
-                _ = sigterm.recv() => {
-                    info!("SIGTERM received, shutting down...");
-                    break;
-                }
-                Some(cmd) = admin_shutdown_rx.recv() => {
-                    info!("Admin shutdown initiated by {}: {}", cmd.admin_name, cmd.reason);
-                    let was_cancelled = run_shutdown_countdown(
-                        &shutdown_connections,
-                        &shutdown_chat_tx,
-                        cmd,
-                        shutdown_cancel_rx.clone(),
-                    ).await;
-                    if !was_cancelled {
-                        break; // Proceed with shutdown
-                    }
-                    // Reset the cancel flag for next shutdown attempt
-                    if let Ok(world) = state.lock() {
-                        if let Some(ref sender) = world.shutdown_cancel_sender {
-                            let _ = sender.send(false);
-                        }
-                    }
-                    info!("Shutdown cancelled, resuming normal operation");
-                    // Continue loop to wait for next signal
-                }
-            }
+                           _ = sigint.recv() => {
+                               info!("SIGINT received, shutting down...");
+                               break;
+                           }
+                           _ = sigterm.recv() => {
+                               info!("SIGTERM received, shutting down...");
+                               break;
+                           }
+                           Some(cmd) = admin_shutdown_rx.recv() => {
+                               info!("Admin shutdown initiated by {}: {}", cmd.admin_name, cmd.reason);
+                               let was_cancelled = run_shutdown_countdown(
+                                   &shutdown_connections,
+                                   &shutdown_chat_tx,
+                                   cmd,
+                                   shutdown_cancel_rx.clone(),
+                               ).await;
+                               if !was_cancelled {
+                                   break; // Proceed with shutdown
+                               }
+                               // Reset the cancel flag for next shutdown attempt
+                               {
+            let world = state.lock();
+                                   if let Some(ref sender) = world.shutdown_cancel_sender {
+                                       let _ = sender.send(false);
+                                   }
+                               }
+                               info!("Shutdown cancelled, resuming normal operation");
+                               // Continue loop to wait for next signal
+                           }
+                       }
         }
     }
 
@@ -728,31 +798,32 @@ async fn main() -> Result<()> {
     {
         loop {
             tokio::select! {
-                _ = tokio::signal::ctrl_c() => {
-                    info!("Ctrl-C received, shutting down...");
-                    break;
-                }
-                Some(cmd) = admin_shutdown_rx.recv() => {
-                    info!("Admin shutdown initiated by {}: {}", cmd.admin_name, cmd.reason);
-                    let was_cancelled = run_shutdown_countdown(
-                        &shutdown_connections,
-                        &shutdown_chat_tx,
-                        cmd,
-                        shutdown_cancel_rx.clone(),
-                    ).await;
-                    if !was_cancelled {
-                        break; // Proceed with shutdown
-                    }
-                    // Reset the cancel flag for next shutdown attempt
-                    if let Ok(world) = state.lock() {
-                        if let Some(ref sender) = world.shutdown_cancel_sender {
-                            let _ = sender.send(false);
-                        }
-                    }
-                    info!("Shutdown cancelled, resuming normal operation");
-                    // Continue loop to wait for next signal
-                }
-            }
+                           _ = tokio::signal::ctrl_c() => {
+                               info!("Ctrl-C received, shutting down...");
+                               break;
+                           }
+                           Some(cmd) = admin_shutdown_rx.recv() => {
+                               info!("Admin shutdown initiated by {}: {}", cmd.admin_name, cmd.reason);
+                               let was_cancelled = run_shutdown_countdown(
+                                   &shutdown_connections,
+                                   &shutdown_chat_tx,
+                                   cmd,
+                                   shutdown_cancel_rx.clone(),
+                               ).await;
+                               if !was_cancelled {
+                                   break; // Proceed with shutdown
+                               }
+                               // Reset the cancel flag for next shutdown attempt
+                               {
+            let world = state.lock();
+                                   if let Some(ref sender) = world.shutdown_cancel_sender {
+                                       let _ = sender.send(false);
+                                   }
+                               }
+                               info!("Shutdown cancelled, resuming normal operation");
+                               // Continue loop to wait for next signal
+                           }
+                       }
         }
     }
 
@@ -778,7 +849,7 @@ async fn main() -> Result<()> {
     // Graceful shutdown: save all active players
     info!("Saving all active players...");
     let saved = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         save_all_players(&connections, &world.db)
     };
     info!("Saved {} player(s)", saved);
@@ -786,7 +857,7 @@ async fn main() -> Result<()> {
     // Flush database to disk
     info!("Flushing database to disk...");
     {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         if let Err(e) = world.db.flush() {
             error!("Failed to flush database: {}", e);
         }

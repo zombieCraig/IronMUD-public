@@ -28,7 +28,7 @@ fn process_quest_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
     // character mutations happen via db.save_character_data, which is
     // routed through the same lock-release pattern as other ticks.
     let online_names: Vec<String> = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns
             .values()
             .filter_map(|s| s.character.as_ref().map(|c| c.name.clone()))

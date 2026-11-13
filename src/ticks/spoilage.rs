@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use tokio::time::{Duration, interval};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use ironmud::{ItemLocation, ItemType, SharedConnections, TemperatureCategory, db};
 
@@ -116,9 +116,20 @@ fn decay_corpses(db: &db::Db, connections: &SharedConnections, items: Vec<ironmu
                     });
                 }
 
-                // Delete all items in the corpse
-                for item_id in &item.container_contents {
-                    let _ = db.delete_item(item_id);
+                // Delete what is in the corpse *now*. `item` is a snapshot
+                // from the start of the tick: anything looted since then
+                // must not be deleted out of the looter's pack, and anything
+                // dropped in since then must not be left orphaned.
+                match db.get_items_in_container(&item.id) {
+                    Ok(contents) => {
+                        for inside in contents {
+                            let _ = db.delete_item(&inside.id);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Corpse {} decay: couldn't list contents: {}", item.id, e);
+                        continue;
+                    }
                 }
 
                 // Delete the corpse itself
@@ -149,10 +160,9 @@ fn decay_corpses(db: &db::Db, connections: &SharedConnections, items: Vec<ironmu
                 // A CAS update, not `save_item_data(item)`. `item` came out of
                 // a `list_all_items()` snapshot taken at the top of this
                 // function, and writing it back whole would revert anything
-                // that changed since — on a corpse the field that changes is
-                // `container_contents`, so a player looting in the same moment
-                // a threshold fired would have the loot put back and end up
-                // with two of it.
+                // that changed since — e.g. the corpse's gold, taken by a
+                // player looting in the same moment a threshold fired, would
+                // be put back and could be looted twice.
                 let _ = db.update_item(&item.id, |i| {
                     i.flags.corpse_warned_pct = threshold;
                 });
@@ -358,8 +368,9 @@ mod tests {
     use super::*;
     use ironmud::corpse::CorpseBuilder;
     use ironmud::types::ItemData;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn conns() -> SharedConnections {
         Arc::new(Mutex::new(HashMap::new()))
@@ -375,11 +386,10 @@ mod tests {
     /// The decay warning must not write the corpse back whole.
     ///
     /// `item` comes out of a `list_all_items()` snapshot taken at the top of
-    /// the tick. Saving it wholesale reverts anything that changed since, and
-    /// on a corpse the field that changes is `container_contents` — so a player
-    /// looting in the same moment a threshold fired had the loot put back and
-    /// ended up holding two of it. Simulated here by emptying the corpse
-    /// between the snapshot and the write, which is exactly what a loot does.
+    /// the tick. Saving it wholesale reverts anything that changed since — a
+    /// player taking the corpse's gold in the same moment a threshold fired
+    /// would have the gold put back and could take it twice. Simulated here by
+    /// emptying the gold between the snapshot and the write.
     #[test]
     fn a_decay_warning_does_not_restore_looted_contents() {
         let temp = tempfile::tempdir().expect("temp dir");
@@ -387,14 +397,10 @@ mod tests {
 
         db.set_setting("player_corpse_decay_secs", "3600").expect("setting");
 
-        let loot = ItemData::new("Dagger".into(), "a rusty dagger".into(), String::new());
-        let loot_id = loot.id;
-        db.save_item_data(loot).expect("save loot");
-
         // Old enough to have crossed the 50% threshold but not to have rotted.
         let mut corpse = CorpseBuilder::for_player("Kaleth", uuid::Uuid::new_v4(), 0).build();
         corpse.flags.corpse_created_at = now() - 2000;
-        corpse.container_contents.push(loot_id);
+        corpse.flags.corpse_gold = 40;
         let corpse_id = corpse.id;
         db.save_item_data(corpse).expect("save corpse");
 
@@ -404,18 +410,14 @@ mod tests {
         // ordinary, not exotic.
         let snapshot = db.list_all_items().expect("snapshot");
 
-        // The loot leaves the corpse, as `get` would move it.
-        db.update_item(&corpse_id, |i| i.container_contents.clear())
+        // The gold leaves the corpse, as `get gold` would take it.
+        db.update_item(&corpse_id, |i| i.flags.corpse_gold = 0)
             .expect("loot it");
 
         decay_corpses(&db, &conns(), snapshot).expect("tick runs");
 
         let after = db.get_item_data(&corpse_id).expect("read").expect("still there");
-        assert!(
-            after.container_contents.is_empty(),
-            "the warning must not put the loot back: {:?}",
-            after.container_contents
-        );
+        assert_eq!(after.flags.corpse_gold, 0, "the warning must not put the gold back");
         assert_eq!(after.flags.corpse_warned_pct, 50, "and it still records the warning");
     }
 
@@ -437,5 +439,33 @@ mod tests {
             db.get_item_data(&proto_id).expect("read").is_some(),
             "the prototype survives"
         );
+    }
+
+    /// Decay deletes what is in the corpse when it rots, not what was in it
+    /// when the tick took its snapshot: a looted item must survive in the
+    /// looter's pack.
+    #[test]
+    fn decay_does_not_delete_items_looted_after_the_snapshot() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
+
+        let mut loot = ItemData::new("Dagger".into(), "a rusty dagger".into(), String::new());
+        let loot_id = loot.id;
+        let mut corpse = CorpseBuilder::for_player("Kaleth", uuid::Uuid::new_v4(), 0).build();
+        corpse.flags.corpse_created_at = 0; // long rotted
+        let corpse_id = corpse.id;
+        loot.location = ItemLocation::Container(corpse_id);
+        db.save_item_data(loot).expect("save loot");
+        db.save_item_data(corpse).expect("save corpse");
+
+        let snapshot = db.list_all_items().expect("snapshot");
+        // Looted between the snapshot and the decay.
+        db.update_item(&loot_id, |i| i.location = ItemLocation::Inventory("looter".into()))
+            .expect("loot it");
+
+        decay_corpses(&db, &conns(), snapshot).expect("tick runs");
+
+        assert!(db.get_item_data(&corpse_id).unwrap().is_none(), "corpse rotted");
+        assert!(db.get_item_data(&loot_id).unwrap().is_some(), "looted dagger survives");
     }
 }

@@ -19,7 +19,8 @@ use crate::types::{
 /// Send a single line to the named character if they're online. No-op if
 /// they're offline (quest progress just persists silently).
 fn notify(connections: &SharedConnections, char_name: &str, line: &str) {
-    if let Ok(conns) = connections.lock() {
+    {
+        let conns = connections.lock();
         for session in conns.values() {
             if let Some(ref ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(char_name) {
@@ -511,7 +512,8 @@ fn apply_reward(
             // re-login (mirrors how SkillXp reward leaves the in-memory
             // session stale, but for VampireState the visible jump is
             // bigger and we have ch already in hand).
-            if let Ok(mut conns) = connections.lock() {
+            {
+                let mut conns = connections.lock();
                 for (_id, sess) in conns.iter_mut() {
                     if let Some(sc) = sess.character.as_mut() {
                         if sc.name.eq_ignore_ascii_case(char_name) {
@@ -594,7 +596,8 @@ fn apply_reward(
                 return;
             }
             let _ = db.save_character_data(ch.clone());
-            if let Ok(mut conns) = connections.lock() {
+            {
+                let mut conns = connections.lock();
                 for (_id, sess) in conns.iter_mut() {
                     if let Some(sc) = sess.character.as_mut() {
                         if sc.name.eq_ignore_ascii_case(char_name) {

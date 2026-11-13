@@ -221,7 +221,8 @@ pub fn apply_delta(
     ch.morality = after;
     db.save_character_data(ch).ok()?;
 
-    if let Ok(mut conns) = connections.lock() {
+    {
+        let mut conns = connections.lock();
         for (_, session) in conns.iter_mut() {
             let matches = session
                 .character
@@ -364,8 +365,8 @@ mod tests {
         let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
         session.character = db.get_character_data(&ch_name.to_lowercase()).expect("read");
         let conns: crate::SharedConnections =
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
         (conns, rx_client)
     }
 
@@ -389,7 +390,6 @@ mod tests {
         assert_eq!(db.get_character_data("saint").unwrap().unwrap().morality, 28);
         let session_value = conns
             .lock()
-            .unwrap()
             .values()
             .next()
             .and_then(|s| s.character.as_ref().map(|c| c.morality));

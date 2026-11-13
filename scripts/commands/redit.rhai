@@ -811,8 +811,7 @@ fn run_command(args, connection_id) {
     // Check area permissions if room belongs to an area
     let room_area_id = room.area_id;
     if room_area_id != "" {
-        if !can_edit_area(room_area_id, char.name) {
-            send_client_message(connection_id, "You don't have permission to edit rooms in this area.");
+        if !olc::require_area_edit(connection_id, room_area_id, char.name, "You don't have permission to edit rooms in this area.") {
             return;
         }
     }
@@ -2677,8 +2676,7 @@ fn handle_exit_link(connection_id, char, room, parts) {
     if bidirectional {
         let target_area_id = target_room.area_id;
         if target_area_id != "" {
-            if !can_edit_area(target_area_id, char.name) {
-                send_client_message(connection_id, "You don't have permission to link exits to rooms in that area. Drop 'both' for a one-way link.");
+            if !olc::require_area_edit(connection_id, target_area_id, char.name, "You don't have permission to link exits to rooms in that area. Drop 'both' for a one-way link.") {
                 return;
             }
         }

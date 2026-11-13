@@ -67,7 +67,7 @@ fn run_command(args, connection_id) {
             }
             let healed = random_int(1, 6);
             char.hp = char.hp + healed;
-            if char.hp > char.max_hp { char.hp = char.max_hp; }
+            if char.hp > char.effective_max_hp() { char.hp = char.effective_max_hp(); }
             save_character_data(char);
             set_player_character(connection_id, char);
             send_client_message(connection_id, "\x1b[32mThe carrion settles warm in your gut. [+" + healed + " hp]\x1b[0m");
@@ -163,7 +163,7 @@ fn apply_fear_consumable(char, magnitude, duration, source, connection_id) {
 fn apply_heal(char, magnitude, connection_id) {
     let old_hp = char.hp;
     char.hp = char.hp + magnitude;
-    let eff_max_hp = get_effective_max_hp(char.name);
+    let eff_max_hp = char.effective_max_hp();
     if char.hp > eff_max_hp { char.hp = eff_max_hp; }
     let healed = char.hp - old_hp;
     if healed > 0 {
@@ -264,9 +264,7 @@ fn apply_nutrition_hp(connection_id, nutrition) {
     let char2 = get_player_character(connection_id);
     let old_hp = char2.hp;
     char2.hp = char2.hp + hp_boost;
-    if char2.hp > char2.max_hp {
-        char2.hp = char2.max_hp;
-    }
+    if char2.hp > char2.effective_max_hp() { char2.hp = char2.effective_max_hp(); }
     let healed = char2.hp - old_hp;
     save_character_data(char2);
     set_player_character(connection_id, char2);
@@ -333,7 +331,7 @@ fn devour_corpse(connection_id, char, corpse) {
     let healed = random_int(1, 6) + random_int(1, 6);
     let char2 = get_player_character(connection_id);
     char2.hp = char2.hp + healed;
-    if char2.hp > char2.max_hp { char2.hp = char2.max_hp; }
+    if char2.hp > char2.effective_max_hp() { char2.hp = char2.effective_max_hp(); }
     save_character_data(char2);
     set_player_character(connection_id, char2);
 

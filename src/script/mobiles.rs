@@ -917,6 +917,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         false
     });
 
+    // add_mobile_gold(mobile_id, delta) -> bool. Atomic. A debit that would
+    // take the mobile below zero is refused (false) and changes nothing.
+    let cloned_db = db.clone();
+    engine.register_fn("add_mobile_gold", move |mobile_id: String, delta: i64| -> bool {
+        match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(uuid) => add_mobile_gold(&cloned_db, &uuid, delta),
+            Err(_) => false,
+        }
+    });
+
     // get_level_stats(level) -> Map with HP, AC, damage, hit_modifier, stats
     // Level stat table for mobile difficulty scaling:
     // Level 1: HP 15, AC 0, 1d4, hit -2, stats 10 (Trivial)
@@ -2145,7 +2155,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             let key_lc = key.to_lowercase();
             {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if !world.custom_skill_definitions.contains_key(&key_lc) {
                     return false;
                 }
@@ -2170,7 +2180,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             let key_lc = key.to_lowercase();
             {
-                let world = state_clone.lock().unwrap();
+                let world = state_clone.lock();
                 if !world.custom_skill_definitions.contains_key(&key_lc) {
                     return 0;
                 }
@@ -2187,4 +2197,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
         },
     );
+}
+
+/// Add `delta` gold to a mobile in one compare-and-swap. Credits saturate at
+/// `i32::MAX`; a debit larger than the mobile's gold is refused.
+pub fn add_mobile_gold(db: &crate::db::Db, mobile: &uuid::Uuid, delta: i64) -> bool {
+    let mut ok = false;
+    let res = db.update_mobile(mobile, |m| {
+        let next = (m.gold as i64).saturating_add(delta);
+        if next < 0 {
+            ok = false;
+            return;
+        }
+        m.gold = next.min(i32::MAX as i64) as i32;
+        ok = true;
+    });
+    matches!(res, Ok(Some(_))) && ok
 }

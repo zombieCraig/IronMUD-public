@@ -96,8 +96,7 @@ fn run_command(args, connection_id) {
     }
 
     // Permission check
-    if !can_edit_area(area.id, char.name) {
-        send_client_message(connection_id, "You don't have permission to edit spawn points in this area.");
+    if !olc::require_area_edit(connection_id, area.id, char.name, "You don't have permission to edit spawn points in this area.") {
         return;
     }
 

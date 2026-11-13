@@ -45,7 +45,7 @@ pub async fn run_blood_tick(db: db::Db, connections: SharedConnections, state: S
         // trait hot-reloads apply. World lock is released before the tick
         // body touches the connections lock (deadlock rule).
         let clan_frenzy_mods: std::collections::HashMap<String, i32> = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             world
                 .trait_definitions
                 .iter()

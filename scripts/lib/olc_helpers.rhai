@@ -149,3 +149,19 @@ fn format_one_spawn_location(sp, vnum, conn_id) {
 
     out
 }
+
+// Area-edit gate shared by every OLC/builder command. `area_id` is the
+// area of the thing being changed ("" for orphan content, which any
+// builder may edit). Sends `msg` and returns false when the character may
+// not edit that area. The rule itself lives in Rust (can_edit_area) and is
+// the same one the API and DG scripts use.
+fn require_area_edit(conn_id, area_id, char_name, msg) {
+    if area_id == "" || area_id == () {
+        return true;
+    }
+    if can_edit_area(area_id, char_name) {
+        return true;
+    }
+    send_client_message(conn_id, msg);
+    return false;
+}

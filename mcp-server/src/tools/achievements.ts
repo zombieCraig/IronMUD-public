@@ -59,7 +59,7 @@ const rewardSchema = {
   properties: {
     title: { type: "string", description: "Granted title" },
     item_vnum: { type: "string", description: "Optional item reward" },
-    gold: { type: "number", description: "Optional gold reward" },
+    gold: { type: "number", description: "Optional gold reward (0 to 1,000,000)" },
     morality_delta: {
       type: "number",
       description:

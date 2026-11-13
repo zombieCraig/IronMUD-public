@@ -184,11 +184,11 @@ export class IronMUDApiClient {
   }
 
   async getArea(id: string): Promise<Area> {
-    return this.request<Area>("get", `/areas/${id}`);
+    return this.request<Area>("get", `/areas/${encodeURIComponent(String(id))}`);
   }
 
   async getAreaByPrefix(prefix: string): Promise<Area> {
-    return this.request<Area>("get", `/areas/by-prefix/${prefix}`);
+    return this.request<Area>("get", `/areas/by-prefix/${encodeURIComponent(String(prefix))}`);
   }
 
   async createArea(data: CreateAreaRequest): Promise<Area> {
@@ -199,23 +199,23 @@ export class IronMUDApiClient {
     id: string,
     data: UpdateAreaRequest
   ): Promise<Area> {
-    return this.request<Area>("put", `/areas/${id}`, data);
+    return this.request<Area>("put", `/areas/${encodeURIComponent(String(id))}`, data);
   }
 
   async deleteArea(id: string): Promise<void> {
-    await this.request("delete", `/areas/${id}`);
+    await this.request("delete", `/areas/${encodeURIComponent(String(id))}`);
   }
 
   async resetArea(id: string): Promise<{ message: string; spawned_count: number }> {
-    return this.request<{ message: string; spawned_count: number }>("post", `/areas/${id}/reset`);
+    return this.request<{ message: string; spawned_count: number }>("post", `/areas/${encodeURIComponent(String(id))}/reset`);
   }
 
   async listAreaRooms(areaId: string): Promise<Room[]> {
-    return this.listRequest<Room>(`/areas/${areaId}/rooms`);
+    return this.listRequest<Room>(`/areas/${encodeURIComponent(String(areaId))}/rooms`);
   }
 
   async getAreaOverview(areaId: string): Promise<AreaOverview> {
-    return this.request<AreaOverview>("get", `/areas/${areaId}/overview`);
+    return this.request<AreaOverview>("get", `/areas/${encodeURIComponent(String(areaId))}/overview`);
   }
 
   // Rooms
@@ -236,7 +236,7 @@ export class IronMUDApiClient {
   }
 
   async getRoom(id: string): Promise<Room> {
-    return this.request<Room>("get", `/rooms/${id}`);
+    return this.request<Room>("get", `/rooms/${encodeURIComponent(String(id))}`);
   }
 
   async getRoomByVnum(vnum: string): Promise<Room> {
@@ -251,11 +251,11 @@ export class IronMUDApiClient {
     id: string,
     data: Partial<CreateRoomRequest>
   ): Promise<Room> {
-    return this.request<Room>("put", `/rooms/${id}`, data);
+    return this.request<Room>("put", `/rooms/${encodeURIComponent(String(id))}`, data);
   }
 
   async deleteRoom(id: string): Promise<void> {
-    await this.request("delete", `/rooms/${id}`);
+    await this.request("delete", `/rooms/${encodeURIComponent(String(id))}`);
   }
 
   async setRoomExit(
@@ -265,7 +265,7 @@ export class IronMUDApiClient {
   ): Promise<Room> {
     return this.request<Room>(
       "put",
-      `/rooms/${roomId}/exits/${direction}`,
+      `/rooms/${encodeURIComponent(String(roomId))}/exits/${encodeURIComponent(String(direction))}`,
       data
     );
   }
@@ -273,7 +273,7 @@ export class IronMUDApiClient {
   async removeRoomExit(roomId: string, direction: string): Promise<Room> {
     return this.request<Room>(
       "delete",
-      `/rooms/${roomId}/exits/${direction}`
+      `/rooms/${encodeURIComponent(String(roomId))}/exits/${encodeURIComponent(String(direction))}`
     );
   }
 
@@ -284,7 +284,7 @@ export class IronMUDApiClient {
   ): Promise<Room> {
     return this.request<Room>(
       "put",
-      `/rooms/${roomId}/doors/${direction}`,
+      `/rooms/${encodeURIComponent(String(roomId))}/doors/${encodeURIComponent(String(direction))}`,
       data
     );
   }
@@ -292,23 +292,23 @@ export class IronMUDApiClient {
   async removeRoomDoor(roomId: string, direction: string): Promise<Room> {
     return this.request<Room>(
       "delete",
-      `/rooms/${roomId}/doors/${direction}`
+      `/rooms/${encodeURIComponent(String(roomId))}/doors/${encodeURIComponent(String(direction))}`
     );
   }
 
   async addRoomTrigger(roomId: string, data: AddTriggerRequest): Promise<Room> {
-    return this.request<Room>("post", `/rooms/${roomId}/triggers`, data);
+    return this.request<Room>("post", `/rooms/${encodeURIComponent(String(roomId))}/triggers`, data);
   }
 
   async removeRoomTrigger(roomId: string, index: number): Promise<Room> {
-    return this.request<Room>("delete", `/rooms/${roomId}/triggers/${index}`);
+    return this.request<Room>("delete", `/rooms/${encodeURIComponent(String(roomId))}/triggers/${encodeURIComponent(String(index))}`);
   }
 
   async addRoomExtraDesc(
     roomId: string,
     data: AddExtraDescRequest
   ): Promise<Room> {
-    return this.request<Room>("post", `/rooms/${roomId}/extra`, data);
+    return this.request<Room>("post", `/rooms/${encodeURIComponent(String(roomId))}/extra`, data);
   }
 
   async removeRoomExtraDesc(
@@ -317,7 +317,7 @@ export class IronMUDApiClient {
   ): Promise<Room> {
     return this.request<Room>(
       "delete",
-      `/rooms/${roomId}/extra/${encodeURIComponent(keyword)}`
+      `/rooms/${encodeURIComponent(String(roomId))}/extra/${encodeURIComponent(keyword)}`
     );
   }
 
@@ -347,7 +347,7 @@ export class IronMUDApiClient {
   }
 
   async getItem(id: string): Promise<Item> {
-    return this.request<Item>("get", `/items/${id}`);
+    return this.request<Item>("get", `/items/${encodeURIComponent(String(id))}`);
   }
 
   async getItemByVnum(vnum: string): Promise<Item> {
@@ -362,11 +362,11 @@ export class IronMUDApiClient {
     id: string,
     data: Partial<CreateItemRequest>
   ): Promise<{ data: Item; refreshed_instances?: number }> {
-    return this.requestWithMeta<Item>("put", `/items/${id}`, data);
+    return this.requestWithMeta<Item>("put", `/items/${encodeURIComponent(String(id))}`, data);
   }
 
   async deleteItem(id: string): Promise<void> {
-    await this.request("delete", `/items/${id}`);
+    await this.request("delete", `/items/${encodeURIComponent(String(id))}`);
   }
 
   async spawnItem(vnum: string, data: SpawnEntityRequest): Promise<Item> {
@@ -383,7 +383,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Item; refreshed_instances?: number }> {
     return this.requestWithMeta<Item>(
       "post",
-      `/items/${itemId}/triggers`,
+      `/items/${encodeURIComponent(String(itemId))}/triggers`,
       data
     );
   }
@@ -394,7 +394,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Item; refreshed_instances?: number }> {
     return this.requestWithMeta<Item>(
       "delete",
-      `/items/${itemId}/triggers/${index}`
+      `/items/${encodeURIComponent(String(itemId))}/triggers/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -404,7 +404,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Item; refreshed_instances?: number }> {
     return this.requestWithMeta<Item>(
       "post",
-      `/items/${itemId}/extra`,
+      `/items/${encodeURIComponent(String(itemId))}/extra`,
       data
     );
   }
@@ -415,7 +415,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Item; refreshed_instances?: number }> {
     return this.requestWithMeta<Item>(
       "delete",
-      `/items/${itemId}/extra/${encodeURIComponent(keyword)}`
+      `/items/${encodeURIComponent(String(itemId))}/extra/${encodeURIComponent(keyword)}`
     );
   }
 
@@ -440,7 +440,7 @@ export class IronMUDApiClient {
   }
 
   async getMobile(id: string): Promise<Mobile> {
-    return this.request<Mobile>("get", `/mobiles/${id}`);
+    return this.request<Mobile>("get", `/mobiles/${encodeURIComponent(String(id))}`);
   }
 
   async getMobileByVnum(vnum: string): Promise<Mobile> {
@@ -458,11 +458,11 @@ export class IronMUDApiClient {
     id: string,
     data: Partial<CreateMobileRequest>
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
-    return this.requestWithMeta<Mobile>("put", `/mobiles/${id}`, data);
+    return this.requestWithMeta<Mobile>("put", `/mobiles/${encodeURIComponent(String(id))}`, data);
   }
 
   async deleteMobile(id: string): Promise<void> {
-    await this.request("delete", `/mobiles/${id}`);
+    await this.request("delete", `/mobiles/${encodeURIComponent(String(id))}`);
   }
 
   async addMobileDialogue(
@@ -471,7 +471,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/dialogue`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue`,
       data
     );
   }
@@ -482,7 +482,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "delete",
-      `/mobiles/${mobileId}/dialogue/${encodeURIComponent(keyword)}`
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue/${encodeURIComponent(keyword)}`
     );
   }
 
@@ -493,7 +493,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "put",
-      `/mobiles/${mobileId}/dialogue_tree/root`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/root`,
       { node_name: nodeName }
     );
   }
@@ -504,7 +504,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/dialogue_tree/nodes`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes`,
       data
     );
   }
@@ -516,7 +516,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "put",
-      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`,
       data
     );
   }
@@ -527,7 +527,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "delete",
-      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`
     );
   }
 
@@ -538,7 +538,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`,
       data
     );
   }
@@ -551,7 +551,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "put",
-      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${encodeURIComponent(String(index))}`,
       data
     );
   }
@@ -563,7 +563,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "delete",
-      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`
+      `/mobiles/${encodeURIComponent(String(mobileId))}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -580,7 +580,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/routine`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/routine`,
       data
     );
   }
@@ -591,7 +591,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "delete",
-      `/mobiles/${mobileId}/routine/${index}`
+      `/mobiles/${encodeURIComponent(String(mobileId))}/routine/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -601,7 +601,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/triggers`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/triggers`,
       data
     );
   }
@@ -612,7 +612,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "delete",
-      `/mobiles/${mobileId}/triggers/${index}`
+      `/mobiles/${encodeURIComponent(String(mobileId))}/triggers/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -647,7 +647,7 @@ export class IronMUDApiClient {
   ): Promise<{ data: Mobile; refreshed_instances?: number }> {
     return this.requestWithMeta<Mobile>(
       "post",
-      `/mobiles/${mobileId}/preset`,
+      `/mobiles/${encodeURIComponent(String(mobileId))}/preset`,
       { preset_id: presetId }
     );
   }
@@ -663,7 +663,7 @@ export class IronMUDApiClient {
   }
 
   async getSpawnPoint(id: string): Promise<SpawnPoint> {
-    return this.request<SpawnPoint>("get", `/spawn-points/${id}`);
+    return this.request<SpawnPoint>("get", `/spawn-points/${encodeURIComponent(String(id))}`);
   }
 
   async createSpawnPoint(data: CreateSpawnPointRequest): Promise<SpawnPoint> {
@@ -674,11 +674,11 @@ export class IronMUDApiClient {
     id: string,
     data: Partial<CreateSpawnPointRequest>
   ): Promise<SpawnPoint> {
-    return this.request<SpawnPoint>("put", `/spawn-points/${id}`, data);
+    return this.request<SpawnPoint>("put", `/spawn-points/${encodeURIComponent(String(id))}`, data);
   }
 
   async deleteSpawnPoint(id: string): Promise<void> {
-    await this.request("delete", `/spawn-points/${id}`);
+    await this.request("delete", `/spawn-points/${encodeURIComponent(String(id))}`);
   }
 
   async addSpawnDependency(
@@ -687,7 +687,7 @@ export class IronMUDApiClient {
   ): Promise<SpawnPoint> {
     return this.request<SpawnPoint>(
       "post",
-      `/spawn-points/${spawnPointId}/dependencies`,
+      `/spawn-points/${encodeURIComponent(String(spawnPointId))}/dependencies`,
       data
     );
   }
@@ -698,7 +698,7 @@ export class IronMUDApiClient {
   ): Promise<SpawnPoint> {
     return this.request<SpawnPoint>(
       "delete",
-      `/spawn-points/${spawnPointId}/dependencies/${index}`
+      `/spawn-points/${encodeURIComponent(String(spawnPointId))}/dependencies/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -747,7 +747,7 @@ export class IronMUDApiClient {
   ): Promise<Transport> {
     return this.request<Transport>(
       "delete",
-      `/transports/${encodeURIComponent(transportId)}/stops/${index}`
+      `/transports/${encodeURIComponent(transportId)}/stops/${encodeURIComponent(String(index))}`
     );
   }
 
@@ -779,7 +779,7 @@ export class IronMUDApiClient {
   }
 
   async getPlantPrototype(id: string): Promise<PlantPrototype> {
-    return this.request<PlantPrototype>("get", `/plants/${id}`);
+    return this.request<PlantPrototype>("get", `/plants/${encodeURIComponent(String(id))}`);
   }
 
   async getPlantPrototypeByVnum(vnum: string): Promise<PlantPrototype> {
@@ -799,11 +799,11 @@ export class IronMUDApiClient {
     id: string,
     data: Partial<CreatePlantPrototypeRequest>
   ): Promise<PlantPrototype> {
-    return this.request<PlantPrototype>("put", `/plants/${id}`, data);
+    return this.request<PlantPrototype>("put", `/plants/${encodeURIComponent(String(id))}`, data);
   }
 
   async deletePlantPrototype(id: string): Promise<void> {
-    await this.request("delete", `/plants/${id}`);
+    await this.request("delete", `/plants/${encodeURIComponent(String(id))}`);
   }
 
   // Recipes (crafting & cooking)
@@ -858,14 +858,14 @@ export class IronMUDApiClient {
 
   // Area forage tables
   async listForageTables(areaId: string): Promise<ForageTables> {
-    return this.request<ForageTables>("get", `/areas/${areaId}/forage`);
+    return this.request<ForageTables>("get", `/areas/${encodeURIComponent(String(areaId))}/forage`);
   }
 
   async addForageEntry(
     areaId: string,
     data: AddForageEntryRequest
   ): Promise<Area> {
-    return this.request<Area>("post", `/areas/${areaId}/forage`, data);
+    return this.request<Area>("post", `/areas/${encodeURIComponent(String(areaId))}/forage`, data);
   }
 
   async removeForageEntry(
@@ -875,7 +875,7 @@ export class IronMUDApiClient {
   ): Promise<Area> {
     return this.request<Area>(
       "delete",
-      `/areas/${areaId}/forage/${forageType}/${encodeURIComponent(vnum)}`
+      `/areas/${encodeURIComponent(String(areaId))}/forage/${encodeURIComponent(String(forageType))}/${encodeURIComponent(vnum)}`
     );
   }
 
@@ -896,7 +896,7 @@ export class IronMUDApiClient {
   }
 
   async getBounty(ticket: number): Promise<BuildRequest> {
-    return this.request<BuildRequest>("get", `/bounties/${ticket}`);
+    return this.request<BuildRequest>("get", `/bounties/${encodeURIComponent(String(ticket))}`);
   }
 
   // === Content auditor ===
@@ -907,7 +907,7 @@ export class IronMUDApiClient {
   async auditEntity(kind: string, key: string): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>(
       "get",
-      `/audit/${kind}/${encodeURIComponent(key)}`
+      `/audit/${encodeURIComponent(String(kind))}/${encodeURIComponent(key)}`
     );
   }
 
@@ -975,11 +975,11 @@ export class IronMUDApiClient {
   // It is deliberately not a parameter: submitting is what decides who gets
   // paid.
   async claimBounty(ticket: number) {
-    return this.outcomeRequest(`/bounties/${ticket}/claim`, {});
+    return this.outcomeRequest(`/bounties/${encodeURIComponent(String(ticket))}/claim`, {});
   }
 
   async submitBounty(ticket: number, linked: string[]) {
-    return this.outcomeRequest(`/bounties/${ticket}/submit`, { linked });
+    return this.outcomeRequest(`/bounties/${encodeURIComponent(String(ticket))}/submit`, { linked });
   }
 
   async listBugReports(status?: string): Promise<BugReport[]> {
@@ -992,29 +992,29 @@ export class IronMUDApiClient {
   }
 
   async getBugReport(id: string): Promise<BugReport> {
-    return this.request<BugReport>("get", `/bugs/${id}`);
+    return this.request<BugReport>("get", `/bugs/${encodeURIComponent(String(id))}`);
   }
 
   async getBugReportByTicket(num: number): Promise<BugReport> {
-    return this.request<BugReport>("get", `/bugs/by-ticket/${num}`);
+    return this.request<BugReport>("get", `/bugs/by-ticket/${encodeURIComponent(String(num))}`);
   }
 
   async updateBugReport(
     id: string,
     data: UpdateBugReportRequest
   ): Promise<BugReport> {
-    return this.request<BugReport>("put", `/bugs/${id}`, data);
+    return this.request<BugReport>("put", `/bugs/${encodeURIComponent(String(id))}`, data);
   }
 
   async addBugNote(
     id: string,
     data: AddBugNoteRequest
   ): Promise<BugReport> {
-    return this.request<BugReport>("post", `/bugs/${id}/notes`, data);
+    return this.request<BugReport>("post", `/bugs/${encodeURIComponent(String(id))}/notes`, data);
   }
 
   async deleteBugReport(id: string): Promise<void> {
-    await this.request("delete", `/bugs/${id}`);
+    await this.request("delete", `/bugs/${encodeURIComponent(String(id))}`);
   }
 
   // Achievements

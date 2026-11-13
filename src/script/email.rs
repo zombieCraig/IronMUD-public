@@ -32,6 +32,13 @@ const RESEND_HOURLY_CAP: i32 = 3;
 const RESEND_DAILY_CAP: i32 = 5;
 
 const RESEND_WINDOW_SECS: i64 = 3600;
+
+/// How long a `forgot` temp password stays redeemable.
+pub const RESET_TOKEN_TTL_SECS: i64 = 3600;
+
+/// Wrong guesses allowed against one email verification code before it is
+/// invalidated and the player must request a new one.
+pub const MAX_CODE_ATTEMPTS: i32 = 5;
 const RESEND_DAY_WINDOW_SECS: i64 = 86_400;
 
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
@@ -151,6 +158,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
             account.email_verification_code = Some(code.clone());
             account.email_verification_code_expires_at = now + ttl;
+            account.email_verification_attempts = 0;
             account.email_verification_last_sent_at = now;
 
             // Roll the resend window. If the previous window has expired,
@@ -189,6 +197,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     //   1 = no code outstanding
     //   2 = expired
     //   3 = mismatch
+    //   4 = too many wrong guesses; the code is now invalidated
     let cloned_db = db.clone();
     engine.register_fn("verify_account_code", move |account_id: String, code: String| -> i64 {
         let uuid = match Uuid::parse_str(&account_id) {
@@ -209,8 +218,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         let entered = code.trim();
         if entered != stored {
-            return 3;
+            account.email_verification_attempts = account.email_verification_attempts.saturating_add(1);
+            let exhausted = account.email_verification_attempts >= MAX_CODE_ATTEMPTS;
+            if exhausted {
+                account.email_verification_code = None;
+                account.email_verification_code_expires_at = 0;
+            }
+            let _ = cloned_db.save_account(account);
+            return if exhausted { 4 } else { 3 };
         }
+        account.email_verification_attempts = 0;
         account.email_verified = true;
         account.email_verification_code = None;
         account.email_verification_code_expires_at = 0;
@@ -424,13 +441,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     });
 
     // issue_password_reset(account_id_str) -> bool
-    // Generates a fresh random password, stamps the hash onto the account
-    // (auth source of truth) and onto every linked character (mirrored copies),
-    // forces must_change_password on every character, and dispatches the
-    // reset email. The hash is persisted before the send so a partial-network
-    // failure still leaves the account in a recoverable state — admins can
-    // hand the temp password to the player out of band, or the player can
-    // re-run forgot.
+    // Generates a fresh random temp password, records its hash as the
+    // account's *pending* reset (the real password keeps working), and queues
+    // the reset email. Returns true once the reset is recorded and the send is
+    // queued. The send runs on its own thread so a slow SMTP server neither
+    // stalls the script nor makes "account exists" measurably slower than the
+    // dummy-work branches in forgot.rhai.
     let cloned_db = db.clone();
     engine.register_fn("issue_password_reset", move |account_id: String| -> bool {
         let uuid = match Uuid::parse_str(&account_id) {
@@ -445,9 +461,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             .unwrap_or_default();
         match issue_password_reset_core(&cloned_db, &uuid) {
             Some((email, temp_password)) => {
-                let result = send_password_reset_email(&cloned_db, &email, &temp_password);
-                audit_email_send(&cloned_db, "reset", &account_name, audit_outcome_for(&result));
-                result.is_ok()
+                let db = cloned_db.clone();
+                std::thread::spawn(move || {
+                    let result = send_password_reset_email(&db, &email, &temp_password);
+                    audit_email_send(&db, "reset", &account_name, audit_outcome_for(&result));
+                });
+                true
             }
             None => false,
         }
@@ -460,6 +479,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // on success, otherwise the EmailError display text (e.g.
     // "missing SMTP config: smtp_host", "bad email address: ...",
     // "SMTP send failed: ...") so the admin sees the real failure, not a bool.
+    // verify_account_login(account_id_str, password) -> bool
+    // Login password check. See [`verify_account_login`].
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "verify_account_login",
+        move |account_id: String, password: String| -> bool {
+            match Uuid::parse_str(&account_id) {
+                Ok(uuid) => verify_account_login(&cloned_db, &uuid, &password),
+                Err(_) => false,
+            }
+        },
+    );
+
     let cloned_db = db.clone();
     engine.register_fn(
         "send_test_email",
@@ -474,12 +506,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     );
 }
 
-/// Rotates the password on `account_id` and every linked character, marks all
-/// characters `must_change_password`, advances the throttle counters, and
-/// returns the fresh email/temp-password pair so the caller can dispatch the
-/// SMTP send. Returns `None` when the account is missing, has no email on
-/// file, or DB writes fail. The hash is persisted before the email send so a
-/// partial-network failure still leaves the account in a recoverable state.
+/// Records a fresh temp password as `account_id`'s pending reset, advances
+/// the throttle counters, and returns the email/temp-password pair for the
+/// caller to send. The real password is untouched: anyone can type a victim's
+/// email into `forgot`, so issuing a reset must not lock the owner out. The
+/// temp password only replaces it when used to log in (see
+/// [`verify_account_login`]). Returns `None` when the account is missing, has
+/// no email on file, or DB writes fail.
 pub fn issue_password_reset_core(db: &Db, account_id: &Uuid) -> Option<(String, String)> {
     let mut account = db.get_account_by_id(account_id).ok().flatten()?;
     let email = match account.email.clone() {
@@ -490,8 +523,9 @@ pub fn issue_password_reset_core(db: &Db, account_id: &Uuid) -> Option<(String, 
     let temp_password = generate_temp_password();
     let hash = db.hash_password(&temp_password).ok()?;
 
-    account.password_hash = hash.clone();
     let now = now_secs();
+    account.pending_reset_hash = Some(hash);
+    account.pending_reset_expires_at = now + RESET_TOKEN_TTL_SECS;
     account.password_reset_last_sent_at = now;
     if now - account.password_reset_window_started_at > RESEND_WINDOW_SECS {
         account.password_reset_window_started_at = now;
@@ -505,19 +539,58 @@ pub fn issue_password_reset_core(db: &Db, account_id: &Uuid) -> Option<(String, 
     } else {
         account.password_reset_day_count += 1;
     }
-
-    let character_names = account.character_names.clone();
     db.save_account(account).ok()?;
 
+    Some((email, temp_password))
+}
+
+/// Check a login password for `account_id`.
+///
+/// The real password always works, and using it cancels any outstanding
+/// reset (the owner evidently still knows it). Otherwise an unexpired pending
+/// reset password is accepted and promoted: it becomes the account password,
+/// is mirrored onto every linked character, and those characters are flagged
+/// `must_change_password`.
+pub fn verify_account_login(db: &Db, account_id: &Uuid, password: &str) -> bool {
+    let Ok(Some(mut account)) = db.get_account_by_id(account_id) else {
+        return false;
+    };
+    if db.verify_password(password, &account.password_hash).unwrap_or(false) {
+        if account.pending_reset_hash.is_some() {
+            account.pending_reset_hash = None;
+            account.pending_reset_expires_at = 0;
+            let _ = db.save_account(account);
+        }
+        return true;
+    }
+    let Some(pending) = account.pending_reset_hash.clone() else {
+        return false;
+    };
+    if now_secs() >= account.pending_reset_expires_at {
+        account.pending_reset_hash = None;
+        account.pending_reset_expires_at = 0;
+        let _ = db.save_account(account);
+        return false;
+    }
+    if !db.verify_password(password, &pending).unwrap_or(false) {
+        return false;
+    }
+
+    account.password_hash = pending.clone();
+    account.pending_reset_hash = None;
+    account.pending_reset_expires_at = 0;
+    let character_names = account.character_names.clone();
+    if db.save_account(account).is_err() {
+        return false;
+    }
     for name in &character_names {
         if let Ok(Some(mut character)) = db.get_character_data(name) {
-            character.password_hash = hash.clone();
+            character.password_hash = pending.clone();
             character.must_change_password = true;
             let _ = db.save_character_data(character);
         }
     }
-
-    Some((email, temp_password))
+    true
 }
 
 fn now_secs() -> i64 {
@@ -583,28 +656,103 @@ mod password_reset_tests {
     }
 
     #[test]
-    fn issue_password_reset_rotates_account_hash_and_forces_character_change() {
-        let t = open_temp("rotate");
+    fn issue_password_reset_leaves_the_real_password_working() {
+        let t = open_temp("pending");
         let acc_id = make_account_with_character(&t.db, "Alice", "alice@example.test", "old-password");
         let original_hash = t.db.get_account_by_id(&acc_id).unwrap().unwrap().password_hash;
 
-        let result = issue_password_reset_core(&t.db, &acc_id);
-        let (email, temp_pw) = result.expect("reset returned email/password");
+        let (email, temp_pw) = issue_password_reset_core(&t.db, &acc_id).expect("reset returned email/password");
         assert_eq!(email, "alice@example.test");
         assert_eq!(temp_pw.len(), 12);
 
         let after = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
-        assert_ne!(after.password_hash, original_hash, "account hash must rotate");
-        assert!(t.db.verify_password(&temp_pw, &after.password_hash).unwrap_or(false));
+        assert_eq!(
+            after.password_hash, original_hash,
+            "a reset request must not touch the real password"
+        );
+        assert!(after.pending_reset_hash.is_some());
+        assert!(after.pending_reset_expires_at > now_secs());
         assert_eq!(after.password_reset_count, 1);
         assert!(after.password_reset_last_sent_at > 0);
+        let character = t.db.get_character_data("Alice").unwrap().unwrap();
+        assert!(
+            !character.must_change_password,
+            "nothing changes until the temp password is used"
+        );
 
+        // The owner, still knowing the old password, logs in: the reset is void.
+        assert!(verify_account_login(&t.db, &acc_id, "old-password"));
+        assert!(!verify_account_login(&t.db, &acc_id, &temp_pw));
+        assert!(
+            t.db.get_account_by_id(&acc_id)
+                .unwrap()
+                .unwrap()
+                .pending_reset_hash
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn using_the_temp_password_promotes_it_and_forces_a_change() {
+        let t = open_temp("redeem");
+        let acc_id = make_account_with_character(&t.db, "Alice", "alice@example.test", "old-password");
+        let (_, temp_pw) = issue_password_reset_core(&t.db, &acc_id).unwrap();
+
+        assert!(!verify_account_login(&t.db, &acc_id, "wrong-guess"));
+        assert!(verify_account_login(&t.db, &acc_id, &temp_pw));
+
+        let after = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        assert!(t.db.verify_password(&temp_pw, &after.password_hash).unwrap());
+        assert!(after.pending_reset_hash.is_none());
+        assert!(!verify_account_login(&t.db, &acc_id, "old-password"));
         let character = t.db.get_character_data("Alice").unwrap().unwrap();
         assert_eq!(character.password_hash, after.password_hash);
+        assert!(character.must_change_password);
+    }
+
+    #[test]
+    fn expired_temp_password_is_refused() {
+        let t = open_temp("expired");
+        let acc_id = make_account_with_character(&t.db, "Alice", "alice@example.test", "old-password");
+        let (_, temp_pw) = issue_password_reset_core(&t.db, &acc_id).unwrap();
+        let mut account = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        account.pending_reset_expires_at = now_secs() - 1;
+        t.db.save_account(account).unwrap();
+
+        assert!(!verify_account_login(&t.db, &acc_id, &temp_pw));
         assert!(
-            character.must_change_password,
-            "character must be flagged for forced password change"
+            t.db.get_account_by_id(&acc_id)
+                .unwrap()
+                .unwrap()
+                .pending_reset_hash
+                .is_none()
         );
+        assert!(verify_account_login(&t.db, &acc_id, "old-password"));
+    }
+
+    #[test]
+    fn verification_code_is_void_after_too_many_wrong_guesses() {
+        let t = open_temp("attempts");
+        let acc_id = make_account_with_character(&t.db, "Alice", "alice@example.test", "pw-1234");
+        let mut account = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        account.email_verified = false;
+        account.email_verification_code = Some("123456".to_string());
+        account.email_verification_code_expires_at = now_secs() + 600;
+        t.db.save_account(account).unwrap();
+
+        let mut engine = Engine::new();
+        register(&mut engine, Arc::new(t.db.clone()));
+        let try_code = |code: &str| -> i64 {
+            engine
+                .eval(&format!(r#"verify_account_code("{acc_id}", "{code}")"#))
+                .unwrap()
+        };
+        for _ in 1..MAX_CODE_ATTEMPTS {
+            assert_eq!(try_code("000000"), 3);
+        }
+        assert_eq!(try_code("000000"), 4, "last allowed guess voids the code");
+        assert_eq!(try_code("123456"), 1, "the right code no longer works");
+        assert!(!t.db.get_account_by_id(&acc_id).unwrap().unwrap().email_verified);
     }
 
     #[test]

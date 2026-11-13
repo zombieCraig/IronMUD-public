@@ -10,7 +10,8 @@ use tracing::error;
 use ironmud::{BloodTrail, SharedConnections, SharedState, db};
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except, send_message_to_character, sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except, live_character, send_message_to_character,
+    sync_character_to_session,
 };
 use super::combat::{handle_synth_down, process_mobile_death, process_player_death};
 
@@ -82,7 +83,7 @@ fn process_bleeding_tick(db: &db::Db, connections: &SharedConnections, state: &S
 fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     // Collect player names outside the lock
     let player_names: Vec<String> = {
-        let conns = connections.lock().unwrap();
+        let conns = connections.lock();
         conns
             .iter()
             .filter_map(|(_, session)| {
@@ -96,7 +97,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, stat
     };
 
     for char_name in player_names {
-        let char = match db.get_character_data(&char_name)? {
+        let char = match live_character(connections, db, &char_name)? {
             Some(c) => c,
             None => continue,
         };
@@ -177,7 +178,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, stat
             if let Some(updated) = post {
                 char = updated;
             }
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
 
             send_message_to_character(connections, &char_name, "You collapse, unconscious from blood loss!");
             broadcast_to_room_except(
@@ -189,7 +190,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, stat
             continue;
         }
 
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
     }
 
     Ok(())

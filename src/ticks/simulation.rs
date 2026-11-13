@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use tokio::time::{Duration, interval};
 use tracing::{debug, error, warn};
 
@@ -998,7 +999,9 @@ fn try_forage_food<R: Rng>(db: &db::Db, mobile: &MobileData, room_id: Uuid, rng:
         return Ok(None);
     };
 
-    let entry = &table[rng.gen_range(0..table.len())];
+    let Some(entry) = table.choose(rng) else {
+        return Ok(None);
+    };
     let proto = match db.get_item_by_vnum(&entry.vnum)? {
         Some(p) => p,
         None => return Ok(None),
@@ -1045,7 +1048,9 @@ fn maybe_scavenge_pickup(
     if rng.r#gen::<f32>() > 0.25 {
         return Ok(());
     }
-    let pick = &items[rng.gen_range(0..items.len())];
+    let Some(pick) = items.choose(&mut rng) else {
+        return Ok(());
+    };
     db.move_item_to_mobile_inventory(&pick.id, &mobile.id)?;
     broadcast_to_room_awake(
         connections,
@@ -1404,7 +1409,7 @@ fn pick_emote_from_socials(
     if candidates.is_empty() {
         return None;
     }
-    let pick = &candidates[rng.gen_range(0..candidates.len())];
+    let pick = candidates.choose(rng)?;
     let template = pick.others_no_arg.as_deref()?;
     let actor = RenderParty {
         visible_name: short_desc,
@@ -1571,7 +1576,9 @@ fn maybe_converse(
         None => return Ok(()),
     };
 
-    let partner_social = partner.social.as_ref().unwrap();
+    let Some(partner_social) = partner.social.as_ref() else {
+        return Ok(());
+    };
     let partner_id = partner.id;
     let initiator_id = mobile.id;
     let game_day = current_game_day;
@@ -2423,8 +2430,9 @@ mod tests {
 
     #[test]
     fn bank_arrival_grants_gold_and_clears_goal() {
+        use parking_lot::Mutex;
         use std::collections::HashMap;
-        use std::sync::{Arc, Mutex};
+        use std::sync::Arc;
 
         let g = open_db("seek_bank_arrival");
         let area_id = make_area_with_wages(&g.db, "bk5", 0, 0, 0);

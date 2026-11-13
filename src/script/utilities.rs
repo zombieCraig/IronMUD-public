@@ -40,7 +40,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_mxp_enabled", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.mxp_enabled).unwrap_or(false)
         } else {
             false
@@ -51,7 +51,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("set_mxp_enabled", move |connection_id: String, enabled: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.mxp_enabled = enabled;
                 return true;
@@ -94,7 +94,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "mxp_or",
         move |mxp_text: String, plain_text: String, connection_id: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns = conns.lock().unwrap();
+                let conns = conns.lock();
                 if conns.get(&uuid).map(|s| s.mxp_enabled).unwrap_or(false) {
                     return mxp_text;
                 }
@@ -108,7 +108,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("send_mxp_message", move |connection_id: String, message: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 let output = if session.mxp_enabled {
                     // Send with MXP secure line prefix (ESC [ 1 z)
@@ -151,7 +151,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_colors_enabled", move |connection_id: String| -> bool {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.colors_enabled).unwrap_or(false)
         } else {
             false
@@ -164,7 +164,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_colors_enabled",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&uuid) {
                     session.colors_enabled = enabled;
                     return true;
@@ -178,7 +178,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_room_flags_enabled", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.show_room_flags).unwrap_or(false)
         } else {
             false
@@ -193,7 +193,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_room_flags_enabled",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&uuid) {
                     session.show_room_flags = enabled;
                     // Also persist to character data
@@ -217,7 +217,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_afk", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.afk).unwrap_or(false)
         } else {
             false
@@ -228,7 +228,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("set_afk", move |connection_id: String, is_afk: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.afk = is_afk;
                 return true;
@@ -241,7 +241,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("clear_afk", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.afk = false;
             }
@@ -251,7 +251,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // is_player_afk(char_name) -> bool - Check AFK status by character name
     let conns = connections.clone();
     engine.register_fn("is_player_afk", move |char_name: String| {
-        let conns = conns.lock().unwrap();
+        let conns = conns.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 if character.name.eq_ignore_ascii_case(&char_name) {
@@ -268,7 +268,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_abbrev_enabled", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns.get(&uuid).map(|s| s.abbrev_enabled).unwrap_or(true)
         } else {
             true
@@ -279,7 +279,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("set_abbrev_enabled", move |connection_id: String, enabled: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
+            let mut conns = conns.lock();
             if let Some(session) = conns.get_mut(&uuid) {
                 session.abbrev_enabled = enabled;
                 return true;
@@ -297,7 +297,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db_idle = db.clone();
     engine.register_fn("is_idle", move |connection_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 let idle_threshold: i64 = cloned_db_idle
                     .get_setting_or_default("idle_timeout_secs", "300")
@@ -319,7 +319,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_idle_duration", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -337,9 +337,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     let state_clone = state.clone();
     engine.register_fn("notify_friends_logout", move |char_name: String| {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         if let Ok(all_chars) = world.db.list_all_characters() {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             for char_data in all_chars {
                 if char_data
                     .friends
@@ -370,10 +370,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     let state_clone = state.clone();
     engine.register_fn("notify_friends_login", move |char_name: String| {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         // Get all characters to find who has this player as a friend
         if let Ok(all_chars) = world.db.list_all_characters() {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             for char_data in all_chars {
                 if char_data
                     .friends
@@ -406,7 +406,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // is_ignoring(player_name, target_name) -> bool - Check if player is ignoring target
     let state_clone = state.clone();
     engine.register_fn("is_ignoring", move |player_name: String, target_name: String| {
-        let world = state_clone.lock().unwrap();
+        let world = state_clone.lock();
         if let Ok(Some(char_data)) = world.db.get_character_data(&player_name) {
             return char_data
                 .ignored
@@ -419,7 +419,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // is_player_online(char_name) -> bool - Check if character is online
     let conns = connections.clone();
     engine.register_fn("is_player_online", move |char_name: String| {
-        let conns = conns.lock().unwrap();
+        let conns = conns.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 if character.name.eq_ignore_ascii_case(&char_name) {
@@ -434,7 +434,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     let cloned_db_idle2 = db.clone();
     engine.register_fn("is_player_idle", move |char_name: String| {
-        let conns = conns.lock().unwrap();
+        let conns = conns.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 if character.name.eq_ignore_ascii_case(&char_name) {
@@ -458,7 +458,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // is_player_disconnected(char_name) -> bool - Check if player is linkdead
     let conns = connections.clone();
     engine.register_fn("is_player_disconnected", move |char_name: String| {
-        let conns = conns.lock().unwrap();
+        let conns = conns.lock();
         for session in conns.values() {
             if let Some(ref character) = session.character {
                 if character.name.eq_ignore_ascii_case(&char_name) {
@@ -481,7 +481,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("is_builder_debug_enabled", move |connection_id: String| -> bool {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             if let Some(session) = conns.get(&uuid) {
                 if let Some(ref character) = session.character {
                     return character.builder_debug_enabled;
@@ -498,7 +498,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "set_builder_debug_enabled",
         move |connection_id: String, enabled: bool| -> bool {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
+                let mut conns = conns.lock();
                 if let Some(session) = conns.get_mut(&uuid) {
                     if let Some(ref mut character) = session.character {
                         character.builder_debug_enabled = enabled;
@@ -569,7 +569,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         "color_or",
         move |colored_text: String, plain_text: String, connection_id: String| -> String {
             if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns = conns.lock().unwrap();
+                let conns = conns.lock();
                 if conns.get(&uuid).map(|s| s.colors_enabled).unwrap_or(false) {
                     return colored_text;
                 }
@@ -608,7 +608,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_terminal_width", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns
                 .get(&uuid)
                 .map(|s| s.telnet_state.window_width as i64)
@@ -622,7 +622,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     engine.register_fn("get_terminal_height", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
+            let conns = conns.lock();
             conns
                 .get(&uuid)
                 .map(|s| s.telnet_state.window_height as i64)

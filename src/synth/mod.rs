@@ -59,6 +59,7 @@ pub fn synth_down_transition(ch: &mut CharacterData, now: i64) -> Option<SynthDo
 /// integration tests can drive it without constructing a PlayerSession.
 /// Returns (anything_changed, message_for_player_if_any, shutdown_expired).
 pub fn apply_chassis_tick_to_character(ch: &mut CharacterData, now: i64) -> (bool, Option<String>, bool) {
+    let max_hp = ch.effective_max_hp();
     let Some(state) = ch.synth_state.as_mut() else {
         return (false, None, false);
     };
@@ -89,7 +90,7 @@ pub fn apply_chassis_tick_to_character(ch: &mut CharacterData, now: i64) -> (boo
     }
 
     // Stages 0-2 are derived from HP each tick; CRITICAL never is.
-    let derived = synth_stage_for_hp(ch.hp, ch.max_hp);
+    let derived = synth_stage_for_hp(ch.hp, max_hp);
     let mut message = None;
     if derived != state.malfunction_stage {
         message = Some(stage_transition_message(state.malfunction_stage, derived).to_string());
@@ -120,7 +121,7 @@ pub fn process_chassis_tick(db: &db::Db, connections: &SharedConnections) -> Res
     let now = now_secs();
     let mut shutdowns = Vec::new();
 
-    let mut conns = connections.lock().unwrap();
+    let mut conns = connections.lock();
     for (_conn_id, session) in conns.iter_mut() {
         let ch = match session.character.as_mut() {
             Some(c) => c,
@@ -167,7 +168,7 @@ pub enum RepairOutcome {
 /// chassis demands SYNTH_CRITICAL_REPAIR_KITS in one go to clear the
 /// shutdown countdown. Caller saves.
 pub fn apply_kit_repair(ch: &mut CharacterData, now: i64, kits: i32) -> RepairOutcome {
-    let max_hp = ch.max_hp;
+    let max_hp = ch.effective_max_hp();
     let hp = ch.hp;
     let Some(state) = ch.synth_state.as_mut() else {
         return RepairOutcome::NotApplicable;
@@ -201,7 +202,7 @@ pub fn apply_kit_repair(ch: &mut CharacterData, now: i64, kits: i32) -> RepairOu
 /// Full workshop restore by a technician NPC: full HP, NOMINAL, countdown
 /// cleared, debuffs gone. No cooldown — the gate is gold. Caller saves.
 pub fn apply_technician_repair(ch: &mut CharacterData) -> RepairOutcome {
-    let max_hp = ch.max_hp;
+    let max_hp = ch.effective_max_hp();
     let Some(state) = ch.synth_state.as_mut() else {
         return RepairOutcome::NotApplicable;
     };

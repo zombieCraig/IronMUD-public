@@ -37,7 +37,7 @@ fn err_map(error: &str) -> rhai::Map {
 }
 
 fn clone_defs(state: &SharedState) -> HashMap<String, MutationDefinition> {
-    state.lock().map(|w| w.mutation_definitions.clone()).unwrap_or_default()
+    state.lock().mutation_definitions.clone()
 }
 
 fn def_to_map(def: &MutationDefinition) -> rhai::Map {
@@ -72,10 +72,7 @@ pub fn register_mutant_functions(engine: &mut Engine, db: Arc<Db>, connections: 
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -97,10 +94,7 @@ pub fn register_mutant_functions(engine: &mut Engine, db: Arc<Db>, connections: 
             Err(_) => return String::new(),
         };
         let defs = clone_defs(&cstate);
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return String::new(),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return String::new(),
@@ -136,10 +130,7 @@ pub fn register_mutant_functions(engine: &mut Engine, db: Arc<Db>, connections: 
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -250,10 +241,7 @@ pub fn register_mutant_functions(engine: &mut Engine, db: Arc<Db>, connections: 
                 return err_map("passive");
             }
             let mp_spent = mp.clamp(1, 10) as i32;
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -333,14 +321,14 @@ fn read_character<T>(
     f: impl FnOnce(&crate::types::CharacterData) -> T,
 ) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock.get(&conn_id).and_then(|s| s.character.as_ref()).map(f)
 }
 
 /// Read helper: run `f` on the session's MutantState if present.
 fn read_mutant<T>(conns: &SharedConnections, connection_id: &str, f: impl FnOnce(&MutantState) -> T) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock
         .get(&conn_id)
         .and_then(|s| s.character.as_ref())
@@ -356,7 +344,7 @@ fn mutate_mutant<T>(
     f: impl FnOnce(&mut crate::types::CharacterData, &mut MutantState) -> T,
 ) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let mut conns_lock = conns.lock().ok()?;
+    let mut conns_lock = conns.lock();
     let ch = conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut())?;
     let mut state = ch.mutant_state.take()?;
     let out = f(ch, &mut state);

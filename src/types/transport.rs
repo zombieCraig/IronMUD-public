@@ -174,6 +174,22 @@ impl TransportData {
         self.stops.get(self.current_stop_index)
     }
 
+    /// Remove the stop at `index` (no-op past the end) and keep
+    /// `current_stop_index` pointing at a real stop.
+    pub fn remove_stop(&mut self, index: usize) -> Option<TransportStop> {
+        if index >= self.stops.len() {
+            return None;
+        }
+        let removed = self.stops.remove(index);
+        if index < self.current_stop_index {
+            self.current_stop_index -= 1;
+        }
+        if self.current_stop_index >= self.stops.len() {
+            self.current_stop_index = self.stops.len().saturating_sub(1);
+        }
+        Some(removed)
+    }
+
     /// Advance to the next stop, handling direction reversal for ping-pong routes
     pub fn advance_to_next_stop(&mut self) {
         if self.stops.is_empty() {
@@ -247,5 +263,40 @@ impl TransportRoute {
             is_at_destination: false,
             is_on_transport: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_stops(n: usize) -> TransportData {
+        let mut t = TransportData::new("lift".into(), Uuid::new_v4());
+        for i in 0..n {
+            t.stops.push(TransportStop {
+                room_id: Uuid::new_v4(),
+                name: format!("s{i}"),
+                exit_direction: "north".into(),
+            });
+        }
+        t
+    }
+
+    #[test]
+    fn removing_stops_keeps_the_current_index_valid() {
+        let mut t = with_stops(3);
+        t.current_stop_index = 2;
+        t.remove_stop(2);
+        assert_eq!(t.current_stop().unwrap().name, "s1");
+
+        let mut t = with_stops(3);
+        t.current_stop_index = 2;
+        t.remove_stop(0);
+        assert_eq!(t.current_stop().unwrap().name, "s2", "still points at the same stop");
+
+        let mut t = with_stops(1);
+        t.remove_stop(0);
+        assert!(t.current_stop().is_none());
+        assert!(t.remove_stop(5).is_none());
     }
 }

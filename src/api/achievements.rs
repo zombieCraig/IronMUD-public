@@ -56,10 +56,7 @@ async fn list_achievements(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let db_defs = state
-        .db
-        .list_all_achievements()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let db_defs = state.db.list_all_achievements()?;
     let mut data = Vec::new();
 
     for def in db_defs {
@@ -84,11 +81,7 @@ async fn get_achievement(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    match state
-        .db
-        .get_achievement(&key.to_lowercase())
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    match state.db.get_achievement(&key.to_lowercase())? {
         Some(def) => Ok(Json(AchievementResponse {
             success: true,
             data: def,
@@ -122,12 +115,7 @@ async fn create_achievement(
     }
     check_text_len("name", &req.name, NAME_MAX)?;
 
-    if state
-        .db
-        .get_achievement(&key)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_some()
-    {
+    if state.db.get_achievement(&key)?.is_some() {
         return Err(ApiError::Conflict(format!("Achievement '{}' already exists", key)));
     }
 
@@ -144,10 +132,7 @@ async fn create_achievement(
         },
     };
 
-    state
-        .db
-        .save_achievement(def.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_achievement(def.clone())?;
     // Mirror into the live world so the engine notify path (and player-facing
     // `achievements` list) sees it without a restart.
     crate::script::achievements::sync_world_after_save(&state.state, def.clone());
@@ -184,11 +169,7 @@ async fn update_achievement(
     }
 
     let key = key.to_lowercase();
-    let mut def = match state
-        .db
-        .get_achievement(&key)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    let mut def = match state.db.get_achievement(&key)? {
         Some(d) => d,
         None => return Err(ApiError::NotFound(format!("Achievement '{}' not found", key))),
     };
@@ -215,16 +196,16 @@ async fn update_achievement(
         if reward.trait_points < 0 {
             reward.trait_points = 0;
         }
+        if let Some(gold) = reward.gold {
+            crate::purse::check_reward_gold(gold as i64).map_err(ApiError::InvalidInput)?;
+        }
         def.reward = reward;
     }
     if let Some(hidden) = req.hidden {
         def.hidden = hidden;
     }
 
-    state
-        .db
-        .save_achievement(def.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_achievement(def.clone())?;
     // Mirror the updated definition (criterion/counter index, hidden, etc.)
     // into the live world so the running engine picks it up immediately.
     crate::script::achievements::sync_world_after_save(&state.state, def.clone());
@@ -250,11 +231,7 @@ async fn delete_achievement(
     }
 
     let key = key.to_lowercase();
-    if state
-        .db
-        .delete_achievement(&key)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    if state.db.delete_achievement(&key)? {
         crate::script::achievements::sync_world_after_delete(&state.state, &key);
         notify_builders(
             &state.connections,

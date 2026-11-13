@@ -122,7 +122,10 @@ fn give_gold_to_player(char, target_char, amount, connection_id, target_conn) {
         return;
     }
 
-    add_character_gold(char.name, -amount);
+    if !add_character_gold(char.name, -amount) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     add_character_gold(target_char.name, amount);
 
     send_client_message(connection_id, "You give " + target_char.name + " " + amount + " gold coins.");
@@ -141,8 +144,16 @@ fn give_gold_to_mobile(char, target_mobile, amount, connection_id) {
         return;
     }
 
-    add_character_gold(char.name, -amount);
-    set_mobile_gold(target_mobile.id, target_mobile.gold + amount);
+    if !add_character_gold(char.name, -amount) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
+    if !add_mobile_gold(target_mobile.id, amount) {
+        // The mobile vanished mid-give; return the coins.
+        add_character_gold(char.name, amount);
+        send_client_message(connection_id, "They're no longer here.");
+        return;
+    }
 
     send_client_message(connection_id, "You give " + target_mobile.name + " " + amount + " gold coins.");
     broadcast_to_room(char.current_room_id, char.name + " gives " + target_mobile.name + " some gold.", char.name);

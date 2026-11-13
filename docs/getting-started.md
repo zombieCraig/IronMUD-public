@@ -15,7 +15,7 @@ This guide walks you through your first steps with IronMUD, from connecting to e
    telnet localhost 4000
    ```
 
-3. **Create your character**. The first character on a fresh database automatically becomes an administrator with full builder permissions.
+3. **Create your character**. The first character on a fresh database automatically becomes an administrator with full builder permissions when it's created from the server itself (a loopback connection, e.g. `telnet localhost 4000`). From anywhere else, set `IRONMUD_FIRST_USER_ADMIN=true` before creating it, or grant it afterwards with `ironmud-admin user grant-admin <name>`.
 
 4. **Look around**. You start in Oakvale Village's Town Square, the heart of the demo world.
 

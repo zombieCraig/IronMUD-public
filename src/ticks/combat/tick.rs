@@ -18,7 +18,7 @@ use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
 
 use crate::ticks::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake,
-    broadcast_to_room_except_awake_per_viewer, send_message_to_character, sync_character_to_session,
+    broadcast_to_room_except_awake_per_viewer, live_character, send_message_to_character, sync_character_to_session,
 };
 use crate::ticks::mobile::{
     filter_exits_by_stay_zone, find_player_name_in_room, get_opposite_direction_rust, get_valid_wander_exits,
@@ -48,7 +48,7 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
 
     // Raging players acquire targets before the round list is built so a
     // fresh engagement swings this round, not next.
-    if let Err(e) = super::rage::process_rage_acquisitions(db, connections, state) {
+    if let Err(e) = super::rage::process_rage_acquisitions(db, connections) {
         debug!("Rage acquisition error: {}", e);
     }
 
@@ -112,7 +112,7 @@ fn process_character_combat_round(
     char_name: &str,
 ) -> Result<()> {
     debug!("Processing combat for character {}", char_name);
-    let mut char = match db.get_character_data(char_name)? {
+    let mut char = match live_character(connections, db, char_name)? {
         Some(c) => c,
         None => {
             debug!("Character {} not found", char_name);
@@ -193,7 +193,8 @@ fn process_character_combat_round(
                 send_message_to_character(connections, char_name, "\x1b[1;31mPanic seizes you — you bolt!\x1b[0m");
                 // Inject the flee command so flee.rhai resolves stamina,
                 // flee chance, and triggers exactly as a voluntary flee.
-                if let Ok(conns) = connections.lock() {
+                {
+                    let conns = connections.lock();
                     for session in conns.values() {
                         if let Some(ref sc) = session.character {
                             if sc.name.eq_ignore_ascii_case(char_name) {
@@ -297,7 +298,7 @@ fn process_character_combat_round(
             char.is_unconscious = true;
             char.bleedout_rounds_remaining = 5;
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
 
             send_message_to_character(connections, char_name, "You collapse, unconscious!");
             broadcast_to_room_except(
@@ -348,7 +349,7 @@ fn process_character_combat_round(
     if char.combat.reloading {
         char.combat.reloading = false;
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
         send_message_to_character(connections, char_name, "You finish reloading.");
         return Ok(());
     }
@@ -363,7 +364,7 @@ fn process_character_combat_round(
             // Too exhausted - skip turn but restore minimum stamina
             char.stamina = MIN_STAMINA_RESTORE;
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
             send_message_to_character(
                 connections,
                 char_name,
@@ -397,7 +398,6 @@ fn process_character_combat_round(
             process_character_attacks_mobile(
                 db,
                 connections,
-                state,
                 &mut char,
                 &target.target_id,
                 &mut kill_info,
@@ -424,7 +424,7 @@ fn process_character_combat_round(
     }
 
     db.save_character_data(char.clone())?;
-    sync_character_to_session(connections, &char, state);
+    sync_character_to_session(connections, &char, db);
 
     // Kill-credit notifications run AFTER the char save+sync above so they are
     // the last writers. They mutate the character out-of-band (the achievement
@@ -617,12 +617,12 @@ fn process_helper_joins(
 /// fallback). One side tagged and the other empty = NOT ally. Both tagged =
 /// ally iff case-insensitive equal.
 fn factions_match(a: &Option<String>, b: &Option<String>) -> bool {
-    let a_empty = a.as_deref().map(str::is_empty).unwrap_or(true);
-    let b_empty = b.as_deref().map(str::is_empty).unwrap_or(true);
-    match (a_empty, b_empty) {
-        (true, true) => true,
-        (true, false) | (false, true) => false,
-        (false, false) => a.as_deref().unwrap().eq_ignore_ascii_case(b.as_deref().unwrap()),
+    let a = a.as_deref().filter(|s| !s.is_empty());
+    let b = b.as_deref().filter(|s| !s.is_empty());
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
     }
 }
 
@@ -630,8 +630,9 @@ fn factions_match(a: &Option<String>, b: &Option<String>) -> bool {
 mod tests {
     use super::*;
     use ironmud::CharacterPosition;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     #[test]
@@ -768,21 +769,12 @@ mod tests {
 
             let mut attacker = mk_char("attacker", room, victim.id);
             let conns = empty_connections();
-            let state = dummy_state(db, &conns);
 
             let mut kill = None;
             let mut skill_gain = None;
             for _ in 0..500 {
-                process_character_attacks_mobile(
-                    db,
-                    &conns,
-                    &state,
-                    &mut attacker,
-                    &victim.id,
-                    &mut kill,
-                    &mut skill_gain,
-                )
-                .expect("swing resolves");
+                process_character_attacks_mobile(db, &conns, &mut attacker, &victim.id, &mut kill, &mut skill_gain)
+                    .expect("swing resolves");
                 if kill.is_some() {
                     break;
                 }
@@ -851,7 +843,7 @@ mod tests {
             let (tx_input, _rx_in) = tokio::sync::mpsc::channel::<ironmud::InputEvent>(1);
             let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
             session.character = Some(c.clone());
-            conns.lock().unwrap().insert(Uuid::new_v4(), session);
+            conns.lock().insert(Uuid::new_v4(), session);
             // Leak the receivers: dropping them closes the channel and every
             // send after that fails, which would silence the messages under
             // test.
@@ -1129,7 +1121,6 @@ struct MobKill {
 fn process_character_attacks_mobile(
     db: &db::Db,
     connections: &SharedConnections,
-    state: &SharedState,
     char: &mut CharacterData,
     target_id: &uuid::Uuid,
     kill_out: &mut Option<MobKill>,
@@ -1149,7 +1140,7 @@ fn process_character_attacks_mobile(
             }
             // Save changes to database and sync to session
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, char, state);
+            sync_character_to_session(connections, char, db);
             return Ok(());
         }
     };
@@ -1165,7 +1156,7 @@ fn process_character_attacks_mobile(
             char.combat.distances.clear();
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, char, state);
+        sync_character_to_session(connections, char, db);
         send_message_to_character(connections, &char.name, "Your target is no longer here.");
         return Ok(());
     }
@@ -1255,7 +1246,7 @@ fn process_character_attacks_mobile(
                                 if char.combat.ammo_depleted == 0 {
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
-                                    sync_character_to_session(connections, char, state);
+                                    sync_character_to_session(connections, char, db);
                                     send_message_to_character(
                                         connections,
                                         &char.name,
@@ -1341,7 +1332,7 @@ fn process_character_attacks_mobile(
                                 if char.combat.ammo_depleted == 0 {
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
-                                    sync_character_to_session(connections, char, state);
+                                    sync_character_to_session(connections, char, db);
                                     send_message_to_character(connections, &char.name, "You're out of ammunition!");
                                     return Ok(());
                                 }
@@ -1389,7 +1380,7 @@ fn process_character_attacks_mobile(
             // If still not at melee range, skip attack this round
             if closer != CombatDistance::Melee {
                 db.save_character_data(char.clone())?;
-                sync_character_to_session(connections, char, state);
+                sync_character_to_session(connections, char, db);
                 return Ok(());
             }
         }
@@ -1888,7 +1879,7 @@ fn process_character_attacks_player(
         }
     }
 
-    let mut victim = match db.get_character_data(&target_name)? {
+    let mut victim = match live_character(connections, db, &target_name)? {
         Some(c) => c,
         None => {
             // Target logged out or was deleted.
@@ -1972,7 +1963,7 @@ fn process_character_attacks_player(
             }
         });
         db.save_character_data(victim.clone())?;
-        sync_character_to_session(connections, &victim, state);
+        sync_character_to_session(connections, &victim, db);
         return Ok(());
     }
 
@@ -2070,18 +2061,13 @@ fn process_character_attacks_player(
     apply_werewolf_combat_rage(connections, &mut victim, damage, &room_id);
 
     db.save_character_data(victim.clone())?;
-    sync_character_to_session(connections, &victim, state);
+    sync_character_to_session(connections, &victim, db);
     Ok(())
 }
 
 /// Attempt to have a mobile flee from combat
 /// Returns Some(true) if successfully fled, Some(false) if failed, None if couldn't attempt
-fn attempt_mobile_flee(
-    db: &db::Db,
-    connections: &SharedConnections,
-    mobile: &mut MobileData,
-    state: &SharedState,
-) -> Option<bool> {
+fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData) -> Option<bool> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -2148,7 +2134,8 @@ fn attempt_mobile_flee(
             // Target ID for players is stored as the player name
             // Find the character by searching connections
             let player_names: Vec<String> = {
-                if let Ok(conns) = connections.lock() {
+                {
+                    let conns = connections.lock();
                     conns
                         .iter()
                         .filter_map(|(_, session)| {
@@ -2161,14 +2148,12 @@ fn attempt_mobile_flee(
                             None
                         })
                         .collect()
-                } else {
-                    Vec::new()
                 }
             };
 
             // Update combat state for each player (lock is released now)
             for player_name in player_names {
-                if let Ok(Some(mut char_data)) = db.get_character_data(&player_name) {
+                if let Ok(Some(mut char_data)) = live_character(connections, db, &player_name) {
                     char_data.combat.targets.retain(|t| t.target_id != mobile.id);
                     if char_data.combat.targets.is_empty() {
                         char_data.combat.in_combat = false;
@@ -2182,7 +2167,7 @@ fn attempt_mobile_flee(
 
     // Sync all updated characters to their sessions (safe - no lock held)
     for char_data in chars_to_sync {
-        sync_character_to_session(connections, &char_data, state);
+        sync_character_to_session(connections, &char_data, db);
     }
 
     // Move mobile
@@ -2398,7 +2383,7 @@ fn process_mobile_combat_round(
             &room_id,
             &format!("{} shrieks in terror and scrambles to escape!", mobile.name),
         );
-        let _ = attempt_mobile_flee(db, connections, &mut mobile, state);
+        let _ = attempt_mobile_flee(db, connections, &mut mobile);
         return Ok(());
     }
 
@@ -2410,7 +2395,7 @@ fn process_mobile_combat_round(
             // Cowardly mobs always flee; normal mobs have 30% chance
             let should_flee = mobile.flags.cowardly || rng.gen_range(0..100) < 30;
             if should_flee {
-                if let Some(fled) = attempt_mobile_flee(db, connections, &mut mobile, state) {
+                if let Some(fled) = attempt_mobile_flee(db, connections, &mut mobile) {
                     if fled {
                         // Successfully fled - skip attack this round
                         return Ok(());
@@ -2582,8 +2567,7 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, state: 
     }
     if !to_fire.is_empty() {
         let snapshot = mobile.clone();
-        for &i in &to_fire {
-            let t = &snapshot.triggers[i];
+        for t in to_fire.iter().filter_map(|&i| snapshot.triggers.get(i)) {
             if let Some(body) = t.dg_body.as_deref() {
                 let _ = ironmud::script::dg::fire_mobile_dg(
                     body,
@@ -2736,7 +2720,7 @@ fn process_mobile_attacks_player(
 ) -> Result<()> {
     use rand::Rng;
 
-    let mut char = match db.get_character_data(player_name)? {
+    let mut char = match live_character(connections, db, player_name)? {
         Some(c) => c,
         None => return Ok(()),
     };
@@ -2754,7 +2738,7 @@ fn process_mobile_attacks_player(
     if was_sleeping {
         char.position = CharacterPosition::Standing;
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
         send_message_to_character(connections, player_name, "You are jolted awake by an attack!");
         broadcast_to_room_except_awake(
             connections,
@@ -2771,7 +2755,7 @@ fn process_mobile_attacks_player(
             char.combat.targets.push(CombatTarget::mobile(mobile.id));
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
     }
 
     let mut rng = rand::thread_rng();
@@ -2942,13 +2926,13 @@ fn process_mobile_attacks_player(
         // reload below and their writes survive it.
         match mechanic {
             CritMechanic::Bleed => {
-                add_character_wound_bleeding(db, player_name, &crit_body_part, severity)?;
+                add_character_wound_bleeding(db, connections, player_name, &crit_body_part, severity)?;
             }
             CritMechanic::StunBleed => {
-                add_character_wound_bleeding(db, player_name, &crit_body_part, 2)?;
+                add_character_wound_bleeding(db, connections, player_name, &crit_body_part, 2)?;
             }
             CritMechanic::Disable => {
-                escalate_character_wound_to_severe(db, player_name, &crit_body_part)?;
+                escalate_character_wound_to_severe(db, connections, player_name, &crit_body_part)?;
 
                 // Weapon drop on arm/hand disable
                 match crit_body_part.as_str() {
@@ -3007,8 +2991,8 @@ fn process_mobile_attacks_player(
         }
 
         // Reload character from DB to get any wounds that were added
-        // (add_character_wound_bleeding and escalate_character_wound_to_severe save directly to DB)
-        if let Some(fresh_char) = db.get_character_data(player_name)? {
+        // (add_character_wound_bleeding and escalate_character_wound_to_severe write the session copy)
+        if let Some(fresh_char) = live_character(connections, db, player_name)? {
             char = fresh_char;
         }
 
@@ -3036,7 +3020,7 @@ fn process_mobile_attacks_player(
         let race_id = char.race.to_lowercase();
         let dmg_type_str = damage_type.to_display_string();
         let race_resist = {
-            let world = state.lock().unwrap();
+            let world = state.lock();
             world
                 .race_definitions
                 .get(&race_id)
@@ -3115,7 +3099,7 @@ fn process_mobile_attacks_player(
     }
 
     // Sync updated character to session so prompt shows correct HP
-    sync_character_to_session(connections, &char, state);
+    sync_character_to_session(connections, &char, db);
 
     // Build message with crit text, coloured by damage type.
     let crit_text = ironmud::combat_text::crit_text(is_crit, &crit_effect, &crit_body_part, false, damage_type);
@@ -3183,7 +3167,7 @@ fn process_mobile_attacks_player(
             char.bleedout_rounds_remaining = 5; // 5 round bleedout timer
             let char_name_for_msg = char.name.clone();
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
 
             send_message_to_character(connections, player_name, "You collapse, unconscious!");
             broadcast_to_room_except_awake(
@@ -3196,7 +3180,7 @@ fn process_mobile_attacks_player(
             // If mobile is aggressive, they will continue attacking and kill the player
             if mobile.flags.aggressive {
                 // Reload character and process instant death
-                if let Ok(Some(mut char)) = db.get_character_data(player_name) {
+                if let Ok(Some(mut char)) = live_character(connections, db, player_name) {
                     process_player_death(db, connections, &mut char, room_id, state)?;
 
                     // Remove player from mobile's targets
@@ -3233,14 +3217,14 @@ fn mob_cast_spell_at_player(
 
     // Snapshot the spell definition so we don't hold the World lock past here.
     let spell = {
-        let world = state.lock().unwrap();
+        let world = state.lock();
         match world.spell_definitions.get(spell_id) {
             Some(s) => s.clone(),
             None => return Ok(false),
         }
     };
 
-    let mut char = match db.get_character_data(player_name)? {
+    let mut char = match live_character(connections, db, player_name)? {
         Some(c) => c,
         None => return Ok(false),
     };
@@ -3273,7 +3257,7 @@ fn mob_cast_spell_at_player(
             char.combat.targets.push(CombatTarget::mobile(mobile.id));
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char, state);
+        sync_character_to_session(connections, &char, db);
     }
 
     match spell.spell_type.as_str() {
@@ -3292,7 +3276,7 @@ fn mob_cast_spell_at_player(
                 let race_id = char.race.to_lowercase();
                 let dmg_type_str = damage_type.to_display_string();
                 let race_resist = {
-                    let world = state.lock().unwrap();
+                    let world = state.lock();
                     world
                         .race_definitions
                         .get(&race_id)
@@ -3340,7 +3324,7 @@ fn mob_cast_spell_at_player(
             if player_was_sleeping {
                 send_message_to_character(connections, &char.name, "You jolt awake!");
             }
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
 
             let dtype_lower = spell.damage_type.to_lowercase();
             send_message_to_character(
@@ -3388,7 +3372,7 @@ fn mob_cast_spell_at_player(
                     char.bleedout_rounds_remaining = 5;
                     let char_name_for_msg = char.name.clone();
                     db.save_character_data(char.clone())?;
-                    sync_character_to_session(connections, &char, state);
+                    sync_character_to_session(connections, &char, db);
                     send_message_to_character(connections, player_name, "You collapse, unconscious!");
                     broadcast_to_room_except_awake(
                         connections,
@@ -3397,7 +3381,7 @@ fn mob_cast_spell_at_player(
                         player_name,
                     );
                     if mobile.flags.aggressive {
-                        if let Ok(Some(mut char)) = db.get_character_data(player_name) {
+                        if let Ok(Some(mut char)) = live_character(connections, db, player_name) {
                             process_player_death(db, connections, &mut char, room_id, state)?;
                             mobile
                                 .combat
@@ -3438,7 +3422,7 @@ fn mob_cast_spell_at_player(
                 skill_key: None,
             });
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char, state);
+            sync_character_to_session(connections, &char, db);
 
             send_message_to_character(
                 connections,
@@ -3483,22 +3467,21 @@ pub fn parse_damage_dice(dice_str: &str) -> (i32, i32, i32) {
 
     // Parse formats: "2d6", "2d6+3", "2d6-1"
     let parts: Vec<&str> = dice_str.split('d').collect();
-    if parts.len() != 2 {
+    let [count_str, sides_and_bonus] = parts.as_slice() else {
         return (1, 4, 0);
-    }
+    };
 
-    let count: i32 = parts[0].parse().unwrap_or(1);
+    let count: i32 = count_str.parse().unwrap_or(1);
 
     // Check for bonus/penalty
-    let sides_and_bonus = parts[1];
     if sides_and_bonus.contains('+') {
         let sp: Vec<&str> = sides_and_bonus.split('+').collect();
-        let sides: i32 = sp[0].parse().unwrap_or(4);
+        let sides: i32 = sp.first().and_then(|s| s.parse().ok()).unwrap_or(4);
         let bonus: i32 = sp.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         return (count, sides, bonus);
     } else if sides_and_bonus.contains('-') {
         let sp: Vec<&str> = sides_and_bonus.split('-').collect();
-        let sides: i32 = sp[0].parse().unwrap_or(4);
+        let sides: i32 = sp.first().and_then(|s| s.parse().ok()).unwrap_or(4);
         let penalty: i32 = sp.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         return (count, sides, -penalty);
     }
@@ -3768,11 +3751,9 @@ fn get_effective_weapon_noise(db: &db::Db, weapon_id: &uuid::Uuid) -> String {
 
     // Apply attachment noise reduction
     let mut reduction: i32 = 0;
-    for content_id in &item.container_contents {
-        if let Ok(Some(att)) = db.get_item_data(content_id) {
-            if !att.attachment_slot.is_empty() {
-                reduction += att.attachment_noise_reduction;
-            }
+    for att in db.get_items_in_container(&item.id).unwrap_or_default() {
+        if !att.attachment_slot.is_empty() {
+            reduction += att.attachment_noise_reduction;
         }
     }
 
@@ -3783,7 +3764,7 @@ fn get_effective_weapon_noise(db: &db::Db, weapon_id: &uuid::Uuid) -> String {
     let levels = ["silent", "quiet", "normal", "loud"];
     let idx = levels.iter().position(|l| *l == base).unwrap_or(2) as i32;
     let new_idx = (idx - reduction).max(0) as usize;
-    levels[new_idx].to_string()
+    levels.get(new_idx).copied().unwrap_or("silent").to_string()
 }
 
 /// Broadcast gunshot noise to rooms adjacent to the given room
@@ -3868,20 +3849,31 @@ fn escalate_mobile_wound_to_severe(db: &db::Db, mobile_id: &uuid::Uuid, body_par
 }
 
 /// Add bleeding to a character's wound on a body part
-fn add_character_wound_bleeding(db: &db::Db, char_name: &str, body_part: &str, severity: i32) -> Result<()> {
-    if let Ok(Some(mut char)) = db.get_character_data(char_name) {
-        add_wound_bleeding(&mut char, body_part, severity);
-        db.save_character_data(char)?;
-    }
+fn add_character_wound_bleeding(
+    db: &db::Db,
+    connections: &SharedConnections,
+    char_name: &str,
+    body_part: &str,
+    severity: i32,
+) -> Result<()> {
+    ironmud::script::achievements::apply_to_character(db, connections, char_name, |c| {
+        add_wound_bleeding(c, body_part, severity);
+        true
+    });
     Ok(())
 }
 
 /// Escalate a character's wound to Severe level (limb disable)
-fn escalate_character_wound_to_severe(db: &db::Db, char_name: &str, body_part: &str) -> Result<()> {
-    if let Ok(Some(mut char)) = db.get_character_data(char_name) {
-        escalate_wound_to_severe(&mut char, body_part);
-        db.save_character_data(char)?;
-    }
+fn escalate_character_wound_to_severe(
+    db: &db::Db,
+    connections: &SharedConnections,
+    char_name: &str,
+    body_part: &str,
+) -> Result<()> {
+    ironmud::script::achievements::apply_to_character(db, connections, char_name, |c| {
+        escalate_wound_to_severe(c, body_part);
+        true
+    });
     Ok(())
 }
 
@@ -3909,7 +3901,7 @@ pub fn handle_synth_down(
     match synth_down_transition(char, now) {
         Some(SynthDownOutcome::Critical) => {
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, char, state);
+            sync_character_to_session(connections, char, db);
             send_message_to_character(connections, &char.name, SYNTH_CRITICAL_MESSAGE);
             broadcast_to_room_except_awake(
                 connections,
@@ -4006,27 +3998,17 @@ pub fn process_mobile_death(
     debug!("process_mobile_death: transferring mobile items to corpse");
     if let Ok(inventory_items) = db.get_items_in_mobile_inventory(&mobile.id) {
         for item in inventory_items {
-            let item_id = item.id;
             let mut updated_item = item;
             updated_item.flags.death_only = false;
             updated_item.location = ItemLocation::Container(corpse_id);
-            if let Ok(Some(mut corpse)) = db.get_item_data(&corpse_id) {
-                corpse.container_contents.push(item_id);
-                let _ = db.save_item_data(corpse);
-            }
             let _ = db.save_item_data(updated_item);
         }
     }
     if let Ok(equipped_items) = db.get_items_equipped_on_mobile(&mobile.id) {
         for item in equipped_items {
-            let item_id = item.id;
             let mut updated_item = item;
             updated_item.flags.death_only = false;
             updated_item.location = ItemLocation::Container(corpse_id);
-            if let Ok(Some(mut corpse)) = db.get_item_data(&corpse_id) {
-                corpse.container_contents.push(item_id);
-                let _ = db.save_item_data(corpse);
-            }
             let _ = db.save_item_data(updated_item);
         }
     }
@@ -4100,11 +4082,6 @@ fn process_arrow_recovery(db: &db::Db, mobile: &MobileData, corpse_id: &uuid::Uu
         // Place into corpse container
         spawned.location = ItemLocation::Container(*corpse_id);
         spawned.ammo_count = 1;
-        if db.save_item_data(spawned.clone()).is_ok() {
-            if let Ok(Some(mut corpse)) = db.get_item_data(corpse_id) {
-                corpse.container_contents.push(spawned.id);
-                let _ = db.save_item_data(corpse);
-            }
-        }
+        if db.save_item_data(spawned.clone()).is_ok() {}
     }
 }

@@ -204,10 +204,7 @@ async fn list_areas(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let areas = state
-        .db
-        .list_all_areas()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let areas = state.db.list_all_areas()?;
 
     Ok(Json(AreasListResponse {
         success: true,
@@ -229,8 +226,7 @@ async fn get_area(
 
     let area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     Ok(Json(AreaResponse {
@@ -249,10 +245,7 @@ async fn get_area_by_prefix(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let areas = state
-        .db
-        .list_all_areas()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let areas = state.db.list_all_areas()?;
 
     let area = areas
         .into_iter()
@@ -283,10 +276,7 @@ async fn create_area(
     }
 
     // Check prefix uniqueness
-    let areas = state
-        .db
-        .list_all_areas()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let areas = state.db.list_all_areas()?;
 
     if areas
         .iter()
@@ -313,7 +303,8 @@ async fn create_area(
         level_max: req.level_max,
         theme: req.theme,
         owner: Some(user.api_key.owner_character.clone()),
-        permission_level: AreaPermission::AllBuilders,
+        // Owned by the key's character; open it up explicitly if wanted.
+        permission_level: AreaPermission::OwnerOnly,
         trusted_builders: Vec::new(),
         city_forage_table: Vec::new(),
         wilderness_forage_table: Vec::new(),
@@ -356,10 +347,7 @@ async fn create_area(
 
     // Attribution: see src/attribution.rs.
     area.stamp_created(&user.api_key.owner_character);
-    state
-        .db
-        .save_area_data(area.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_area_data(area.clone())?;
 
     notify_builders(
         &state.connections,
@@ -383,13 +371,24 @@ async fn update_area(
 
     let mut area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     if !can_edit_area(&user, &area) {
         return Err(ApiError::Forbidden(
             "You don't have permission to edit this area".into(),
+        ));
+    }
+
+    let governs = req.permission_level.is_some()
+        || req.trusted_builders.is_some()
+        || req.max_rooms.is_some()
+        || req.max_items.is_some()
+        || req.max_mobiles.is_some()
+        || req.max_spawn_points.is_some();
+    if governs && !super::auth::can_govern_area(&user, &area) {
+        return Err(ApiError::Forbidden(
+            "Only the area's owner or an admin key can change its permissions, trustees or quotas".into(),
         ));
     }
 
@@ -415,6 +414,12 @@ async fn update_area(
         area.permission_level = permission_level;
     }
     if let Some(trusted_builders) = req.trusted_builders {
+        crate::api::validate::check_list(
+            "trusted_builders",
+            &trusted_builders,
+            crate::api::validate::TRUSTED_BUILDERS_MAX,
+            crate::api::validate::NAME_MAX,
+        )?;
         area.trusted_builders = trusted_builders;
     }
     if let Some(v) = req.immigration_enabled {
@@ -496,10 +501,7 @@ async fn update_area(
 
     // Attribution: see src/attribution.rs.
     area.stamp_edited(&user.api_key.owner_character);
-    state
-        .db
-        .save_area_data(area.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_area_data(area.clone())?;
 
     notify_builders(
         &state.connections,
@@ -522,36 +524,26 @@ async fn delete_area(
 
     let area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
-    if !can_edit_area(&user, &area) {
+    if !super::auth::can_govern_area(&user, &area) {
         return Err(ApiError::Forbidden(
-            "You don't have permission to delete this area".into(),
+            "Only the area's owner or an admin key can delete this area".into(),
         ));
     }
 
     // Unassign rooms from this area
-    let rooms = state
-        .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let rooms = state.db.list_all_rooms()?;
 
     for mut room in rooms {
         if room.area_id == Some(uuid) {
             room.area_id = None;
-            state
-                .db
-                .save_room_data(room)
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
+            state.db.save_room_data(room)?;
         }
     }
 
-    state
-        .db
-        .delete_area(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_area(&uuid)?;
 
     notify_builders(
         &state.connections,
@@ -579,14 +571,12 @@ async fn list_area_rooms(
     // Verify area exists
     let _area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     let rooms = state
         .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_rooms()?
         .into_iter()
         .filter(|r| r.area_id == Some(uuid))
         .collect();
@@ -611,8 +601,7 @@ async fn area_overview(
 
     let area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     let prefix = &area.prefix;
@@ -620,8 +609,7 @@ async fn area_overview(
     // Rooms in this area
     let rooms: Vec<RoomSummary> = state
         .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_rooms()?
         .iter()
         .filter(|r| r.area_id == Some(uuid))
         .map(RoomSummary::from_room)
@@ -630,8 +618,7 @@ async fn area_overview(
     // Item prototypes matching area prefix
     let item_prototypes: Vec<ItemSummary> = state
         .db
-        .list_all_items()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_items()?
         .iter()
         .filter(|i| {
             i.is_prototype
@@ -645,26 +632,21 @@ async fn area_overview(
     // Mobile prototypes matching area prefix
     let mobile_prototypes: Vec<MobileSummary> = state
         .db
-        .list_all_mobiles()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_mobiles()?
         .iter()
         .filter(|m| m.is_prototype && m.vnum.starts_with(&format!("{}:", prefix)))
         .map(MobileSummary::from_mobile)
         .collect();
 
     // Build a room UUID -> vnum lookup for spawn point room resolution
-    let all_rooms = state
-        .db
-        .list_all_rooms()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let all_rooms = state.db.list_all_rooms()?;
     let room_vnum_map: std::collections::HashMap<Uuid, Option<String>> =
         all_rooms.iter().map(|r| (r.id, r.vnum.clone())).collect();
 
     // Spawn points for this area
     let spawn_points: Vec<SpawnPointSummary> = state
         .db
-        .list_all_spawn_points()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_spawn_points()?
         .iter()
         .filter(|sp| sp.area_id == uuid)
         .map(|sp| SpawnPointSummary {
@@ -701,8 +683,7 @@ async fn reset_area(
 
     let area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     if !can_edit_area(&user, &area) {
@@ -712,10 +693,7 @@ async fn reset_area(
     }
 
     // Get spawn points for this area and reset them
-    let spawn_points = state
-        .db
-        .list_all_spawn_points()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let spawn_points = state.db.list_all_spawn_points()?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -791,10 +769,7 @@ async fn reset_area(
             }
 
             sp.last_spawn_time = now;
-            state
-                .db
-                .save_spawn_point(sp)
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
+            state.db.save_spawn_point(sp)?;
         }
     }
 
@@ -897,8 +872,7 @@ async fn list_forage_tables(
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
     let area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     Ok(Json(ForageTablesResponse {
@@ -922,8 +896,7 @@ async fn add_forage_entry(
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
     let mut area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     if !can_edit_area(&user, &area) {
@@ -952,10 +925,7 @@ async fn add_forage_entry(
         });
     }
 
-    state
-        .db
-        .save_area_data(area.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_area_data(area.clone())?;
 
     notify_builders(
         &state.connections,
@@ -979,8 +949,7 @@ async fn remove_forage_entry(
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
     let mut area = state
         .db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_area_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
 
     if !can_edit_area(&user, &area) {
@@ -1000,10 +969,7 @@ async fn remove_forage_entry(
         )));
     }
 
-    state
-        .db
-        .save_area_data(area.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_area_data(area.clone())?;
 
     notify_builders(
         &state.connections,

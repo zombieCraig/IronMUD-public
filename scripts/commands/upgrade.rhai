@@ -102,7 +102,10 @@ fn process_upgrade(current_lease, target_template, char, agent, connection_id) {
     }
 
     // Deduct gold
-    add_character_gold(char.name, -total_cost);
+    if !add_character_gold(char.name, -total_cost) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
     notify_achievement_counter(char.name, "gold.spent", total_cost);
 
     // Create new lease

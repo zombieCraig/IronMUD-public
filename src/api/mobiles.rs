@@ -777,10 +777,7 @@ async fn list_mobiles(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mobiles = state
-        .db
-        .list_all_mobiles()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mobiles = state.db.list_all_mobiles()?;
 
     let total = mobiles.len();
     let offset = query.offset.unwrap_or(0);
@@ -806,8 +803,7 @@ async fn list_prototypes(
 
     let mobiles: Vec<MobileData> = state
         .db
-        .list_all_mobiles()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_mobiles()?
         .into_iter()
         .filter(|m| m.is_prototype)
         .collect();
@@ -833,8 +829,7 @@ async fn list_prototypes_summary(
 
     let mobiles: Vec<MobileData> = state
         .db
-        .list_all_mobiles()
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .list_all_mobiles()?
         .into_iter()
         .filter(|m| m.is_prototype)
         .collect();
@@ -874,8 +869,7 @@ async fn get_mobile(
 
     let mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     Ok(Json(MobileResponse {
@@ -897,8 +891,7 @@ async fn get_mobile_by_vnum(
 
     let mobile = state
         .db
-        .get_mobile_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile with vnum '{}' not found", vnum)))?;
 
     Ok(Json(MobileResponse {
@@ -919,12 +912,7 @@ async fn create_mobile(
     }
 
     // Check vnum uniqueness
-    if state
-        .db
-        .get_mobile_by_vnum(&req.vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .is_some()
-    {
+    if state.db.get_mobile_by_vnum(&req.vnum)?.is_some() {
         return Err(ApiError::VnumInUse(format!("Vnum '{}' is already in use", req.vnum)));
     }
 
@@ -1115,10 +1103,7 @@ async fn create_mobile(
 
     // Attribution: see src/attribution.rs.
     mobile.stamp_created(&user.api_key.owner_character);
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     notify_builders(
         &state.connections,
@@ -1147,8 +1132,7 @@ async fn update_mobile(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     // Sandbox: caller must have edit rights on the mobile's owning area.
@@ -1452,10 +1436,7 @@ async fn update_mobile(
 
     // Attribution: see src/attribution.rs.
     mobile.stamp_edited(&user.api_key.owner_character);
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1495,18 +1476,14 @@ async fn delete_mobile(
 
     let mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
     let mobile_name = mobile.vnum.clone();
 
-    state
-        .db
-        .delete_mobile(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.delete_mobile(&uuid)?;
 
     notify_builders(
         &state.connections,
@@ -1534,18 +1511,14 @@ async fn add_dialogue(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
     mobile.dialogue.insert(req.keyword.to_lowercase(), req.response);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1570,8 +1543,7 @@ async fn remove_dialogue(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
@@ -1580,10 +1552,7 @@ async fn remove_dialogue(
         return Err(ApiError::NotFound(format!("Dialogue keyword '{}' not found", keyword)));
     }
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1609,16 +1578,12 @@ async fn load_mobile(state: &Arc<ApiState>, id: &str) -> Result<MobileData, ApiE
     let uuid = Uuid::parse_str(id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
     state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))
 }
 
 fn save_mobile_response(state: &Arc<ApiState>, mobile: MobileData) -> Result<Json<MobileResponse>, ApiError> {
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
     Ok(Json(MobileResponse {
         success: true,
@@ -1778,8 +1743,7 @@ async fn add_routine_entry(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
@@ -1797,10 +1761,7 @@ async fn add_routine_entry(
     // Sort by start_hour for correct schedule ordering
     mobile.daily_routine.sort_by_key(|e| e.start_hour);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1825,8 +1786,7 @@ async fn remove_routine_entry(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
@@ -1837,10 +1797,7 @@ async fn remove_routine_entry(
 
     mobile.daily_routine.remove(index);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1866,8 +1823,7 @@ async fn add_trigger(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
@@ -1891,6 +1847,8 @@ async fn add_trigger(
         }
     };
 
+    super::validate::check_script_name(&req.script_name)?;
+
     let trigger = MobileTrigger {
         trigger_type,
         script_name: req.script_name,
@@ -1908,10 +1866,7 @@ async fn add_trigger(
 
     mobile.triggers.push(trigger);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1936,8 +1891,7 @@ async fn remove_trigger(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
@@ -1948,10 +1902,7 @@ async fn remove_trigger(
 
     mobile.triggers.remove(index);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
@@ -1976,8 +1927,7 @@ async fn spawn_mobile(
     // Get the prototype
     let prototype = state
         .db
-        .get_mobile_by_vnum(&vnum)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_by_vnum(&vnum)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile prototype '{}' not found", vnum)))?;
 
     if !prototype.is_prototype {
@@ -1990,25 +1940,24 @@ async fn spawn_mobile(
 
     let room = state
         .db
-        .get_room_data(&room_uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_room_data(&room_uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
 
     // Spawning into a room must be authorized against that room's area —
     // a mobile-prototype's owning area is irrelevant for the destination check.
     authorize_existing_area(&state.db, &user, room.area_id)?;
 
-    // Clone the prototype to create an instance
-    let mut instance = prototype.clone();
-    instance.id = Uuid::new_v4();
-    instance.is_prototype = false;
-    instance.current_room_id = Some(room_uuid);
-    instance.current_hp = instance.max_hp;
-
-    state
+    // Through the spawn chokepoint so `world_max_count` / `unique` hold.
+    let spawned = state.db.spawn_mobile_from_prototype(&vnum)?.ok_or_else(|| {
+        ApiError::Conflict(format!(
+            "Mobile '{}' is at its world-wide limit (world_max_count / unique)",
+            vnum
+        ))
+    })?;
+    let instance = state
         .db
-        .save_mobile_data(instance.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .update_mobile(&spawned.id, |m| m.current_room_id = Some(room_uuid))?
+        .ok_or_else(|| ApiError::Internal("spawned mobile vanished".into()))?;
 
     notify_builders(
         &state.connections,
@@ -2100,8 +2049,7 @@ async fn apply_mobile_preset(
 
     let mut mobile = state
         .db
-        .get_mobile_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .get_mobile_data(&uuid)?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     // Sandbox: caller must hold edit rights on the mob's owning area.
@@ -2112,10 +2060,7 @@ async fn apply_mobile_preset(
 
     crate::script::mobile_presets::apply_preset_to_mobile(&mut mobile, &preset);
 
-    state
-        .db
-        .save_mobile_data(mobile.clone())
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.db.save_mobile_data(mobile.clone())?;
 
     notify_builders(
         &state.connections,

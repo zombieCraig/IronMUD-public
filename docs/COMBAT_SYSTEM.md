@@ -459,7 +459,7 @@ Debug logging is enabled for combat troubleshooting. Run with `RUST_LOG=debug ca
 If combat state issues recur, check for:
 1. **Stale data overwrites**: Any Rhai script that loads a mobile, calls a combat function, then saves the mobile without reloading
 2. **Race conditions**: Tick systems (wander, combat, idle) loading mobiles at start of iteration vs mid-iteration database changes
-3. **Mutex poisoning**: Panics in tick systems while holding locks can poison the connections mutex, causing all new connections to fail
+3. **Panics mid-update**: locks are `parking_lot` and don't poison, and `ticks::supervise` restarts a panicked tick, but a panic while holding a lock can still leave half-written state behind — fix the panic
 
 ---
 

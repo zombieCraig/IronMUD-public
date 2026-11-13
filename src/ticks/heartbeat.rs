@@ -3,8 +3,8 @@
 //! Background tick tasks call [`beat`] at the top of every loop iteration. A
 //! single [`run_watchdog`] task wakes periodically, scans the registry, and
 //! flags any tick that hasn't beat in more than `2 × expected_interval` —
-//! the standard symptom of a panicked task (tokio drops them silently,
-//! doesn't restart) or a hung iteration. Stale ticks are surfaced via
+//! the standard symptom of a hung iteration, or of a tick that keeps
+//! panicking faster than [`super::supervise`] can usefully restart it. Stale ticks are surfaced via
 //! `warn!()` and `broadcast_to_builders` so admins online see them in chat.
 //!
 //! The healthy path emits **no log lines**. Only stale ticks produce output.
@@ -13,8 +13,9 @@
 //! `tokio::spawn` call. `beat` is idempotent and cheap: a single mutex
 //! acquisition + hashmap insert per tick iteration.
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use tokio::time::interval;
@@ -76,7 +77,8 @@ fn registry() -> &'static Registry {
 /// flags a tick before it has had a chance to beat.
 pub fn register(name: &'static str, expected_interval: Duration) {
     let reg = registry();
-    if let Ok(mut map) = reg.map.lock() {
+    {
+        let mut map = reg.map.lock();
         let now = Instant::now();
         map.entry(name)
             .and_modify(|(int, _)| *int = expected_interval)
@@ -89,7 +91,8 @@ pub fn register(name: &'static str, expected_interval: Duration) {
 /// so the watchdog has an expected interval to compare against.
 pub fn beat(name: &'static str) {
     let reg = registry();
-    if let Ok(mut map) = reg.map.lock() {
+    {
+        let mut map = reg.map.lock();
         if let Some(entry) = map.get_mut(name) {
             entry.1 = Instant::now();
         }
@@ -99,7 +102,7 @@ pub fn beat(name: &'static str) {
 /// Snapshot the registry. Sorted by name for deterministic admin display.
 pub fn snapshot() -> Vec<TickStatus> {
     let reg = registry();
-    let Ok(map) = reg.map.lock() else { return Vec::new() };
+    let map = reg.map.lock();
     let mut out: Vec<TickStatus> = map
         .iter()
         .map(|(name, (interval, last))| TickStatus {

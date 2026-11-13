@@ -92,10 +92,7 @@ pub fn apply_tribe_acknowledgment(ch: &mut CharacterData, tribe: &str) -> bool {
 /// global trait map. The map is fetched from World BEFORE the connections
 /// lock is taken (deadlock rule).
 fn frenzy_dc_map(state: &SharedState) -> std::collections::HashMap<String, i32> {
-    let world = match state.lock() {
-        Ok(w) => w,
-        Err(_) => return Default::default(),
-    };
+    let world = state.lock();
     world
         .trait_definitions
         .iter()
@@ -126,10 +123,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -173,10 +167,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return false,
@@ -200,10 +191,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return false,
@@ -240,10 +228,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return -1,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return -1,
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return -1,
@@ -301,10 +286,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             // Trait map read BEFORE the connections lock (deadlock rule).
             let dc_map = frenzy_dc_map(&cstate);
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return err_map("lock"),
-            };
+            let mut conns_lock = conns.lock();
             let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
                 Some(c) => c,
                 None => return err_map("no character"),
@@ -368,10 +350,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return err_map("bad connection id"),
         };
         let dc_map = frenzy_dc_map(&cstate);
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return err_map("lock"),
-        };
+        let mut conns_lock = conns.lock();
         let ch = match conns_lock.get_mut(&conn_id).and_then(|s| s.character.as_mut()) {
             Some(c) => c,
             None => return err_map("no character"),
@@ -409,14 +388,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 /// Read helper: run `f` on the session's character if present.
 fn read_pc<T>(conns: &SharedConnections, connection_id: &str, f: impl FnOnce(&CharacterData) -> T) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock.get(&conn_id).and_then(|s| s.character.as_ref()).map(f)
 }
 
 /// Read helper: run `f` on the session's WerewolfState if present.
 fn read_werewolf<T>(conns: &SharedConnections, connection_id: &str, f: impl FnOnce(&WerewolfState) -> T) -> Option<T> {
     let conn_id = uuid::Uuid::parse_str(connection_id).ok()?;
-    let conns_lock = conns.lock().ok()?;
+    let conns_lock = conns.lock();
     conns_lock
         .get(&conn_id)
         .and_then(|s| s.character.as_ref())

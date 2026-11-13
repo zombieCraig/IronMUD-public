@@ -142,6 +142,10 @@ fn handle_email_verify(connection_id, account_id, code) {
         send_client_message(connection_id, "No verification code is outstanding. Use `email set <address>` or `email resend` first.");
         return;
     }
+    if result == 4 {
+        send_client_message(connection_id, "Too many wrong codes; that code is now void. Use `email resend` to get a fresh one.");
+        return;
+    }
     if result == 2 {
         send_client_message(connection_id, "That code has expired. Use `email resend` to get a fresh one.");
         return;

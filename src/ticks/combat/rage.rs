@@ -16,12 +16,12 @@ use rand::Rng;
 
 use ironmud::{
     CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, EffectType,
-    MobileData, SharedConnections, SharedState, db,
+    MobileData, SharedConnections, db,
 };
 
 use crate::ticks::broadcast::{
-    broadcast_to_room_except_awake, broadcast_to_room_except_awake_per_viewer, send_message_to_character,
-    sync_character_to_session,
+    broadcast_to_room_except_awake, broadcast_to_room_except_awake_per_viewer, live_character,
+    send_message_to_character, sync_character_to_session,
 };
 use crate::ticks::mobile::find_players_in_room;
 
@@ -38,18 +38,11 @@ fn has_rage_buff(char: &CharacterData) -> bool {
 /// Force-engage a target for every online raging player not already in
 /// combat. Runs at the top of each combat round so a fresh engagement
 /// swings in the same round.
-pub(super) fn process_rage_acquisitions(
-    db: &db::Db,
-    connections: &SharedConnections,
-    state: &SharedState,
-) -> Result<()> {
+pub(super) fn process_rage_acquisitions(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     // Snapshot candidates without holding the connections lock through the
     // DB work below.
     let raging: Vec<String> = {
-        let conns = match connections.lock() {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
+        let conns = connections.lock();
         conns
             .values()
             .filter_map(|s| s.character.as_ref())
@@ -66,7 +59,7 @@ pub(super) fn process_rage_acquisitions(
     };
 
     for name in raging {
-        let mut char = match db.get_character_data(&name)? {
+        let mut char = match live_character(connections, db, &name)? {
             Some(c) => c,
             None => continue,
         };
@@ -85,7 +78,7 @@ pub(super) fn process_rage_acquisitions(
         }
         let idx = rand::thread_rng().gen_range(0..candidates.len());
         let target = candidates.swap_remove(idx);
-        engage_rage_target(db, connections, state, &mut char, target)?;
+        engage_rage_target(db, connections, &mut char, target)?;
     }
     Ok(())
 }
@@ -135,7 +128,6 @@ fn collect_rage_candidates(
 fn engage_rage_target(
     db: &db::Db,
     connections: &SharedConnections,
-    state: &SharedState,
     char: &mut CharacterData,
     target: RageTarget,
 ) -> Result<()> {
@@ -147,7 +139,7 @@ fn engage_rage_target(
                 char.combat.targets.push(CombatTarget::mobile(mob.id));
             }
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, char, state);
+            sync_character_to_session(connections, char, db);
 
             // The mob fights back (same shape as the helper-join engage).
             let player_target_id = uuid::Uuid::nil();
@@ -189,15 +181,15 @@ fn engage_rage_target(
                 char.combat.targets.push(CombatTarget::player(victim_name.clone()));
             }
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, char, state);
+            sync_character_to_session(connections, char, db);
 
             // Mutual engagement so the victim's own round retaliates.
-            if let Ok(Some(mut victim)) = db.get_character_data(&victim_name) {
+            if let Ok(Some(mut victim)) = live_character(connections, db, &victim_name) {
                 if !victim.combat.targets.iter().any(|t| t.is_player_named(&char.name)) {
                     victim.combat.in_combat = true;
                     victim.combat.targets.push(CombatTarget::player(char.name.clone()));
                     db.save_character_data(victim.clone())?;
-                    sync_character_to_session(connections, &victim, state);
+                    sync_character_to_session(connections, &victim, db);
                 }
             }
 

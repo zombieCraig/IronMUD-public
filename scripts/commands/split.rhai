@@ -102,7 +102,10 @@ fn run_command(args, connection_id) {
     let total_split = share * recipients.len();
 
     // Deduct from splitter
-    add_character_gold(char.name, -total_split);
+    if !add_character_gold(char.name, -total_split) {
+        send_client_message(connection_id, "You don't have enough gold.");
+        return;
+    }
 
     // Give to each recipient
     for recipient in recipients {

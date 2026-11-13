@@ -487,10 +487,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -505,10 +502,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return 0,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return 0,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -524,10 +518,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return 0,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return 0,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -543,10 +534,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return -1,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return -1,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -564,10 +552,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return -1,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return -1,
-        };
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return -1,
@@ -596,10 +581,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return -1,
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return -1,
-            };
+            let mut conns_lock = conns.lock();
             let session = match conns_lock.get_mut(&conn_id) {
                 Some(s) => s,
                 None => return -1,
@@ -640,10 +622,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
+            let mut conns_lock = conns.lock();
             let session = match conns_lock.get_mut(&conn_id) {
                 Some(s) => s,
                 None => return false,
@@ -699,10 +678,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -719,10 +695,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return String::new(),
         };
-        let conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return String::new(),
-        };
+        let conns_lock = conns.lock();
         conns_lock
             .get(&conn_id)
             .and_then(|s| s.character.as_ref())
@@ -743,10 +716,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(u) => u,
                 Err(_) => return false,
             };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
+            let mut conns_lock = conns.lock();
             let session = match conns_lock.get_mut(&conn_id) {
                 Some(s) => s,
                 None => return false,
@@ -778,10 +748,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return false,
@@ -809,10 +776,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return false,
@@ -839,10 +803,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return false,
@@ -909,10 +870,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // Pull a mutable session reference once and hold it through the
             // entire transaction so the caster's blood update can't race with
             // a discipline cast or another feed.
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return fail("session lock poisoned"),
-            };
+            let mut conns_lock = conns.lock();
             let session = match conns_lock.get_mut(&conn_id) {
                 Some(s) => s,
                 None => return fail("not logged in"),
@@ -1033,27 +991,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if cdb.save_item_data(corpse).is_ok() {
                         if let Ok(inv) = cdb.get_items_in_mobile_inventory(&target_id) {
                             for item in inv {
-                                let item_id = item.id;
                                 let mut updated = item;
                                 updated.flags.death_only = false;
                                 updated.location = crate::types::ItemLocation::Container(corpse_id);
-                                if let Ok(Some(mut c)) = cdb.get_item_data(&corpse_id) {
-                                    c.container_contents.push(item_id);
-                                    let _ = cdb.save_item_data(c);
-                                }
                                 let _ = cdb.save_item_data(updated);
                             }
                         }
                         if let Ok(equipped) = cdb.get_items_equipped_on_mobile(&target_id) {
                             for item in equipped {
-                                let item_id = item.id;
                                 let mut updated = item;
                                 updated.flags.death_only = false;
                                 updated.location = crate::types::ItemLocation::Container(corpse_id);
-                                if let Ok(Some(mut c)) = cdb.get_item_data(&corpse_id) {
-                                    c.container_contents.push(item_id);
-                                    let _ = cdb.save_item_data(c);
-                                }
                                 let _ = cdb.save_item_data(updated);
                             }
                         }
@@ -1083,10 +1031,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Ok(u) => u,
             Err(_) => return false,
         };
-        let mut conns_lock = match conns.lock() {
-            Ok(g) => g,
-            Err(_) => return false,
-        };
+        let mut conns_lock = conns.lock();
         let session = match conns_lock.get_mut(&conn_id) {
             Some(s) => s,
             None => return false,

@@ -11,7 +11,7 @@ use crate::SharedState;
 
 /// Load all Rhai scripts from the scripts directory
 pub fn load_scripts(state: SharedState) -> Result<()> {
-    let mut world = state.lock().unwrap();
+    let mut world = state.lock();
 
     for entry in glob("scripts/**/*.rhai")? {
         match entry {
@@ -63,7 +63,7 @@ pub fn watch_scripts(state: SharedState) {
                                 .to_string();
                             if path_str.ends_with(".rhai") {
                                 info!("Script changed: {}, recompiling.", path_str);
-                                let mut world = state.lock().unwrap();
+                                let mut world = state.lock();
                                 match world.engine.compile_file(path.clone()) {
                                     Ok(ast) => {
                                         world.scripts.insert(path_str.to_string(), ast);
