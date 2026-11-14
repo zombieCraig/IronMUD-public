@@ -66,7 +66,7 @@ const DEFAULT_TEMPLATE: &str = "Welcome to IronMUD!\n\nYour verification code is
 
 const TEMPLATE_PATH: &str = "scripts/data/email/verification.txt";
 
-const DEFAULT_PASSWORD_RESET_TEMPLATE: &str = "Hello,\n\nSomeone (hopefully you) requested a password reset for the IronMUD account linked to this email address.\n\nYour new temporary password is: {{password}}\n\nLog in with this password and you will be required to choose a new one immediately. If you didn't request this, change your password now or contact an administrator.\n";
+const DEFAULT_PASSWORD_RESET_TEMPLATE: &str = "Hello,\n\nSomeone (hopefully you) requested a password reset for the IronMUD account linked to this email address.\n\nYour account name is: {{account}}\nYour temporary password is: {{password}}\n\nLog in with:\n\n    login {{account}} {{password}}\n\nThe temporary password works for one hour, and your current password keeps working too. Once you log in with the temporary password it replaces your old one and you will be asked to choose a new one. If you didn't request this, you can ignore this email.\n";
 
 const PASSWORD_RESET_TEMPLATE_PATH: &str = "scripts/data/email/password_reset.txt";
 
@@ -211,14 +211,29 @@ pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<
 /// Send a freshly generated temporary password to `to_address`. Reads SMTP and
 /// `From:` configuration from the settings tree on every call. Mirrors
 /// `send_verification_email` — only the subject, template, and substitution
-/// token differ.
-pub fn send_password_reset_email(db: &Db, to_address: &str, password: &str) -> Result<(), EmailError> {
+/// tokens differ. `account_name` is included so a player who forgot which
+/// name they log in with can recover it from the same email.
+pub fn send_password_reset_email(
+    db: &Db,
+    to_address: &str,
+    account_name: &str,
+    password: &str,
+) -> Result<(), EmailError> {
     check_and_increment_send_quota(db)?;
     let subject = db
-        .get_setting_or_default("password_reset_subject", "Your IronMUD password has been reset")
+        .get_setting_or_default("password_reset_subject", "Your IronMUD temporary password")
         .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
-    let body = load_password_reset_template().replace("{{password}}", password);
+    let body = render_password_reset_body(&load_password_reset_template(), account_name, password);
     deliver(db, to_address, &subject, body)
+}
+
+/// Fill the password-reset template's `{{account}}` and `{{password}}` tokens.
+/// The password goes in first: its charset has no braces, so it can't form a
+/// token, and an account name substituted afterwards is never re-scanned.
+pub fn render_password_reset_body(template: &str, account_name: &str, password: &str) -> String {
+    template
+        .replace("{{password}}", password)
+        .replace("{{account}}", account_name)
 }
 
 /// Send a fixed diagnostic message to `to_address` to prove SMTP delivery
@@ -580,6 +595,25 @@ mod quota_tests {
 mod temp_password_tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn password_reset_body_names_the_account() {
+        for template in [
+            DEFAULT_PASSWORD_RESET_TEMPLATE.to_string(),
+            fs::read_to_string(PASSWORD_RESET_TEMPLATE_PATH).unwrap(),
+        ] {
+            let body = render_password_reset_body(&template, "Thorin", "AbCd2345efGh");
+            assert!(body.contains("account name is: Thorin"), "{body}");
+            assert!(body.contains("login Thorin AbCd2345efGh"), "{body}");
+            assert!(!body.contains("{{"), "unfilled token in {body}");
+        }
+    }
+
+    #[test]
+    fn password_reset_account_name_cannot_inject_password_token() {
+        let body = render_password_reset_body("{{account}}|{{password}}", "{{password}}", "pw");
+        assert_eq!(body, "{{password}}|pw");
+    }
 
     #[test]
     fn generate_temp_password_length_and_charset() {

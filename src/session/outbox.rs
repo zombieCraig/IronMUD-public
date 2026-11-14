@@ -132,7 +132,7 @@ impl DrainHandle {
         // Saturate rather than wrap if accounting ever drifts.
         let _ = self
             .queued
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |q| Some(q.saturating_sub(n)));
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |q| Some(q.saturating_sub(n)));
     }
 
     /// True once the client has been cut off for not reading.

@@ -463,7 +463,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             Some((email, temp_password)) => {
                 let db = cloned_db.clone();
                 std::thread::spawn(move || {
-                    let result = send_password_reset_email(&db, &email, &temp_password);
+                    let result = send_password_reset_email(&db, &email, &account_name, &temp_password);
                     audit_email_send(&db, "reset", &account_name, audit_outcome_for(&result));
                 });
                 true

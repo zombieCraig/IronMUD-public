@@ -233,7 +233,7 @@ check_os() {
 install_dependencies() {
     log_info "Installing build dependencies..."
     apt-get update
-    apt-get install -y build-essential pkg-config libssl-dev curl
+    apt-get install -y build-essential pkg-config libssl-dev cmake curl
 }
 
 # The account that builds IronMUD: the user who ran sudo, if any, so

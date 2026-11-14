@@ -6,22 +6,29 @@ edition = "2024"
 # cargo audit triage
 #
 # The pre-commit hook runs `cargo audit` as advisory and asks for findings to be
-# sorted into known-and-unused / waiting-on-upstream / new-and-actionable. Three
-# sit permanently in the middle bucket. All are **unmaintained-crate** notices
-# with no patched version published — there is nothing to upgrade *to* — and all
-# arrive through dependencies this project is built on rather than through
-# anything it calls:
+# sorted into known-and-unused / waiting-on-upstream / new-and-actionable. These
+# sit in the middle bucket:
+#
+# Unmaintained-crate notices with no patched version published -- there is
+# nothing to upgrade *to* -- arriving through dependencies this project is
+# built on rather than through anything it calls:
 #
 #   fxhash            RUSTSEC-2025-0057   sled -> fxhash
 #   instant           RUSTSEC-2024-0384   rhai, and sled -> parking_lot 0.11
-#   proc-macro-error2 RUSTSEC-2026-0173   matrix-sdk -> matrix-pickle-derive,
-#                                                       aquamarine
+#   smartstring       RUSTSEC-2026-0249   rhai -> smartstring
+#   anymap2           RUSTSEC-2026-0319   matrix-sdk -> anymap2
+#   unsafe-libyaml    RUSTSEC-2024-0449   serde_yaml -> unsafe-libyaml
 #
-# Clearing them means replacing sled or rhai, which is the storage layer and the
-# scripting engine. `proc-macro-error2` alone would clear on matrix-sdk 0.18,
-# but 0.18 drops the `native-tls` feature used below, so it is a TLS migration
-# bought to silence a *build-time* proc macro with no known vulnerability. Not a
-# good trade; revisit when matrix-sdk is being upgraded for its own reasons.
+# Vulnerabilities in rustls 0.22 / rustls-webpki 0.102 (RUSTSEC-2026-0049,
+# -0098, -0099, -0104, -0346, -0349, -0382). These come only from serenity
+# 0.12.5 (Discord bridge, via tokio-tungstenite 0.21), which has no newer
+# release. Builds that don't need Discord avoid them entirely with
+# `--no-default-features --features matrix`. Revisit when serenity ships a
+# release on rustls 0.23.
+#
+# matrix-sdk moved 0.16 -> 0.19 (Nov 2026) to clear vodozemac, imbl-sized-chunks
+# and bitmaps advisories. 0.19 dropped `native-tls`, so it uses rustls with the
+# aws-lc-rs backend: building it needs cmake and a C compiler.
 #
 # They are deliberately NOT added to an `audit.toml` ignore list. A real
 # advisory against one of these crates would then arrive silently, and the whole
@@ -45,7 +52,7 @@ notify = "6.1"
 glob = "0.3"
 # Chat bridges are optional (`matrix`, `discord` features, both on by
 # default). `--no-default-features` builds a server without either SDK.
-matrix-sdk = { version = "0.16", default-features = false, features = ["native-tls"], optional = true }
+matrix-sdk = { version = "0.19", default-features = false, features = ["rustls-aws-lc-rs"], optional = true }
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend"], optional = true }
 socket2 = "0.5"
 argon2 = "0.5"
