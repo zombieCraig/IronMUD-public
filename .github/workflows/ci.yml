@@ -58,4 +58,19 @@ jobs:
       - name: cargo audit
         # Warnings (unmaintained transitive deps like fxhash, instant, rand)
         # are informational; fail only on actual vulnerabilities.
-        run: cargo audit
+        #
+        # The ignored IDs are the rustls 0.22 / rustls-webpki 0.102 advisories
+        # that arrive only via serenity 0.12.5 (Discord bridge), which has no
+        # release on rustls 0.23 yet. See the triage note at the top of
+        # Cargo.toml. They are ignored by ID here (not in an audit.toml) so
+        # local/pre-commit audits still show them, and any *new* advisory
+        # still fails CI. Drop these when serenity moves to rustls 0.23.
+        run: >-
+          cargo audit
+          --ignore RUSTSEC-2026-0049
+          --ignore RUSTSEC-2026-0098
+          --ignore RUSTSEC-2026-0099
+          --ignore RUSTSEC-2026-0104
+          --ignore RUSTSEC-2026-0346
+          --ignore RUSTSEC-2026-0349
+          --ignore RUSTSEC-2026-0382
