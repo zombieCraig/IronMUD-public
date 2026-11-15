@@ -73,7 +73,7 @@ jobs:
           "$RUNNER_TEMP/ironmud-${{ matrix.arch }}-linux/bin/ironmud" --help >/dev/null
           "$RUNNER_TEMP/ironmud-${{ matrix.arch }}-linux/bin/ironmud-admin" --help >/dev/null
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ironmud-${{ matrix.arch }}-linux
           path: dist/*
@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -125,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -134,7 +134,7 @@ jobs:
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ${{ steps.name.outputs.image }}
@@ -144,17 +144,17 @@ jobs:
             type=semver,pattern=v{{major}}.{{minor}}
 
       # The final stage runs apt for the arm64 image under emulation.
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
       # Built from the release tarballs the build job just tested.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: dist
           file: deploy/docker/Dockerfile
