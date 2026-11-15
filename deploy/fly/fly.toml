@@ -1,0 +1,79 @@
+# IronMUD on Fly.io: raw TCP game port, free TLS on 4443 with each player's
+# real IP passed through, a persistent volume, and built-in metrics.
+#
+#   fly launch --no-deploy --copy-config --config deploy/fly/fly.toml   # pick an app name
+#   fly volumes create ironmud_data --size 1 --region <same as primary_region>
+#   fly ips allocate-v4            # dedicated IPv4 (paid): raw TCP needs it for IPv4 players
+#   fly deploy --config deploy/fly/fly.toml
+#
+# Players: telnet <app>.fly.dev 4000, or TLS to <app>.fly.dev:4443.
+#
+# Run ONE machine only: the database is single-writer and lives on one
+# volume. Never `fly scale count 2`.
+
+app = "my-ironmud"        # change to your app name
+primary_region = "iad"    # change to a region near your players
+
+[build]
+  # Prebuilt multi-arch image from the IronMUD releases. Pin a tag
+  # (e.g. :v0.2.0) for reproducible deploys.
+  image = "ghcr.io/zombiecraig/ironmud-public:latest"
+
+[env]
+  TZ = "UTC"
+  # TLS players arrive through Fly's proxy with a PROXY-protocol header on
+  # this port, so bans and per-IP limits see their real address. Bound to
+  # all interfaces because Fly's proxy connects over the machine's network;
+  # it is not published except through the 4443 service below.
+  IRONMUD_PROXY_PORT = "4010"
+  IRONMUD_PROXY_BIND = "::"
+  # Fly's metrics scraper reaches /metrics over the private network
+  # (no public service exposes 4002).
+  IRONMUD_OPS_BIND = "::"
+
+[mounts]
+  source = "ironmud_data"
+  destination = "/opt/ironmud/data"
+
+# Plaintext telnet.
+[[services]]
+  protocol = "tcp"
+  internal_port = 4000
+  auto_stop_machines = "off"   # players stay connected for hours
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 4000
+
+# TLS: Fly terminates TLS (certificate for <app>.fly.dev automatically, or
+# `fly certs add mud.example.com`) and forwards to the PROXY-protocol port.
+[[services]]
+  protocol = "tcp"
+  internal_port = 4010
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 4443
+    handlers = ["tls", "proxy_proto"]
+    proxy_proto_options = { version = "v1" }
+
+# Health from the ops endpoint (stale ticks -> unhealthy) instead of opening
+# game connections that would show up as players connecting.
+[checks.healthz]
+  type = "http"
+  port = 4002
+  path = "/healthz"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "120s"
+
+[metrics]
+  port = 4002
+  path = "/metrics"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

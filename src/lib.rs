@@ -41,6 +41,7 @@ pub mod experiment;
 pub mod game;
 pub mod gemini;
 pub mod group;
+pub mod heartbeat;
 pub mod import;
 pub mod init;
 pub mod leaderboard;
@@ -50,9 +51,11 @@ pub mod migration;
 pub mod morality;
 pub mod mutant;
 pub mod necromancy;
+pub mod ops;
 pub mod player_log;
 pub mod progress;
 pub mod prompt;
+pub mod proxy_protocol;
 pub mod purse;
 pub mod quest;
 pub mod ratelimit;
@@ -2113,13 +2116,18 @@ fn call_run_command_guarded(
     connection_id: String,
     command: &str,
 ) -> Result<rhai::Dynamic, String> {
+    crate::ops::inc(&crate::ops::COMMANDS_TOTAL);
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         engine.call_fn::<rhai::Dynamic>(scope, ast, "run_command", (args, connection_id))
     }));
     match outcome {
         Ok(Ok(v)) => Ok(v),
-        Ok(Err(e)) => Err(e.to_string()),
+        Ok(Err(e)) => {
+            crate::ops::inc(&crate::ops::SCRIPT_ERRORS_TOTAL);
+            Err(e.to_string())
+        }
         Err(panic) => {
+            crate::ops::inc(&crate::ops::COMMAND_PANICS_TOTAL);
             let detail = panic
                 .downcast_ref::<&str>()
                 .map(|s| s.to_string())
@@ -3207,23 +3215,45 @@ async fn handle_write_with_raw(
 }
 
 pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
-    let limiter = {
+    run_server_with_proxy(state, listener, None, shutdown_rx).await
+}
+
+/// What the accept loops need to admit a connection, cloned per listener.
+#[derive(Clone)]
+struct AdmitCtx {
+    state: SharedState,
+    limiter: Arc<ratelimit::IpRateLimiter>,
+    // Cloned once for site-ban lookups so admission never relocks World.
+    db: db::Db,
+}
+
+/// Serve players on `listener`, plus (optionally) `proxy_listener`, whose
+/// connections must start with a PROXY protocol v1 header naming the real
+/// client address (see [`proxy_protocol`]). Both paths share admission:
+/// per-IP caps, site bans and keepalive apply to the real address.
+pub async fn run_server_with_proxy(
+    state: SharedState,
+    listener: TcpListener,
+    proxy_listener: Option<TcpListener>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+) {
+    let ctx = {
         let world = state.lock();
-        world.ip_limiter.clone()
+        AdmitCtx {
+            state: state.clone(),
+            limiter: world.ip_limiter.clone(),
+            db: world.db.clone(),
+        }
     };
-    // Clone the Db arc once for site-ban lookups in the accept loop. Keeping
-    // it outside the loop avoids relocking the World mutex on every accept.
-    let db_for_bans = {
-        let world = state.lock();
-        world.db.clone()
-    };
-    tokio::select! {
-        _ = async {
+
+    let direct = {
+        let ctx = ctx.clone();
+        async move {
             loop {
                 // Never panic on accept: EMFILE/ENFILE (fd exhaustion) or
                 // ECONNABORTED are transient, and a panic here would kill the
                 // listener task for good while the rest of the server runs on.
-                let (mut socket, addr) = match listener.accept().await {
+                let (socket, addr) = match listener.accept().await {
                     Ok(pair) => pair,
                     Err(e) => {
                         warn!("accept() failed: {e}; retrying");
@@ -3231,64 +3261,107 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
                         continue;
                     }
                 };
-
-                // Per-IP connection cap. An attacker that opens hundreds of
-                // sockets from one IP would otherwise exhaust file descriptors
-                // and per-session memory.
-                if !limiter.try_acquire(addr.ip()) {
-                    info!("Rejecting connection from {} -- IP at simultaneous-connection cap.", addr);
-                    let _ = socket
-                        .write_all(b"Too many connections from your address. Try again later.\r\n")
-                        .await;
-                    let _ = socket.shutdown().await;
-                    continue;
-                }
-
-                // Site-ban gate. Refused IPs see a generic refusal — we don't
-                // confirm "you are banned" so admins can quietly block scrapers
-                // without painting a target. Lazy expiry inside get_site_ban
-                // means a banned IP becomes unbanned automatically when the
-                // expires_at passes (next connect attempt succeeds).
-                if let Ok(Some(record)) = db_for_bans.get_site_ban(&addr.ip().to_string()) {
-                    info!(
-                        "Refusing connection from site-banned IP {} (reason: {})",
-                        addr.ip(),
-                        record.reason
-                    );
-                    let _ = socket
-                        .write_all(b"Connections from your address are not permitted on this server.\r\n")
-                        .await;
-                    let _ = socket.shutdown().await;
-                    limiter.release(addr.ip());
-                    continue;
-                }
-                info!("New connection: {}", addr);
-
-                // Cloud NATs (e.g. GCP VPC) silently drop idle TCP flows after ~10 min.
-                // Keepalive probes every 60s keep long-lived telnet sessions alive.
-                let ka = socket2::TcpKeepalive::new()
-                    .with_time(std::time::Duration::from_secs(60))
-                    .with_interval(std::time::Duration::from_secs(30));
-                if let Err(e) = socket2::SockRef::from(&socket).set_tcp_keepalive(&ka) {
-                    warn!("Failed to set TCP keepalive on {}: {}", addr, e);
-                }
-
-                let state = state.clone();
-                let connection_id = Uuid::new_v4();
-                let limiter_for_conn = limiter.clone();
-                tokio::spawn(async move {
-                    // Release on drop, so the per-IP slot (paired with the
-                    // try_acquire above) is freed even if handle_connection
-                    // returns early or panics.
-                    let _slot = ratelimit::ConnectionSlot::new(limiter_for_conn, addr.ip());
-                    handle_connection(socket, addr, state, connection_id).await;
-                });
+                crate::ops::inc(&crate::ops::CONNECTIONS_TOTAL);
+                admit_connection(&ctx, socket, addr).await;
             }
-        } => {},
+        }
+    };
+
+    let proxied = async move {
+        let Some(proxy_listener) = proxy_listener else {
+            return std::future::pending::<()>().await;
+        };
+        loop {
+            let (mut socket, peer) = match proxy_listener.accept().await {
+                Ok(pair) => pair,
+                Err(e) => {
+                    warn!("proxy accept() failed: {e}; retrying");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+            crate::ops::inc(&crate::ops::CONNECTIONS_TOTAL);
+            let ctx = ctx.clone();
+            // Read the header off the accept loop so one slow or silent
+            // proxy connection can't stall the others.
+            tokio::spawn(async move {
+                match proxy_protocol::read_header(&mut socket).await {
+                    Ok(real) => admit_connection(&ctx, socket, real.unwrap_or(peer)).await,
+                    Err(e) => {
+                        warn!("Dropping proxied connection from {}: {}", peer, e);
+                        let _ = socket.shutdown().await;
+                    }
+                }
+            });
+        }
+    };
+
+    tokio::select! {
+        _ = direct => {},
+        _ = proxied => {},
         _ = shutdown_rx => {
             info!("Shutting down server...");
         }
     }
+}
+
+/// Apply per-IP caps and site bans to a new connection from `addr` (the
+/// real client address), then hand it to `handle_connection`.
+async fn admit_connection(ctx: &AdmitCtx, mut socket: tokio::net::TcpStream, addr: std::net::SocketAddr) {
+    // Per-IP connection cap. An attacker that opens hundreds of
+    // sockets from one IP would otherwise exhaust file descriptors
+    // and per-session memory.
+    if !ctx.limiter.try_acquire(addr.ip()) {
+        info!(
+            "Rejecting connection from {} -- IP at simultaneous-connection cap.",
+            addr
+        );
+        let _ = socket
+            .write_all(b"Too many connections from your address. Try again later.\r\n")
+            .await;
+        let _ = socket.shutdown().await;
+        return;
+    }
+
+    // Site-ban gate. Refused IPs see a generic refusal — we don't
+    // confirm "you are banned" so admins can quietly block scrapers
+    // without painting a target. Lazy expiry inside get_site_ban
+    // means a banned IP becomes unbanned automatically when the
+    // expires_at passes (next connect attempt succeeds).
+    if let Ok(Some(record)) = ctx.db.get_site_ban(&addr.ip().to_string()) {
+        info!(
+            "Refusing connection from site-banned IP {} (reason: {})",
+            addr.ip(),
+            record.reason
+        );
+        let _ = socket
+            .write_all(b"Connections from your address are not permitted on this server.\r\n")
+            .await;
+        let _ = socket.shutdown().await;
+        ctx.limiter.release(addr.ip());
+        return;
+    }
+    info!("New connection: {}", addr);
+
+    // Cloud NATs (e.g. GCP VPC) silently drop idle TCP flows after ~10 min.
+    // Keepalive probes every 60s keep long-lived telnet sessions alive.
+    let ka = socket2::TcpKeepalive::new()
+        .with_time(std::time::Duration::from_secs(60))
+        .with_interval(std::time::Duration::from_secs(30));
+    if let Err(e) = socket2::SockRef::from(&socket).set_tcp_keepalive(&ka) {
+        warn!("Failed to set TCP keepalive on {}: {}", addr, e);
+    }
+
+    let state = ctx.state.clone();
+    let connection_id = Uuid::new_v4();
+    let limiter_for_conn = ctx.limiter.clone();
+    tokio::spawn(async move {
+        // Release on drop, so the per-IP slot (paired with the
+        // try_acquire above) is freed even if handle_connection
+        // returns early or panics.
+        let _slot = ratelimit::ConnectionSlot::new(limiter_for_conn, addr.ip());
+        handle_connection(socket, addr, state, connection_id).await;
+    });
 }
 
 /// Notify friends when a player enters the Linkdead state

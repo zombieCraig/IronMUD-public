@@ -1,0 +1,53 @@
+name: Deploy lint
+
+# Static checks for the self-hosting files. Nothing here talks to a cloud
+# provider: no credentials, no apply.
+
+on:
+  push:
+    paths:
+      - "deploy/**"
+      - "install.sh"
+      - ".github/workflows/deploy-lint.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "install.sh"
+      - ".github/workflows/deploy-lint.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [aws-lightsail, digitalocean, hetzner, modules/user-data]
+    defaults:
+      run:
+        working-directory: deploy/terraform/${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.9
+          tofu_wrapper: false
+      - name: Format
+        run: tofu fmt -check -diff -recursive
+      - name: Init
+        run: tofu init -backend=false -input=false
+      - name: Validate
+        run: tofu validate
+      - name: Test
+        if: matrix.module == 'modules/user-data'
+        run: tofu test
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: ShellCheck
+        run: shellcheck --severity=warning install.sh deploy/bootstrap.sh deploy/package-release.sh

@@ -64,6 +64,7 @@ where
                         restarts = 0;
                     }
                     restarts = restarts.saturating_add(1);
+                    ironmud::ops::record_tick_restart(name);
                     let detail = panic_message(&*e.into_panic());
                     let wait = backoff_for(restarts);
                     error!(

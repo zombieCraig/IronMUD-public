@@ -3,6 +3,14 @@
 # IronMUD Server Installation Script
 # Installs IronMUD as a systemd service on Ubuntu/Debian
 #
+# Three ways to run it:
+#   sudo ./install.sh                         # from a git checkout: builds from source
+#   sudo ./install.sh                         # from an extracted release tarball: no build
+#   sudo ./install.sh --from-release [VER]    # download a prebuilt release (default: latest)
+#
+# VER may be a tag (v1.2.3), "latest", a tarball URL, or a local tarball path.
+# Releases come from github.com/$IRONMUD_RELEASE_REPO (default below).
+#
 
 set -e
 
@@ -12,6 +20,11 @@ SERVICE_USER="ironmud"
 SERVICE_GROUP="ironmud"
 DEFAULT_PORT="4000"
 BACKUP_DIR=""  # Set during upgrade
+RELEASE_REPO="${IRONMUD_RELEASE_REPO:-zombieCraig/IronMUD-public}"
+RELEASE_SPEC=""      # Set by --from-release
+RELEASE_MODE=false   # true = install prebuilt binaries, never build
+BIN_SRC="target/release"
+RELEASE_WORK=""      # Temp dir holding a downloaded release
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,6 +53,29 @@ while [[ $# -gt 0 ]]; do
             SCRIPTS_ONLY=true
             shift
             ;;
+        --from-release)
+            RELEASE_MODE=true
+            if [[ -n "${2:-}" && "$2" != --* ]]; then
+                RELEASE_SPEC="$2"
+                shift 2
+            else
+                RELEASE_SPEC="latest"
+                shift
+            fi
+            ;;
+        --from-release=*)
+            RELEASE_MODE=true
+            RELEASE_SPEC="${1#*=}"
+            shift
+            ;;
+        --repo)
+            if [[ -z "${2:-}" ]]; then
+                log_error "--repo requires an owner/name argument"
+                exit 1
+            fi
+            RELEASE_REPO="$2"
+            shift 2
+            ;;
         --warn-seconds)
             if [[ -z "$2" || ! "$2" =~ ^[0-9]+$ ]]; then
                 log_error "--warn-seconds requires a non-negative integer argument"
@@ -58,7 +94,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             log_error "Unknown option: $1"
-            echo "Usage: $0 [--scripts-only] [--warn-seconds N]"
+            echo "Usage: $0 [--from-release [latest|vX.Y.Z|URL|PATH]] [--repo owner/name] [--scripts-only] [--warn-seconds N]"
             exit 1
             ;;
     esac
@@ -220,6 +256,143 @@ print_upgrade_completion() {
     echo ""
 }
 
+# Map `uname -m` to the release asset arch label.
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64 | amd64) echo "x86_64" ;;
+        aarch64 | arm64) echo "aarch64" ;;
+        *)
+            log_error "No prebuilt release for architecture $(uname -m). Build from source instead (run from a git checkout without --from-release)."
+            exit 1
+            ;;
+    esac
+}
+
+cleanup_release_work() {
+    if [[ -n "$RELEASE_WORK" ]]; then
+        rm -rf "$RELEASE_WORK"
+    fi
+}
+
+# Running from an extracted release tarball (bin/ironmud, no Cargo.toml)?
+detect_unpacked_release() {
+    # Never treat the install dir itself as a release source (running
+    # /opt/ironmud/install.sh from inside /opt/ironmud would copy onto itself).
+    if [[ "$RELEASE_MODE" == false ]] && [[ -x "bin/ironmud" ]] && [[ ! -f "Cargo.toml" ]] &&
+        [[ "$(pwd -P)" != "$(cd "$INSTALL_DIR" 2>/dev/null && pwd -P)" ]]; then
+        RELEASE_MODE=true
+        log_info "Detected an unpacked release ($(cat VERSION 2>/dev/null || echo 'unknown version'))"
+    fi
+}
+
+# Download (or copy) a release tarball, verify its checksum, unpack it and
+# switch the working directory to it, so the copy steps below read from it.
+fetch_release() {
+    local arch asset base tarball sums
+    arch=$(detect_arch)
+    asset="ironmud-${arch}-linux.tar.gz"
+    RELEASE_WORK=$(mktemp -d)
+    trap cleanup_release_work EXIT
+    tarball="$RELEASE_WORK/$asset"
+    sums="$RELEASE_WORK/SHA256SUMS"
+
+    if ! command -v curl &>/dev/null || ! command -v sha256sum &>/dev/null; then
+        log_info "Installing curl..."
+        apt-get update && apt-get install -y curl ca-certificates coreutils tar
+    fi
+
+    if [[ -f "$RELEASE_SPEC" ]]; then
+        log_info "Using local release tarball $RELEASE_SPEC"
+        cp "$RELEASE_SPEC" "$tarball"
+        local local_sums
+        local_sums="$(dirname "$RELEASE_SPEC")/SHA256SUMS"
+        if [[ -f "$local_sums" ]]; then
+            cp "$local_sums" "$sums"
+        fi
+    else
+        if [[ "$RELEASE_SPEC" =~ ^https?:// ]]; then
+            base="${RELEASE_SPEC%/*}"
+            asset="${RELEASE_SPEC##*/}"
+            tarball="$RELEASE_WORK/$asset"
+        elif [[ "$RELEASE_SPEC" == "latest" ]]; then
+            base="https://github.com/${RELEASE_REPO}/releases/latest/download"
+        else
+            base="https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_SPEC}"
+        fi
+        log_info "Downloading $base/$asset ..."
+        if ! curl -fSL --retry 3 -o "$tarball" "$base/$asset"; then
+            log_error "Download failed: $base/$asset"
+            exit 1
+        fi
+        if ! curl -fsSL --retry 3 -o "$sums" "$base/SHA256SUMS"; then
+            log_error "Could not download $base/SHA256SUMS; refusing to install an unverified download."
+            exit 1
+        fi
+    fi
+
+    if [[ -f "$sums" ]]; then
+        if ! (cd "$RELEASE_WORK" && grep " ${asset}\$" SHA256SUMS | sha256sum -c --status -); then
+            log_error "Checksum verification FAILED for $asset"
+            exit 1
+        fi
+        log_info "Checksum verified"
+    else
+        log_warn "No SHA256SUMS next to $RELEASE_SPEC; skipping checksum verification."
+    fi
+
+    tar -xzf "$tarball" -C "$RELEASE_WORK"
+    local unpacked
+    unpacked=$(find "$RELEASE_WORK" -mindepth 1 -maxdepth 1 -type d -name 'ironmud-*' | head -1)
+    if [[ -z "$unpacked" ]] || [[ ! -x "$unpacked/bin/ironmud" ]]; then
+        log_error "Release tarball does not contain bin/ironmud"
+        exit 1
+    fi
+    cd "$unpacked"
+    log_info "Release $(cat VERSION 2>/dev/null || echo '(unknown version)') unpacked"
+}
+
+# Point the copy steps at prebuilt binaries when installing a release.
+prepare_source() {
+    detect_unpacked_release
+    if [[ "$RELEASE_MODE" == true ]]; then
+        if [[ -n "$RELEASE_SPEC" ]]; then
+            fetch_release
+        fi
+        BIN_SRC="bin"
+    fi
+}
+
+# Install the server binaries from $BIN_SRC (target/release or a release's bin/)
+install_binaries() {
+    cp "$BIN_SRC/ironmud" "$INSTALL_DIR/bin/"
+    cp "$BIN_SRC/ironmud-admin" "$INSTALL_DIR/bin/"
+    if [[ -f "$BIN_SRC/ironmud-import" ]]; then
+        cp "$BIN_SRC/ironmud-import" "$INSTALL_DIR/bin/"
+    fi
+}
+
+# Keep a copy of the install and backup scripts in the install dir, so later
+# upgrades can run `sudo /opt/ironmud/install.sh --from-release`.
+install_tools() {
+    local f
+    for f in install.sh ironmud-sync.sh; do
+        if [[ -f "$f" ]] && [[ "$(realpath "$f")" != "$(realpath -m "$INSTALL_DIR/$f")" ]]; then
+            # Write a new file and rename it into place: when this script is
+            # itself /opt/ironmud/install.sh, bash is still reading it, and
+            # overwriting it in place would corrupt the running upgrade.
+            install -o root -g root -m 755 "$f" "$INSTALL_DIR/.$f.new"
+            mv -f "$INSTALL_DIR/.$f.new" "$INSTALL_DIR/$f"
+        fi
+    done
+}
+
+# Runtime-only dependencies for prebuilt installs
+install_runtime_dependencies() {
+    log_info "Installing runtime dependencies..."
+    apt-get update
+    apt-get install -y ca-certificates curl
+}
+
 # Detect OS
 check_os() {
     if [[ -f /etc/debian_version ]]; then
@@ -255,6 +428,8 @@ as_build_user() {
         ' _ "$PWD" "$@"
     else
         if [[ -f "$HOME/.cargo/env" ]]; then source "$HOME/.cargo/env"; fi
+        # Callers pass whole command lines as strings; eval is intended.
+        # shellcheck disable=SC2294
         eval "$@"
     fi
 }
@@ -334,8 +509,7 @@ copy_files() {
     log_info "Copying files to $INSTALL_DIR..."
 
     # Binaries
-    cp target/release/ironmud "$INSTALL_DIR/bin/"
-    cp target/release/ironmud-admin "$INSTALL_DIR/bin/"
+    install_binaries
 
     # Scripts
     cp -r scripts/commands/* "$INSTALL_DIR/scripts/commands/"
@@ -370,6 +544,18 @@ set_permissions() {
     chmod 755 "$INSTALL_DIR/bin"
     chmod 755 "$INSTALL_DIR/bin/ironmud"
     chmod 755 "$INSTALL_DIR/bin/ironmud-admin"
+    if [[ -f "$INSTALL_DIR/bin/ironmud-import" ]]; then
+        chmod 755 "$INSTALL_DIR/bin/ironmud-import"
+    fi
+    # Scripts root runs later (upgrades, backups) must not be writable by
+    # the service account.
+    local f
+    for f in install.sh ironmud-sync.sh; do
+        if [[ -f "$INSTALL_DIR/$f" ]]; then
+            chown root:root "$INSTALL_DIR/$f"
+            chmod 755 "$INSTALL_DIR/$f"
+        fi
+    done
     if [[ -d "$INSTALL_DIR/assets" ]]; then
         chown -R root:root "$INSTALL_DIR/assets"
         chmod -R u=rwX,go=rX "$INSTALL_DIR/assets"
@@ -400,6 +586,11 @@ ExecStart=/opt/ironmud/bin/ironmud --port 4000 --database /opt/ironmud/data/iron
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
+
+# Ops endpoints (/healthz, /metrics) for monitoring. Loopback only; they
+# have no auth. Check with: ironmud-admin health
+Environment="IRONMUD_OPS_BIND=127.0.0.1"
+#Environment="IRONMUD_OPS_PORT=4002"
 
 # Matrix integration (optional)
 # Uncomment and configure to enable Matrix room announcements
@@ -442,10 +633,22 @@ start_service() {
     systemctl enable ironmud
     systemctl start ironmud
 
-    sleep 2
+    # Wait for the ops health endpoint (first boot seeds the world, which
+    # can take a little while on small instances).
+    local _
+    for _ in $(seq 1 60); do
+        if "$INSTALL_DIR/bin/ironmud-admin" health -q 2>/dev/null; then
+            log_info "IronMUD service is running and healthy"
+            return
+        fi
+        if ! systemctl is-active --quiet ironmud; then
+            break
+        fi
+        sleep 1
+    done
 
     if systemctl is-active --quiet ironmud; then
-        log_info "IronMUD service is running"
+        log_warn "Service is running but did not report healthy yet. Check: ironmud-admin health"
     else
         log_warn "Service may not have started correctly. Check: systemctl status ironmud"
     fi
@@ -472,8 +675,14 @@ print_completion() {
     echo "Connect to the server:"
     echo "  telnet localhost $DEFAULT_PORT"
     echo ""
+    echo "Upgrade later:"
+    echo "  sudo $INSTALL_DIR/install.sh --from-release   # latest prebuilt release"
+    echo ""
     echo "Admin tool:"
     echo "  sudo ironmud-admin --help"
+    echo "  ironmud-admin health             # Health check (exit 0 = healthy)"
+    echo ""
+    echo "Monitoring (loopback only): http://127.0.0.1:4002/healthz and /metrics"
     echo ""
     echo "Matrix integration (optional):"
     echo "  Edit /etc/systemd/system/ironmud.service to configure Matrix room"
@@ -489,6 +698,7 @@ print_completion() {
 main() {
     check_root
     check_os
+    prepare_source
 
     if [[ "$SCRIPTS_ONLY" == true ]]; then
         scripts_only_update
@@ -496,7 +706,7 @@ main() {
     fi
 
     # Configure git hooks if running from a git checkout
-    if [[ -d ".git" ]] && [[ -d ".githooks" ]]; then
+    if [[ "$RELEASE_MODE" == false ]] && [[ -d ".git" ]] && [[ -d ".githooks" ]]; then
         git config core.hooksPath .githooks
         log_info "Configured git hooks path to .githooks"
     fi
@@ -512,15 +722,16 @@ main() {
         warn_players "$WARN_SECONDS"
 
         # Build first (while server is still running) to minimize downtime
-        build_project
+        if [[ "$RELEASE_MODE" == false ]]; then
+            build_project
+        fi
 
         stop_service_if_running
         backup_data
 
         # Update binaries
         log_info "Installing new binaries..."
-        cp target/release/ironmud "$INSTALL_DIR/bin/"
-        cp target/release/ironmud-admin "$INSTALL_DIR/bin/"
+        install_binaries
 
         # Smart copy scripts (backup modified ones)
         copy_scripts_smart
@@ -538,6 +749,7 @@ main() {
         log_info "Preserving existing systemd service configuration"
 
         set_permissions
+        install_tools
         install_admin_wrapper
         start_service
         print_upgrade_completion
@@ -547,13 +759,20 @@ main() {
         echo "=================================================="
         echo ""
 
-        install_dependencies
-        install_rust
+        if [[ "$RELEASE_MODE" == true ]]; then
+            install_runtime_dependencies
+        else
+            install_dependencies
+            install_rust
+        fi
         create_user
-        build_project
+        if [[ "$RELEASE_MODE" == false ]]; then
+            build_project
+        fi
         create_directories
         copy_files
         set_permissions
+        install_tools
         install_service
         install_admin_wrapper
         start_service

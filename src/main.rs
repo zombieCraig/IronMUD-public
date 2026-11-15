@@ -20,7 +20,7 @@ use ironmud::{
     db,
     game::Entity,
     gemini::GeminiConfig,
-    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata, run_server,
+    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata, run_server_with_proxy,
     save_all_players, watch_scripts,
 };
 
@@ -43,6 +43,21 @@ struct Args {
     #[arg(short, long, default_value = "4000")]
     port: u16,
 
+    /// Game port bind address (127.0.0.1 when only a local TLS proxy should reach it)
+    #[arg(long, env = "IRONMUD_BIND", default_value = "0.0.0.0")]
+    bind: String,
+
+    /// Extra game port for a local TLS proxy that sends a PROXY protocol v1
+    /// header (HAProxy `send-proxy`), so players keep their real IP for
+    /// rate limits and bans. Off unless set.
+    #[arg(long, env = "IRONMUD_PROXY_PORT")]
+    proxy_port: Option<u16>,
+
+    /// Bind address for --proxy-port. Connections there can claim any client
+    /// IP, so keep it on loopback.
+    #[arg(long, env = "IRONMUD_PROXY_BIND", default_value = "127.0.0.1")]
+    proxy_bind: String,
+
     /// Database path
     #[arg(short, long, default_value = "ironmud.db", env = "IRONMUD_DATABASE")]
     database: String,
@@ -60,6 +75,19 @@ struct Args {
     /// Unix control socket path (defaults to <database-dir>/control.sock)
     #[arg(long, env = "IRONMUD_CONTROL_SOCKET")]
     control_socket: Option<String>,
+
+    /// Serve the ops endpoints (/healthz, /metrics). On by default.
+    #[arg(long, env = "IRONMUD_OPS_ENABLED", default_value_t = true, action = clap::ArgAction::Set)]
+    ops_enabled: bool,
+
+    /// Ops endpoints port
+    #[arg(long, env = "IRONMUD_OPS_PORT", default_value_t = ironmud::ops::DEFAULT_OPS_PORT)]
+    ops_port: u16,
+
+    /// Ops endpoints bind address. Loopback by default; the endpoints are
+    /// unauthenticated, so only widen this behind a firewall.
+    #[arg(long, env = "IRONMUD_OPS_BIND", default_value = ironmud::ops::DEFAULT_OPS_BIND)]
+    ops_bind: String,
 }
 
 #[tokio::main]
@@ -184,6 +212,7 @@ async fn main() -> Result<()> {
     let tick_db36 = db.clone(); // Clone db for leaderboard scan tick
     let tick_db37 = db.clone(); // Clone db for builder score scan tick
     let api_db = db.clone(); // Clone db for REST API
+    let ops_db = db.clone(); // Clone db for the ops endpoints
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
     let mut command_metadata = load_command_metadata()?;
@@ -595,6 +624,28 @@ async fn main() -> Result<()> {
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
+    // Ops endpoints (/healthz, /metrics): on by default, loopback-only.
+    if args.ops_enabled {
+        if !ironmud::ops::is_loopback_bind(&args.ops_bind) {
+            warn!(
+                "Ops endpoints bound to {} -- /healthz and /metrics are unauthenticated; \
+                 make sure a firewall limits who can reach port {}.",
+                args.ops_bind, args.ops_port
+            );
+        }
+        let ops_state = std::sync::Arc::new(ironmud::ops::OpsState {
+            db: ops_db,
+            connections: connections.clone(),
+        });
+        let ops_bind = args.ops_bind.clone();
+        let ops_port = args.ops_port;
+        tokio::spawn(async move {
+            ironmud::ops::run_ops_server(ops_state, &ops_bind, ops_port).await;
+        });
+    } else {
+        info!("Ops endpoints disabled (IRONMUD_OPS_ENABLED=false)");
+    }
+
     // Start REST API if enabled via environment variable
     // Disabled by default - set IRONMUD_API_ENABLED=true to enable
     if std::env::var("IRONMUD_API_ENABLED")
@@ -743,11 +794,27 @@ async fn main() -> Result<()> {
     // Accept players only once every Rhai function is registered: command
     // handlers share the engine, and it can't be mutated after that.
     let state2 = state.clone();
-    let addr = format!("0.0.0.0:{}", args.port);
+    let addr = ironmud::ops::bind_addr(&args.bind, args.port);
+    let proxy_addr = args.proxy_port.map(|p| ironmud::ops::bind_addr(&args.proxy_bind, p));
+    if proxy_addr.is_some() && !ironmud::ops::is_loopback_bind(&args.proxy_bind) {
+        warn!(
+            "PROXY protocol port bound to {} -- anyone who can reach it can claim any client IP. \
+             Keep it on loopback behind your TLS proxy.",
+            args.proxy_bind
+        );
+    }
     let telnet_server = tokio::spawn(async move {
         let listener = TcpListener::bind(&addr).await.unwrap();
         info!("IronMUD Gateway listening on {}", addr);
-        run_server(state2, listener, shutdown_rx).await;
+        let proxy_listener = match proxy_addr {
+            Some(paddr) => {
+                let l = TcpListener::bind(&paddr).await.unwrap();
+                info!("PROXY-protocol listener (for a local TLS proxy) on {}", paddr);
+                Some(l)
+            }
+            None => None,
+        };
+        run_server_with_proxy(state2, listener, proxy_listener, shutdown_rx).await;
     });
 
     // Wait for shutdown signal (SIGINT, SIGTERM, or admin command)

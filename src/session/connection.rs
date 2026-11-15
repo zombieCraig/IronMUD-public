@@ -26,6 +26,7 @@ pub fn set_character_for_connection(
         // calls during normal gameplay (refreshing the snapshot) keep the
         // original anchor. Cleared by `flush_play_time` on quit.
         if session.character.is_none() && session.session_started_at.is_none() {
+            crate::ops::inc(&crate::ops::LOGINS_TOTAL);
             session.session_started_at = Some(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

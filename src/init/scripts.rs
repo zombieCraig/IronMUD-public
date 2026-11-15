@@ -20,10 +20,12 @@ pub fn load_scripts(state: SharedState) -> Result<()> {
                 match world.engine.compile_file(path.clone()) {
                     Ok(ast) => {
                         info!("Loaded script: {}", path_str);
+                        crate::ops::record_script_load(&path_str, true);
                         world.scripts.insert(path_str, ast);
                     }
                     Err(e) => {
                         error!("Failed to compile script {}: {}", path_str, e);
+                        crate::ops::record_script_load(&path_str, false);
                     }
                 }
             }
@@ -67,10 +69,12 @@ pub fn watch_scripts(state: SharedState) {
                                 match world.engine.compile_file(path.clone()) {
                                     Ok(ast) => {
                                         world.scripts.insert(path_str.to_string(), ast);
+                                        crate::ops::record_script_load(&path_str, true);
                                         info!("Script recompiled successfully: {}", path_str);
                                     }
                                     Err(e) => {
                                         error!("Failed to recompile script {}: {}", path_str, e);
+                                        crate::ops::record_script_load(&path_str, false);
                                     }
                                 }
                             }

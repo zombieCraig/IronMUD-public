@@ -20,7 +20,13 @@ cargo test                     # Run all tests (preferred verification)
 cargo fmt --all                # Format (required before commit; hook enforces)
 cargo run                      # Run server (port 4000)
 cargo test --test server       # Integration tests only
+curl -s localhost:4002/healthz # Ops listener (loopback, on by default): /healthz, /metrics
+ironmud-admin health           # Same check; exit 1 when a tick is stale
 ```
+
+New counters/gauges for `/metrics` go in `src/ops.rs` (atomics bumped at existing chokepoints; a
+scrape must never lock World). Self-hosting files live in `deploy/` (release packaging, bootstrap,
+cloud-init, Terraform, Docker, Fly, monitoring); see [Hosting](docs/hosting.md).
 
 ## Documentation
 
@@ -32,6 +38,7 @@ cargo test --test server       # Integration tests only
 | [Admin Guide](docs/admin-guide.md) | Server administration |
 | [Import Guide](docs/import-guide.md) | Importing legacy MUD content (CircleMUD, ...) |
 | [Installation](docs/installation.md) | Setup and configuration |
+| [Hosting](docs/hosting.md) | Self-hosting: cloud-init, Terraform, Docker, TLS, monitoring, backups |
 
 ## Architecture Overview
 

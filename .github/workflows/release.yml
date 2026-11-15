@@ -1,0 +1,164 @@
+name: Release
+
+# Build Linux release tarballs (x86_64 + aarch64) and attach them to a
+# GitHub release when a v* tag is pushed. Manual runs build and upload the
+# tarballs as workflow artifacts only (no release), for testing.
+#
+# Assets: ironmud-<arch>-linux.tar.gz, install.sh, bootstrap.sh, SHA256SUMS.
+# Names carry no version, so .../releases/latest/download/<asset> is stable.
+# Tags also publish a multi-arch image to ghcr.io/<owner>/<repo> (see deploy/docker/).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Build on 22.04 (glibc 2.35) so the binaries run on Ubuntu 22.04+
+          # and Debian 12+. Native ARM runner: cross-compiling the
+          # matrix-sdk / sqlite dependency tree is not worth the pain.
+          - arch: x86_64
+            os: ubuntu-22.04
+          - arch: aarch64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libssl-dev cmake
+
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.arch }}
+
+      - name: Check tag matches Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cargo_version="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [[ "$cargo_version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::warning::Tag $GITHUB_REF_NAME does not match Cargo.toml version $cargo_version"
+          fi
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME}"
+          [[ "$GITHUB_REF" == refs/tags/v* ]] || version="dev-${GITHUB_SHA::10}"
+          deploy/package-release.sh --version "$version" --out dist
+
+      - name: Smoke-test packaged binaries
+        run: |
+          tar -xzf dist/ironmud-${{ matrix.arch }}-linux.tar.gz -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/ironmud-${{ matrix.arch }}-linux/bin/ironmud" --help >/dev/null
+          "$RUNNER_TEMP/ironmud-${{ matrix.arch }}-linux/bin/ironmud-admin" --help >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ironmud-${{ matrix.arch }}-linux
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble SHA256SUMS
+        run: |
+          # Installer scripts ship as their own assets so operators and
+          # cloud-init can fetch them from a stable releases/latest URL.
+          cp install.sh deploy/bootstrap.sh dist/
+          cd dist
+          cat ./*.sha256 > SHA256SUMS
+          rm ./*.sha256
+          sha256sum install.sh bootstrap.sh >> SHA256SUMS
+          sha256sum -c SHA256SUMS
+          ls -l
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "IronMUD $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
+
+  image:
+    name: publish container image
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Image name (GHCR needs lowercase)
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ steps.name.outputs.image }}
+          # v1.2.3 -> :v1.2.3, :v1.2 and :latest (pre-releases get only their own tag).
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+
+      # The final stage runs apt for the arm64 image under emulation.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Built from the release tarballs the build job just tested.
+      - uses: docker/build-push-action@v6
+        with:
+          context: dist
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

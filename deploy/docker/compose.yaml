@@ -1,0 +1,34 @@
+# IronMUD with Docker Compose.
+#
+#   docker compose -f deploy/docker/compose.yaml up -d
+#   telnet localhost 4000
+#
+# One container per data volume: the database is single-writer, so never
+# scale this service above 1.
+#
+# Admin commands that edit the database need the server stopped:
+#   docker compose -f deploy/docker/compose.yaml stop ironmud
+#   docker compose -f deploy/docker/compose.yaml run --rm --entrypoint ironmud-admin ironmud user list
+#   docker compose -f deploy/docker/compose.yaml start ironmud
+# Commands that talk to the running server work live:
+#   docker compose -f deploy/docker/compose.yaml exec ironmud ironmud-admin health
+
+services:
+  ironmud:
+    # Pin a release with IRONMUD_IMAGE=ghcr.io/zombiecraig/ironmud-public:v0.2.0
+    image: ${IRONMUD_IMAGE:-ghcr.io/zombiecraig/ironmud-public:latest}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "${IRONMUD_PORT:-4000}:4000"
+    volumes:
+      - ironmud-data:/opt/ironmud/data
+    environment:
+      TZ: UTC
+      # Optional REST API (needs an API key: ironmud-admin api-key create);
+      # also add "4001:4001" under ports.
+      # IRONMUD_API_ENABLED: "true"
+      # Optional Matrix/Discord/SMTP settings: see docs/installation.md.
+
+volumes:
+  ironmud-data:

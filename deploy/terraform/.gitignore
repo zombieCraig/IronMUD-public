@@ -1,0 +1,9 @@
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+# Real settings; example.tfvars is the committed template.
+terraform.tfvars
+*.auto.tfvars

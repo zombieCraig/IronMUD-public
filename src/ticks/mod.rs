@@ -36,7 +36,7 @@
 pub(crate) mod broadcast;
 
 // Liveness registry + watchdog — surfaces ticks whose tasks have died.
-pub mod heartbeat;
+pub use ironmud::heartbeat;
 
 // Restarts tick tasks that panic.
 pub mod supervise;

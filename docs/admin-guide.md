@@ -835,39 +835,143 @@ sudo systemctl status ironmud
 > who
 ```
 
+### Health and Metrics Endpoints
+
+The server serves two unauthenticated endpoints on a separate listener, on
+by default and bound to loopback (`127.0.0.1:4002`):
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /healthz` | `200 {"status":"ok","ticks":N}`, or `503` with the list of background ticks that have stopped running |
+| `GET /metrics` | Prometheus text format: build info, players online, open sessions, connection/login/command counters, command panics, script errors, scripts currently failing to compile (`ironmud_script_load_errors`), database size, per-tick last-run age, staleness and restart counts |
+
+```bash
+# Exit code 0 when healthy, 1 when stale or unreachable (-q for no output)
+ironmud-admin health
+
+curl -s http://127.0.0.1:4002/metrics
+```
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `IRONMUD_OPS_ENABLED` / `--ops-enabled` | `true` | Set `false` to turn the listener off |
+| `IRONMUD_OPS_PORT` / `--ops-port` | `4002` | Listener port (`ironmud-admin health` reads the same variable) |
+| `IRONMUD_OPS_BIND` / `--ops-bind` | `127.0.0.1` | Bind address. The endpoints have no auth; a non-loopback bind logs a warning, so only widen it behind a firewall |
+
+A port conflict on the ops listener is logged and does not stop the game.
+Point a local Prometheus, Grafana Alloy, or your host's monitoring agent at
+`/metrics`; use `/healthz` for container and uptime checks.
+
+#### Grafana Dashboard
+
+[`deploy/monitoring/grafana-dashboard.json`](../deploy/monitoring/grafana-dashboard.json)
+is a ready-made dashboard: players online, connections vs. logins, commands
+per minute, script errors, panics and scripts that fail to load, background-tick health, and database
+size. In Grafana: **Dashboards → New → Import**, upload the file, and pick
+your Prometheus data source. It expects the metrics under `job="ironmud"`.
+
+A Prometheus on the same server only needs:
+
+```yaml
+scrape_configs:
+  - job_name: ironmud
+    static_configs:
+      - targets: ["127.0.0.1:4002"]
+```
+
+#### Grafana Cloud (free tier) with Alloy
+
+To watch a VPS without running Prometheus yourself, install Grafana's Alloy
+agent on the server and send metrics (and optionally the server log) to a
+free Grafana Cloud account. Alloy is Grafana's own package; IronMUD doesn't
+bundle it.
+
+1. In Grafana Cloud, open your stack's **Prometheus** and **Loki** details
+   and note each one's URL and user number. Create an access-policy token
+   with the `metrics:write` and `logs:write` scopes.
+2. On the server, install Alloy from Grafana's apt repository:
+
+   ```bash
+   sudo mkdir -p /etc/apt/keyrings
+   curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+   echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
+     | sudo tee /etc/apt/sources.list.d/grafana.list
+   sudo apt-get update && sudo apt-get install -y alloy
+   ```
+
+3. Install the config from this repo and give Alloy read access to the journal:
+
+   ```bash
+   sudo curl -fsSL -o /etc/alloy/config.alloy \
+     https://raw.githubusercontent.com/zombieCraig/IronMUD-public/main/deploy/monitoring/config.alloy
+   sudo usermod -aG systemd-journal alloy
+   ```
+
+4. Add the credentials to `/etc/default/alloy` (keep the lines already there)
+   and make the file root-only:
+
+   ```bash
+   sudo tee -a /etc/default/alloy >/dev/null <<'EOF'
+   GRAFANA_PROM_URL=https://prometheus-prod-XX.grafana.net/api/prom/push
+   GRAFANA_PROM_USER=123456
+   GRAFANA_LOKI_URL=https://logs-prod-XX.grafana.net/loki/api/v1/push
+   GRAFANA_LOKI_USER=654321
+   GRAFANA_API_TOKEN=glc_...
+   EOF
+   sudo chmod 600 /etc/default/alloy
+   sudo systemctl enable --now alloy && sudo systemctl restart alloy
+   ```
+
+5. Import the dashboard above into your Grafana Cloud stack. Metrics appear
+   within a minute; `journalctl -u alloy -e` shows any push errors.
+
+Metrics only? Delete the "Logs" section of `config.alloy` and skip the Loki
+lines. Free-tier limits are far above what one MUD produces.
+
+For a simple "is it up?" alert, any external TCP monitor (UptimeRobot's free
+plan, for example) pointed at port 4000 or 4443 works without installing
+anything.
+
 ## Backup and Restore
+
+The database lives in `/opt/ironmud/data/ironmud.db` (a directory). The
+server writes to it continuously, so **never copy it while the server is
+running**. For backup strategies (provider snapshots, Docker volumes) see
+[Hosting: Backups](hosting.md#backups).
 
 ### Automatic Backups
 
-The install script creates timestamped backups before upgrades:
+The install script copies the data directory before every upgrade:
 ```
-data.backup-20240115-143022/
+/opt/ironmud/data.backup-20240115-143022/
 ```
 
-### Manual Backup
+### Backup with ironmud-sync.sh
 
 ```bash
-# Stop the server first
-sudo systemctl stop ironmud
+# Stops the server for a few seconds, archives the database and custom
+# trigger scripts to /opt/ironmud/backups/, then starts it again
+sudo /opt/ironmud/ironmud-sync.sh backup
 
-# Copy the database directory
-cp -r /opt/ironmud/ironmud.db /backup/location/
-
-# Restart
-sudo systemctl start ironmud
+# List backups
+sudo /opt/ironmud/ironmud-sync.sh status
 ```
+
+Copy the archives somewhere off the server.
 
 ### Restore
 
 ```bash
-sudo systemctl stop ironmud
-rm -rf /opt/ironmud/ironmud.db
-cp -r /backup/location/ironmud.db /opt/ironmud/
-sudo systemctl start ironmud
+# Same server, or a fresh install on a new one
+sudo /opt/ironmud/ironmud-sync.sh restore /opt/ironmud/backups/ironmud-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
+
+The restore keeps the database it replaces as
+`/opt/ironmud/data/ironmud.db.pre-restore-<timestamp>`.
 
 ## Related Documentation
 
 - [Getting Started](getting-started.md) - Demo world walkthrough and first steps
 - [Installation](installation.md) - Server setup
+- [Hosting](hosting.md) - Running a public server: providers, TLS, monitoring, backups
 - [Builder Guide](builder-guide.md) - Creating content

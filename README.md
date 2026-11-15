@@ -34,12 +34,28 @@ cargo run --release --bin ironmud
 telnet localhost 4000
 ```
 
-The first character created becomes an administrator.
+The first character created from the server itself (`telnet localhost 4000`) becomes an administrator.
+
+## Run Your Own Server
+
+No Rust toolchain needed: every release ships prebuilt Linux binaries (x86_64 and ARM) and a container image.
+
+```bash
+# Any Ubuntu 22.04+/Debian 12+ VPS: installs, starts and health-checks the server
+curl -fsSL https://github.com/zombieCraig/IronMUD-public/releases/latest/download/bootstrap.sh | sudo bash
+
+# Or with Docker
+docker run -d --name ironmud -p 4000:4000 -v ironmud-data:/opt/ironmud/data \
+  ghcr.io/zombiecraig/ironmud-public:latest
+```
+
+Also ready to use: a cloud-init file to paste when creating a server, Terraform/OpenTofu modules for AWS Lightsail, DigitalOcean and Hetzner, a Fly.io config, optional TLS with Let's Encrypt, and `/healthz` + Prometheus `/metrics` with a Grafana dashboard. A $4–5/month server is plenty. See the **[Hosting guide](docs/hosting.md)**.
 
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
+| [Hosting](docs/hosting.md) | Running a public server: providers, TLS, monitoring, backups |
 | [Installation](docs/installation.md) | Server setup, configuration, and upgrading |
 | [Getting Started](docs/getting-started.md) | Demo world walkthrough and first steps |
 | [Player Guide](docs/player-guide.md) | How to play the game |

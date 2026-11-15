@@ -1,0 +1,38 @@
+#cloud-config
+#
+# IronMUD server -- paste this whole file into your cloud provider's
+# "user data" / "cloud-init" / "launch script" box when creating an
+# Ubuntu 22.04+ or Debian 12+ server (AWS Lightsail & EC2, DigitalOcean,
+# Hetzner, Vultr, Linode, ...). 1 GB RAM is plenty; 512 MB works with
+# the swap file the bootstrap adds.
+#
+# Edit the values below, then launch. Setup takes a few minutes after
+# boot; progress is logged to /var/log/ironmud-bootstrap.log.
+#
+# Open these ports in the provider's firewall: 22, 4000, and if you set a
+# TLS domain also 80 and 4443.
+#
+# Do NOT put passwords or API keys here: user data is readable from the
+# instance metadata service. Configure email/Discord/etc. after boot.
+
+write_files:
+  - path: /etc/ironmud/bootstrap.env
+    permissions: '0600'
+    content: |
+      # Release to install: latest, or a tag like v0.2.0
+      IRONMUD_VERSION=latest
+
+      # Optional TLS. Set to a domain whose DNS already points at this
+      # server to get a free Let's Encrypt certificate and encrypted
+      # connections on port 4443. Leave empty for plaintext only.
+      IRONMUD_TLS_DOMAIN=
+      # Optional: email for Let's Encrypt expiry notices.
+      IRONMUD_TLS_EMAIL=
+      # 1 = close plaintext port 4000 so players must use TLS.
+      IRONMUD_TLS_ONLY=0
+
+      # 1 = configure the ufw firewall on the server, 0 = leave it alone.
+      IRONMUD_FIREWALL=1
+
+runcmd:
+  - [bash, -c, 'set -o pipefail; . /etc/ironmud/bootstrap.env; v=$IRONMUD_VERSION; [ -n "$v" ] || v=latest; if [ "$v" = latest ]; then u=https://github.com/zombieCraig/IronMUD-public/releases/latest/download/bootstrap.sh; else u="https://github.com/zombieCraig/IronMUD-public/releases/download/$v/bootstrap.sh"; fi; curl -fsSL --retry 5 "$u" -o /root/ironmud-bootstrap.sh && bash /root/ironmud-bootstrap.sh']

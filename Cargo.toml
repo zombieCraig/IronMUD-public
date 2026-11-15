@@ -1,6 +1,6 @@
 [package]
 name = "ironmud"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 # cargo audit triage
@@ -24,9 +24,7 @@ edition = "2024"
 # 0.12.5 (Discord bridge, via tokio-tungstenite 0.21), which has no newer
 # release. Builds that don't need Discord avoid them entirely with
 # `--no-default-features --features matrix`. Revisit when serenity ships a
-# release on rustls 0.23. CI ignores exactly these seven IDs on its
-# `cargo audit` step (.github/workflows/ci.yml) so the job stays green while
-# still failing on any new advisory; remove them there too when this clears.
+# release on rustls 0.23.
 #
 # matrix-sdk moved 0.16 -> 0.19 (Nov 2026) to clear vodozemac, imbl-sized-chunks
 # and bitmaps advisories. 0.19 dropped `native-tls`, so it uses rustls with the

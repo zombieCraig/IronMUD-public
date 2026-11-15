@@ -52,6 +52,22 @@ enum Commands {
         #[command(subcommand)]
         action: WorldAction,
     },
+    /// Check the running server's /healthz endpoint; exits non-zero if the
+    /// server is unreachable or reports stale ticks (requires running server)
+    Health {
+        /// Ops endpoint host
+        #[arg(long, env = "IRONMUD_OPS_HOST", default_value = ironmud::ops::DEFAULT_OPS_BIND)]
+        host: String,
+        /// Ops endpoint port
+        #[arg(long, env = "IRONMUD_OPS_PORT", default_value_t = ironmud::ops::DEFAULT_OPS_PORT)]
+        port: u16,
+        /// Seconds to wait for a response
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+        /// Print nothing; only set the exit code
+        #[arg(short, long)]
+        quiet: bool,
+    },
     /// Broadcast a message to all logged-in players (requires running server)
     Broadcast {
         /// Message to send
@@ -313,10 +329,48 @@ enum ApiKeyAction {
 // `admin config` command share one source of truth.
 use ironmud::settings::{KNOWN_SETTINGS, setting_default};
 
+/// `ironmud-admin health`: probe /healthz. Exit 0 healthy, 1 otherwise.
+fn check_health(host: &str, port: u16, timeout_secs: u64, quiet: bool) -> Result<()> {
+    let timeout = std::time::Duration::from_secs(timeout_secs.max(1));
+    match ironmud::ops::probe_health(host, port, timeout) {
+        Ok((200, body)) => {
+            if !quiet {
+                println!("healthy: {}", body.trim());
+            }
+            Ok(())
+        }
+        Ok((code, body)) => {
+            if !quiet {
+                eprintln!("unhealthy (HTTP {}): {}", code, body.trim());
+            }
+            std::process::exit(1);
+        }
+        Err(e) => {
+            if !quiet {
+                eprintln!(
+                    "unreachable: {}:{}: {} (is the server running with ops endpoints enabled?)",
+                    host, port, e
+                );
+            }
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Broadcast talks to the live server, not the on-disk database.
+    // Health and Broadcast talk to the live server, not the on-disk database
+    // (which the running server holds locked).
+    if let Commands::Health {
+        host,
+        port,
+        timeout,
+        quiet,
+    } = &cli.command
+    {
+        return check_health(host, *port, *timeout, *quiet);
+    }
     if let Commands::Broadcast { message } = &cli.command {
         let socket = resolve_socket_path(&cli);
         return send_broadcast(&socket, message);
@@ -329,7 +383,7 @@ fn main() -> Result<()> {
         Commands::Settings { action } => handle_settings_command(&db, action),
         Commands::ApiKey { action } => handle_api_key_command(&db, action),
         Commands::World { action } => handle_world_command(&db, action),
-        Commands::Broadcast { .. } => unreachable!("handled above"),
+        Commands::Broadcast { .. } | Commands::Health { .. } => unreachable!("handled above"),
         Commands::Account { action } => handle_account_command(&db, action),
         Commands::SiteBan { action } => handle_site_ban_command(&db, action),
         Commands::DgProto { action } => handle_dg_proto_command(&db, action),

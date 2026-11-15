@@ -1,0 +1,50 @@
+// Grafana Alloy config for an IronMUD server: sends /metrics and the
+// server's journal logs to Grafana Cloud (or any Prometheus/Loki endpoint).
+//
+// Install as /etc/alloy/config.alloy. Credentials come from environment
+// variables set in /etc/default/alloy (root-only); see "Grafana Cloud" in
+// docs/admin-guide.md. Nothing here is IronMUD-specific beyond the scrape
+// address and the systemd unit name.
+
+// --- Metrics -----------------------------------------------------------------
+
+prometheus.scrape "ironmud" {
+  // The ops listener is loopback-only by default; Alloy runs on the same host.
+  targets = [{
+    "__address__" = "127.0.0.1:4002",
+    "instance"    = constants.hostname,
+  }]
+  job_name        = "ironmud"
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_PROM_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_PROM_USER")
+      password = sys.env("GRAFANA_API_TOKEN")
+    }
+  }
+}
+
+// --- Logs (optional: delete this section to send metrics only) ---------------
+
+loki.source.journal "ironmud" {
+  matches    = "_SYSTEMD_UNIT=ironmud.service"
+  labels     = { job = "ironmud", instance = constants.hostname }
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_LOKI_USER")
+      password = sys.env("GRAFANA_API_TOKEN")
+    }
+  }
+}

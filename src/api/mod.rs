@@ -100,7 +100,7 @@ async fn health_check() -> Json<serde_json::Value> {
 pub async fn run_api_server(state: Arc<ApiState>, bind: &str, port: u16) {
     warn_about_api_keys(&state.db);
     let app = create_router(state);
-    let addr = format!("{}:{}", bind, port);
+    let addr = crate::ops::bind_addr(bind, port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("REST API listening on {}", addr);
     axum::serve(listener, app).await.unwrap();

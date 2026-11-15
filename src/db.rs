@@ -743,6 +743,12 @@ impl Db {
         Ok(())
     }
 
+    /// Bytes the database occupies on disk. Walks the sled directory, so it
+    /// is for occasional reads (metrics scrapes), not hot paths.
+    pub fn size_on_disk(&self) -> Result<u64> {
+        Ok(self.db.size_on_disk()?)
+    }
+
     pub fn get_character_data(&self, name: &str) -> Result<Option<CharacterData>> {
         // Use lowercase key for case-insensitive lookup
         let key = name.to_lowercase();
