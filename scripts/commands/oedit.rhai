@@ -3567,7 +3567,7 @@ fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
     }
     let spell_id = parts[2];
     let spell_info = get_spell_info(spell_id);
-    if type_of(spell_info) == "()" {
+    if spell_info.len() == 0 {
         send_client_message(connection_id, "Unknown spell id: " + spell_id + " (use `lookup spell` to browse).");
         return;
     }
@@ -3622,8 +3622,8 @@ fn show_cast_on_use(item_id, connection_id) {
     let cou = item.cast_on_use;
     let spell_id = cou["spell"];
     let spell = get_spell_info(spell_id);
-    let spell_name = if type_of(spell) != "()" { spell["name"] } else { spell_id };
-    let spell_cd = if type_of(spell) != "()" { spell["cooldown_secs"] } else { 0 };
+    let spell_name = if spell.len() > 0 { spell["name"] } else { spell_id };
+    let spell_cd = if spell.len() > 0 { spell["cooldown_secs"] } else { 0 };
     let item_cd = cou["cooldown_secs"];
     let cd_line = if type_of(item_cd) != "()" && item_cd > 0 {
         "  cooldown:    " + item_cd + "s (item override; spell default is " + spell_cd + "s)"

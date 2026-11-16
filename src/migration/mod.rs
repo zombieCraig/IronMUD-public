@@ -523,6 +523,9 @@ pub fn release_residency(db: &Db, mobile: &MobileData) -> Result<()> {
 
 /// Absolute game-day counter: increases monotonically as in-game time advances.
 /// Uses a 30-day month / 12-month year calendar (matches GameTime fields).
+///
+/// Runs 360 days ahead of `GameTime::absolute_day` (this counts from year 0).
+/// Both are persisted in different records; see that method before mixing them.
 pub fn absolute_game_day(year: u32, month: u8, day: u8) -> i64 {
     let y = year as i64;
     let m = month.max(1) as i64;

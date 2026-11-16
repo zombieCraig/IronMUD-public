@@ -36,7 +36,7 @@ fn run_command(args, connection_id) {
 
     let spell_id = cou["spell"];
     let spell = get_spell_info(spell_id);
-    if type_of(spell) == "()" {
+    if spell.len() == 0 {
         send_client_message(connection_id, "The potion fizzles without effect.");
         delete_item(item.id);
         return;

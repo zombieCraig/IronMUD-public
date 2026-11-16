@@ -286,6 +286,12 @@ impl Default for GameTime {
 impl GameTime {
     /// Monotonic day counter since year 1, month 1, day 1. Used for
     /// absolute-day bookkeeping (worship tribute deadlines, etc.).
+    ///
+    /// NOT interchangeable with `migration::absolute_game_day`, which counts
+    /// from year 0 and so runs exactly 360 days ahead of this. Each is
+    /// self-consistent and both are persisted (pact/tribute days here; birth,
+    /// residency and pregnancy days there), so they can't be unified without a
+    /// data migration. Never compare a day from one with a day from the other.
     pub fn absolute_day(&self) -> i64 {
         (self.day as i64 - 1) + (self.month as i64 - 1) * 30 + (self.year as i64 - 1) * 360
     }
