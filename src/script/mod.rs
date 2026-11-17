@@ -60,7 +60,7 @@ mod spawn;
 mod spells;
 mod stealth;
 pub mod synth;
-mod tattoos;
+pub mod tattoos;
 mod transport;
 pub mod trigger_sandbox;
 mod triggers;

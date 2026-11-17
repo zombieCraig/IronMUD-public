@@ -12,7 +12,7 @@
 //! `CharismaBoost` buff. Low humanity risks **cyberpsychosis**: escalating
 //! dissociative or violent episodes rolled on the psyche tick.
 //!
-//! Installed chrome follows the tattoo pattern (`db.apply_tattoo_to_character`):
+//! Installed chrome follows the tattoo pattern (`script::tattoos::apply_tattoo`):
 //! the item instance is consumed and an `InstalledCyberware` snapshot is
 //! pushed here, with the item's `affects` stamped as permanent `ActiveBuff`s
 //! sourced `"cyberware:<install_id>"`. Uninstalling rebuilds an `ItemData`

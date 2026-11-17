@@ -11707,6 +11707,7 @@ fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
     let temp = tempfile::tempdir().expect("create temp dir");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
 
         // Seed a blank character.
         let ch = make_blank_character("Inked");
@@ -11749,7 +11750,8 @@ fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
         db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
 
         // Apply.
-        let (short, location) = db.apply_tattoo_to_character(&ch.name, &inst_id).expect("apply tattoo");
+        let (short, location) =
+            ironmud::script::tattoos::apply_tattoo(&db, &conns, &ch.name, &inst_id).expect("apply tattoo");
         assert_eq!(short, "a marauder's mark");
         assert_eq!(location, "right arm");
 
@@ -11793,6 +11795,7 @@ fn test_apply_tattoo_rejects_non_tattoo_item() {
     let temp = tempfile::tempdir().expect("create temp dir");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
 
         let ch = make_blank_character("WrongTool");
         db.save_character_data(ch.clone()).expect("save char");
@@ -11806,7 +11809,7 @@ fn test_apply_tattoo_rejects_non_tattoo_item() {
         let id = item.id;
         db.save_item_data(item).expect("save");
 
-        let err = db.apply_tattoo_to_character(&ch.name, &id);
+        let err = ironmud::script::tattoos::apply_tattoo(&db, &conns, &ch.name, &id);
         assert!(err.is_err(), "non-tattoo items are rejected");
 
         let after = db.get_character_data(&ch.name).expect("get").expect("present");
@@ -11829,6 +11832,7 @@ fn test_apply_tattoo_rejects_when_no_wear_location() {
     let temp = tempfile::tempdir().expect("create temp dir");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
 
         let ch = make_blank_character("NoSlot");
         db.save_character_data(ch.clone()).expect("save char");
@@ -11843,7 +11847,7 @@ fn test_apply_tattoo_rejects_when_no_wear_location() {
         let id = item.id;
         db.save_item_data(item).expect("save");
 
-        let err = db.apply_tattoo_to_character(&ch.name, &id);
+        let err = ironmud::script::tattoos::apply_tattoo(&db, &conns, &ch.name, &id);
         assert!(err.is_err(), "tattoo without slot is rejected");
     }));
     if let Err(e) = result {
@@ -11859,6 +11863,7 @@ fn test_remove_tattoo_strips_matching_buffs() {
     let temp = tempfile::tempdir().expect("create temp dir");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
 
         let ch = make_blank_character("Removable");
         db.save_character_data(ch.clone()).expect("save char");
@@ -11887,7 +11892,7 @@ fn test_remove_tattoo_strips_matching_buffs() {
             .expect("instance");
         let inst_id = inst.id;
         db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
-        db.apply_tattoo_to_character(&ch.name, &inst_id).expect("apply");
+        ironmud::script::tattoos::apply_tattoo(&db, &conns, &ch.name, &inst_id).expect("apply");
 
         // Confirm the buff is present pre-removal.
         let want_source = "tattoo:ink:wisp:left arm";
@@ -11898,7 +11903,7 @@ fn test_remove_tattoo_strips_matching_buffs() {
         );
         assert_eq!(before.tattoos.len(), 1);
 
-        let removed = db.remove_tattoo_from_character(&ch.name, 0).expect("remove");
+        let removed = ironmud::script::tattoos::remove_tattoo(&db, &conns, &ch.name, 0);
         assert!(removed);
 
         let after = db.get_character_data(&ch.name).unwrap().unwrap();
@@ -11910,7 +11915,7 @@ fn test_remove_tattoo_strips_matching_buffs() {
         );
 
         // Out-of-range index is a no-op (returns false).
-        let none = db.remove_tattoo_from_character(&ch.name, 5).expect("remove");
+        let none = ironmud::script::tattoos::remove_tattoo(&db, &conns, &ch.name, 5);
         assert!(!none);
     }));
     if let Err(e) = result {
