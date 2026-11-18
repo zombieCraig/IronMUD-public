@@ -1626,6 +1626,100 @@ pub struct WorldFacts {
     /// report itself empty — so the world report has to own them.
     pub unfiled_mobiles: usize,
     pub unfiled_items: usize,
+    /// Divine spellcraft gaps, one line each — see [`spellcraft_gaps`].
+    pub spellcraft: SpellcraftGaps,
+}
+
+/// What a god that grants spells needs and the world doesn't have.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SpellcraftGaps {
+    /// Gods with no item prototype carrying `relic:<god vnum>`; every
+    /// ritual consumes one, so nobody can seal.
+    pub no_relic: Vec<String>,
+    /// Allowed elements/effects with no component prototype at the floor
+    /// quality (`essence:<element>`, `focus:<effect>`, `focus:heal`).
+    pub no_component: Vec<String>,
+    /// Capstone or trial quests that don't exist.
+    pub missing_quests: Vec<String>,
+}
+
+impl SpellcraftGaps {
+    pub fn is_empty(&self) -> bool {
+        self.no_relic.is_empty() && self.no_component.is_empty() && self.missing_quests.is_empty()
+    }
+}
+
+/// Every god's spellcraft gaps against the authored prototypes. Component
+/// quality is checked at the floor tier's need
+/// (`spellcraft.component_quality_base`), the least any petition asks.
+pub fn spellcraft_gaps(
+    mobiles: &[MobileData],
+    items: &[ItemData],
+    quests: &[QuestData],
+    floor_quality: i32,
+) -> SpellcraftGaps {
+    let mut gaps = SpellcraftGaps::default();
+    let quest_ids: std::collections::HashSet<String> = quests.iter().map(|q| q.vnum.to_lowercase()).collect();
+    let has = |category: &str, quality: i32| {
+        items
+            .iter()
+            .any(|i| i.quality >= quality && i.categories.iter().any(|c| c.eq_ignore_ascii_case(category)))
+    };
+    for mob in mobiles {
+        let Some(cfg) = mob.deity.as_ref().and_then(|d| d.spellcraft.as_ref()) else {
+            continue;
+        };
+        let god = format!("{} ({})", mob.name, mob.vnum);
+        if !has(&format!("relic:{}", mob.vnum), 0) {
+            gaps.no_relic.push(god.clone());
+        }
+        let allows = |t: &str| cfg.allowed_types.iter().any(|a| a.eq_ignore_ascii_case(t));
+        let mut wanted: Vec<String> = Vec::new();
+        if allows("damage") {
+            wanted.extend(
+                cfg.allowed_elements
+                    .iter()
+                    .map(|e| format!("essence:{}", e.to_lowercase())),
+            );
+        }
+        if allows("buff") || allows("debuff") {
+            wanted.extend(
+                cfg.allowed_effects
+                    .iter()
+                    .map(|e| format!("focus:{}", e.to_lowercase())),
+            );
+        }
+        if allows("heal") {
+            wanted.push("focus:heal".to_string());
+        }
+        for cat in wanted {
+            if !has(&cat, floor_quality) {
+                gaps.no_component
+                    .push(format!("{god}: {cat} (quality {floor_quality}+)"));
+            }
+        }
+        let quests_named = cfg
+            .unlock_quest_id
+            .iter()
+            .chain(cfg.trial_rules.iter().map(|r| &r.quest_id))
+            .filter(|q| !q.is_empty());
+        for q in quests_named {
+            if !quest_ids.contains(&q.to_lowercase()) {
+                gaps.missing_quests.push(format!("{god}: {q}"));
+            }
+        }
+    }
+    gaps.missing_quests.dedup();
+    gaps
+}
+
+fn gap_list(lines: &[String]) -> String {
+    const SHOWN: usize = 5;
+    let mut out = lines.iter().take(SHOWN).cloned().collect::<Vec<_>>().join("; ");
+    if lines.len() > SHOWN {
+        out.push_str(&format!("; and {} more", lines.len() - SHOWN));
+    }
+    out
 }
 
 pub fn audit_world(facts: &WorldFacts) -> Grade {
@@ -1701,6 +1795,34 @@ pub fn audit_world(facts: &WorldFacts) -> Grade {
         f.push(polish(
             "world.no_transports",
             "No transports — every journey is on foot.",
+        ));
+    }
+    let sc = &facts.spellcraft;
+    if !sc.no_relic.is_empty() {
+        f.push(warn(
+            "world.spellcraft_no_relic",
+            format!(
+                "God(s) grant spells but no item prototype carries `relic:<god vnum>`, which every ritual consumes: {}.",
+                gap_list(&sc.no_relic)
+            ),
+        ));
+    }
+    if !sc.no_component.is_empty() {
+        f.push(warn(
+            "world.spellcraft_no_component",
+            format!(
+                "Allowed spell components no item prototype supplies (add the category to an item): {}.",
+                gap_list(&sc.no_component)
+            ),
+        ));
+    }
+    if !sc.missing_quests.is_empty() {
+        f.push(warn(
+            "world.spellcraft_missing_quest",
+            format!(
+                "Spellcraft capstone/trial quests that don't exist, so those petitions can never start: {}.",
+                gap_list(&sc.missing_quests)
+            ),
         ));
     }
 
@@ -2245,9 +2367,84 @@ mod tests {
             dialogue_trees: 25,
             unfiled_mobiles: 0,
             unfiled_items: 0,
+            spellcraft: SpellcraftGaps::default(),
         };
         let g = audit_world(&facts);
         assert!(g.findings.is_empty(), "{:?}", g.findings);
         assert_eq!(g.letter, 'A');
+    }
+
+    #[test]
+    fn a_god_granting_spells_needs_relics_components_and_real_quests() {
+        use crate::types::{DeityConfig, DeitySpellcraft, TrialRule};
+        let mut god = MobileData::new("Sol".to_string());
+        god.vnum = "god:sol".into();
+        god.deity = Some(DeityConfig {
+            spellcraft: Some(DeitySpellcraft {
+                allowed_types: vec!["damage".into(), "heal".into()],
+                allowed_elements: vec!["fire".into(), "cold".into()],
+                unlock_quest_id: Some("capstone".into()),
+                trial_rules: vec![TrialRule {
+                    quest_id: "ghost_trial".into(),
+                    ..TrialRule::default()
+                }],
+                ..DeitySpellcraft::default()
+            }),
+            ..DeityConfig::default()
+        });
+        let plain = MobileData::new("Farmer".to_string());
+        let item = |cat: &str, quality: i32| {
+            let mut i = ItemData::new("x".into(), "an x".into(), "An x.".into());
+            i.categories = vec![cat.to_string()];
+            i.quality = quality;
+            i
+        };
+        let quest = crate::types::QuestData::new("capstone".into(), "Capstone".into());
+
+        let gaps = spellcraft_gaps(
+            &[god.clone(), plain],
+            &[item("essence:fire", 50), item("essence:cold", 10)],
+            &[quest.clone()],
+            40,
+        );
+        assert_eq!(gaps.no_relic, vec!["Sol (god:sol)".to_string()]);
+        assert_eq!(
+            gaps.no_component,
+            vec![
+                "Sol (god:sol): essence:cold (quality 40+)".to_string(),
+                "Sol (god:sol): focus:heal (quality 40+)".to_string(),
+            ],
+            "a too-poor essence is as good as none"
+        );
+        assert_eq!(gaps.missing_quests, vec!["Sol (god:sol): ghost_trial".to_string()]);
+
+        let facts = WorldFacts {
+            spellcraft: gaps,
+            ..WorldFacts::default()
+        };
+        let g = audit_world(&facts);
+        for code in [
+            "world.spellcraft_no_relic",
+            "world.spellcraft_no_component",
+            "world.spellcraft_missing_quest",
+        ] {
+            assert!(g.has(code), "{code}");
+        }
+
+        let all = spellcraft_gaps(
+            &[god],
+            &[
+                item("relic:god:sol", 0),
+                item("essence:fire", 40),
+                item("essence:cold", 90),
+                item("focus:heal", 40),
+            ],
+            &[
+                quest,
+                crate::types::QuestData::new("ghost_trial".into(), "Trial".into()),
+            ],
+            40,
+        );
+        assert!(all.is_empty(), "{all:?}");
     }
 }

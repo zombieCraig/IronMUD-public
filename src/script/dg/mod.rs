@@ -2355,7 +2355,13 @@ end";
 
     #[test]
     fn worship_opcodes_are_known_dg_verbs() {
-        for verb in ["worship_bless", "worship_tribute", "worship_favor", "worship_smite"] {
+        for verb in [
+            "worship_bless",
+            "worship_tribute",
+            "worship_favor",
+            "worship_smite",
+            "god_smite",
+        ] {
             assert!(cmds::is_known_dg_verb(verb), "{verb} missing from is_known_dg_verb");
             assert!(cmds::COMMANDS.contains(&verb), "{verb} missing from COMMANDS");
         }
@@ -3738,6 +3744,37 @@ done";
             .values()
             .find_map(|s| s.character.clone().filter(|c| c.name == name))
             .expect("online")
+    }
+
+    /// A DG `set` on a player advances a quest's `DgFlag` objective, and a
+    /// flag-only quest completes, for an online player (session copy).
+    #[test]
+    fn dg_player_var_set_advances_dg_flag_quests() {
+        let mut ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "shrine");
+        let q: crate::types::QuestData = serde_json::from_value(serde_json::json!({
+            "vnum": "qst:braziers", "name": "Three Braziers",
+            "objectives": [{"kind": "dg_flag", "var": "braziers", "value": "lit"}],
+        }))
+        .unwrap();
+        ctx.db.save_quest_data(&q).unwrap();
+        online_actor(&mut ctx, "pilgrim", 0, false);
+        assert_eq!(
+            crate::quest::offer(&ctx.db, &ctx.connections, "pilgrim", "qst:braziers"),
+            ""
+        );
+        assert!(session_char(&ctx, "pilgrim").active_quests.contains_key("qst:braziers"));
+
+        let body = "\
+context %actor.id%
+global braziers
+set braziers lit";
+        let _ = fire_dg(body, &ctx);
+        let live = session_char(&ctx, "pilgrim");
+        assert!(
+            live.completed_quests.contains("qst:braziers"),
+            "flag-only quest completes"
+        );
+        assert!(!live.active_quests.contains_key("qst:braziers"));
     }
 
     #[test]

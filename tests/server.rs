@@ -294,6 +294,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
         leaderboards: ironmud::leaderboard::Leaderboards::default(),
+        codex_cast_counts: std::collections::HashMap::new(),
     }));
 
     // Register Rhai functions for character system
@@ -9997,6 +9998,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
             ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
             command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
             leaderboards: ironmud::leaderboard::Leaderboards::default(),
+            codex_cast_counts: std::collections::HashMap::new(),
         }));
 
         let mut driver = Engine::new();

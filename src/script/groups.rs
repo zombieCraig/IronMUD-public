@@ -422,7 +422,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     rhai::Dynamic::from(condition.color().to_string()),
                 );
                 m.insert("stamina".into(), rhai::Dynamic::from(c.stamina as i64));
-                m.insert("max_stamina".into(), rhai::Dynamic::from(c.max_stamina as i64));
+                m.insert(
+                    "max_stamina".into(),
+                    rhai::Dynamic::from(c.effective_max_stamina() as i64),
+                );
                 m.insert("position".into(), rhai::Dynamic::from(c.position.to_string()));
 
                 // Role legibility: what this member is swinging at. Read from

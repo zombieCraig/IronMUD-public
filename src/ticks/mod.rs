@@ -60,6 +60,7 @@ pub mod pursuit;
 pub mod quests;
 pub mod rent;
 pub mod replicant;
+pub mod ritual;
 pub mod routine;
 pub mod simulation;
 pub mod spawn;
@@ -93,6 +94,7 @@ pub use pursuit::run_pursuit_tick;
 pub use quests::run_quest_tick;
 pub use rent::run_rent_tick;
 pub use replicant::run_resolve_tick;
+pub use ritual::run_ritual_tick;
 pub use routine::run_routine_tick;
 pub use simulation::run_simulation_tick;
 pub use spawn::run_spawn_tick;
@@ -151,6 +153,7 @@ pub fn register_all_heartbeats() {
         ("mutation", ironmud::mutant::MUTATION_TICK_INTERVAL_SECS),
         ("rot", ironmud::mutant::ROT_TICK_INTERVAL_SECS),
         ("worship", ironmud::worship::WORSHIP_TICK_INTERVAL_SECS),
+        ("ritual", ironmud::spellcraft::ritual::RITUAL_TICK_SECS),
     ];
 
     for (name, secs) in pairs {

@@ -7,6 +7,11 @@
 //   pray            - devotion; blessing if tribute is current, a nudge if not
 //   pray tribute    - pay the god's tribute (default: gold percent) + blessing
 //   pray atone      - massive payment that lifts wrath (incl. permanent smites)
+//   pray petition   - ask to shape a spell (divine spellcraft); shows the
+//                     requirements checklist until the worshipper is eligible
+//   pray ritual     - once the petition's trial is done: begin the sealing rite
+//   pray push|seal  - at a pause in the rite: deepen the gift, or inscribe it
+//   pray aid <name> - lend mana to (and steady) someone's rite in this room
 //
 // The god's OnPray DG trigger (fired at a live instance when spawned, else
 // the prototype) sees context vars `action` and `overdue_days`; returning 0
@@ -20,9 +25,36 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Drafting a spell: every line belongs to the petition.
+    if get_olc_mode(connection_id) == "petitioning" {
+        handle_petition_input(char, args, connection_id);
+        return;
+    }
+
     let room = get_room_data(char.current_room_id);
     let god_vnum = get_worship_god(char.name);
-    if room != () && room.flags.temple && god_vnum != "" {
+    let in_temple = room != () && room.flags.temple;
+
+    // Divine spellcraft. While the system is off, "petition" is just words
+    // of an ordinary prayer.
+    if args.to_lower() == "petition" && spellcraft_enabled() {
+        if god_vnum == "" {
+            send_client_message(connection_id, "You must first be bound to a god.");
+            return;
+        }
+        if !in_temple {
+            send_client_message(connection_id, "Petitions are heard only in a temple.");
+            return;
+        }
+        handle_petition(char, connection_id);
+        return;
+    }
+
+    if spellcraft_enabled() && handle_ritual_words(char, args, connection_id) {
+        return;
+    }
+
+    if in_temple && god_vnum != "" {
         handle_temple_pray(char, god_vnum, args, connection_id);
         return;
     }
@@ -45,6 +77,48 @@ fn run_command(args, connection_id) {
     // spammer can't crowd out other announcements. Over the limit the prayer
     // still shows locally; it just isn't relayed.
     chat_broadcast_limited("pray:" + char_name, 60, char_name + " prays to the gods: " + args);
+}
+
+// The sealing rite: 'pray ritual', 'pray push', 'pray seal', 'pray aid <name>'.
+// Returns true when the words were a rite command.
+fn handle_ritual_words(char, args, connection_id) {
+    let words = args.split(" ");
+    let sub = words[0].to_lower();
+    if sub == "ritual" {
+        send_client_message(connection_id, ritual_begin(connection_id));
+        return true;
+    }
+    if sub == "push" {
+        send_client_message(connection_id, ritual_push(connection_id));
+        return true;
+    }
+    if sub == "seal" {
+        send_client_message(connection_id, ritual_seal(connection_id));
+        return true;
+    }
+    if sub == "aid" {
+        if words.len() < 2 || words[1] == "" {
+            send_client_message(connection_id, "Aid whose rite?");
+            return true;
+        }
+        send_client_message(connection_id, ritual_aid(connection_id, words[1]));
+        return true;
+    }
+    if sub == "restore" {
+        if words.len() < 2 || words[1] == "" {
+            send_client_message(connection_id, "Restore which faded spell?");
+            return true;
+        }
+        let name = "";
+        let i = 1;
+        while i < words.len() {
+            if name == "" { name = words[i]; } else { name = name + " " + words[i]; }
+            i += 1;
+        }
+        send_client_message(connection_id, pray_restore(connection_id, name));
+        return true;
+    }
+    return false;
 }
 
 fn handle_temple_pray(char, god_vnum, args, connection_id) {
@@ -149,4 +223,70 @@ fn handle_atone(char, god_vnum, connection_id) {
     broadcast_to_room(char.current_room_id, char.name + " prostrates themselves before the altar.", char.name);
     send_client_message(connection_id, "\x1b[1;36mYou surrender " + paid + " gold in atonement. The weight of divine wrath lifts from you.\x1b[0m");
     apply_worship_blessing(char.name);
+}
+
+// `pray petition`: the requirements checklist, from the same Rust function
+// that decides eligibility, so the list and the verdict cannot disagree.
+fn handle_petition(char, connection_id) {
+    let status = petition_checklist(char.name);
+    if !status.worships {
+        send_client_message(connection_id, "You must first be bound to a god.");
+        return;
+    }
+    let god = status.god_name;
+    if !status.god_grants {
+        send_client_message(connection_id, god + " grants no spells to mortals.");
+        return;
+    }
+    let pending = petition_pending(char.name);
+    if pending != "" {
+        send_client_message(connection_id, pending);
+        return;
+    }
+    if status.can_petition {
+        let opened = petition_begin(connection_id);
+        if opened != "" {
+            send_client_message(connection_id, opened);
+            return;
+        }
+    }
+    let out = god + " regards your petition. To shape a gift, you must stand where few have stood:\n";
+    for r in status.requirements {
+        let mark = if r.met { "\x1b[1;32m[x]\x1b[0m" } else { "\x1b[0;31m[ ]\x1b[0m" };
+        let label = r.label;
+        while label.len() < 38 { label += " "; }
+        out += "  " + mark + " " + label + " " + r.detail + "\n";
+    }
+    send_client_message(connection_id, out);
+}
+
+// A line typed while drafting. `offer` puts the draft to the god's OnPray
+// triggers (action "petition") first; a DG body returning 0 refuses it.
+fn handle_petition_input(char, line, connection_id) {
+    let r = petition_input(connection_id, line);
+    if r.text != "" {
+        send_client_message(connection_id, r.text);
+    }
+    if !r.offer {
+        return;
+    }
+    let god_vnum = get_worship_god(char.name);
+    let god_id = find_god_mobile_id(god_vnum);
+    if god_id != "" {
+        let context = #{
+            action: "petition",
+            overdue_days: get_worship_overdue_days(char.name),
+            god_vnum: god_vnum,
+            spell_name: r.name,
+            spell_type: r.spell_type,
+            power: r.power,
+            tier: r.tier
+        };
+        if fire_mobile_trigger(god_id, "on_pray", connection_id, context) == "cancel" {
+            send_client_message(connection_id, god_label(god_vnum) + " turns away from your petition. Change it, or 'abort'.");
+            return;
+        }
+    }
+    broadcast_to_room(char.current_room_id, char.name + " kneels and lays a petition before the altar.", char.name);
+    send_client_message(connection_id, petition_offer(connection_id));
 }

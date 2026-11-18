@@ -349,6 +349,10 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
         (world.race_definitions.clone(), world.class_definitions.clone())
     };
 
+    // Divine pledges grow back by game day (spellcraft::price).
+    let today = ironmud::script::worship::current_absolute_day(db);
+    let regrow_days = ironmud::spellcraft::Settings::load(db).regrow_days;
+
     let mut conns = connections.lock();
 
     for (_conn_id, session) in conns.iter_mut() {
@@ -358,7 +362,23 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 continue;
             }
 
-            let mut modified = false;
+            let mut modified = ironmud::spellcraft::price::refresh_pledges(char, today, regrow_days);
+            // RegenPenalty buffs (divine marks): percent off every regen.
+            let regen_penalty: i32 = char
+                .active_buffs
+                .iter()
+                .filter(|b| b.effect_type == EffectType::RegenPenalty)
+                .map(|b| b.magnitude)
+                .sum::<i32>()
+                .clamp(0, 90);
+            let slowed = |r: i32| {
+                if regen_penalty > 0 && r > 0 {
+                    (r * (100 - regen_penalty) / 100).max(1)
+                } else {
+                    r
+                }
+            };
+            let max_stamina = char.effective_max_stamina();
             let old_stamina = char.stamina;
             let old_position = char.position;
 
@@ -388,15 +408,19 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 stamina_regen = (stamina_regen / 2).max(1);
             }
 
+            let stamina_regen = slowed(stamina_regen);
             if char.replicant_state.is_some() {
                 // Tireless: keep stamina pinned at max (also repairs saves
                 // that predate the character becoming a replicant).
-                if char.stamina != char.max_stamina {
-                    char.stamina = char.max_stamina;
+                if char.stamina != max_stamina {
+                    char.stamina = max_stamina;
                     modified = true;
                 }
-            } else if char.stamina < char.max_stamina {
-                char.stamina = (char.stamina + stamina_regen).min(char.max_stamina);
+            } else if char.stamina > max_stamina {
+                char.stamina = max_stamina;
+                modified = true;
+            } else if char.stamina < max_stamina {
+                char.stamina = (char.stamina + stamina_regen).min(max_stamina);
                 modified = true;
             }
 
@@ -449,7 +473,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                     // synths repair, they don't regenerate.
                     r = 0;
                 }
-                r
+                slowed(r)
             } else {
                 0
             };
@@ -473,7 +497,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
 
             // Wake notification when reaching 10% stamina (from forced sleep)
             if char.position == CharacterPosition::Sleeping && old_stamina == 0 {
-                let wake_threshold = char.max_stamina / 10;
+                let wake_threshold = max_stamina / 10;
                 if char.stamina >= wake_threshold {
                     let _ = session
                         .sender
@@ -482,7 +506,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
             }
 
             // Stamina warning messages (decreasing)
-            if let Some(msg) = get_stamina_message(old_stamina, char.stamina, char.max_stamina) {
+            if let Some(msg) = get_stamina_message(old_stamina, char.stamina, max_stamina) {
                 let _ = session.sender.send(format!("\n{}\n", msg));
             }
 
@@ -655,6 +679,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                     modified = true;
                 }
 
+                let mana_regen = slowed(mana_regen);
                 if char.mana < effective_max_mana {
                     char.mana = (char.mana + mana_regen).min(effective_max_mana);
                     modified = true;

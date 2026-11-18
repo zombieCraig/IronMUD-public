@@ -59,6 +59,9 @@ pub struct WorldSnapshot {
     /// suppression reaches the score, the rating, the tracks and the bounty
     /// board without any of them knowing waivers exist.
     pub waivers: WaiverSet,
+    /// `spellcraft.component_quality_base`: the component quality the
+    /// spellcraft gap check asks for.
+    pub component_floor_quality: i32,
     /// Built once, on first ask. Three callers want a context over one snapshot
     /// — the scorer, the quality figure and the bounty generator — and each
     /// rebuild hashes every room description and rebuilds the inbound map for
@@ -141,6 +144,7 @@ impl WorldSnapshot {
             recipe_count: db.list_all_recipes().map(|v| v.len()).unwrap_or(0),
             transports: db.list_all_transports().unwrap_or_default(),
             waivers: load_waivers(db),
+            component_floor_quality: crate::spellcraft::Settings::load(db).component_quality_base as i32,
             ctx: std::sync::OnceLock::new(),
         })
     }
@@ -266,6 +270,7 @@ impl WorldSnapshot {
             dialogue_trees: self.mobiles.iter().filter(|m| m.dialogue_tree.is_some()).count(),
             unfiled_mobiles: self.mobiles.iter().filter(|m| self.mobile_area(m).is_none()).count(),
             unfiled_items: self.items.iter().filter(|i| self.item_area(i).is_none()).count(),
+            spellcraft: super::spellcraft_gaps(&self.mobiles, &self.items, &self.quests, self.component_floor_quality),
         }
     }
 }

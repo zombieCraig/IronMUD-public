@@ -2891,7 +2891,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_renown(char_name) -> Map
     //   { total, skill_levels, mastered, core_skill_levels, core_mastered,
-    //     core_skill_count, achievements, quests, spell_levels }
+    //     core_skill_count, achievements, quests, spell_levels, spells_authored }
     // Derived breadth score — stored nowhere, gates nothing. See
     // `crate::progress::renown` for the weighting rationale.
     //
@@ -2921,6 +2921,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         out.insert("achievements".into(), rhai::Dynamic::from(r.achievements as i64));
         out.insert("quests".into(), rhai::Dynamic::from(r.quests as i64));
         out.insert("spell_levels".into(), rhai::Dynamic::from(r.spell_levels as i64));
+        out.insert("spells_authored".into(), rhai::Dynamic::from(r.spells_authored as i64));
         out
     });
 
@@ -2965,6 +2966,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
     engine.register_fn("effective_max_hp", |c: &mut crate::CharacterData| -> i64 {
         c.effective_max_hp() as i64
+    });
+    // Max stamina net of divine pledges. Scripts use it wherever they cap or
+    // show the stamina ceiling.
+    engine.register_fn("effective_max_stamina", |c: &mut crate::CharacterData| -> i64 {
+        c.effective_max_stamina() as i64
     });
 
     // get_effective_max_mana(char_name) -> i64

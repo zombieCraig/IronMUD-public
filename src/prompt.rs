@@ -119,14 +119,17 @@ impl PromptContext {
             hp: ch.hp,
             max_hp,
             stamina: ch.stamina,
-            max_stamina: ch.max_stamina,
+            max_stamina: ch.effective_max_stamina(),
             mana: ch.mana,
             max_mana,
             mana_enabled: ch.mana_enabled,
             breath: ch.breath,
             max_breath: ch.max_breath,
             blood: ch.vampire_state.as_ref().map(|v| (v.blood_pool, v.max_blood_pool)),
-            resolve: ch.replicant_state.as_ref().map(|r| (r.resolve, r.max_resolve)),
+            resolve: ch
+                .replicant_state
+                .as_ref()
+                .map(|r| (r.resolve, ch.effective_max_resolve())),
             mutation: ch.mutant_state.as_ref().map(|m| (m.mp, m.max_mp)),
             burning: ch
                 .active_buffs

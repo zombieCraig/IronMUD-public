@@ -1,0 +1,4 @@
+{
+  "_doc": "Ancient spells: world history, seeded into the codex at boot (and by `admin codex seed`) when their id is not already there. Never overwrites. Each entry is {def, meta}: def is a normal spell definition whose id starts with cx_ and whose spell_type is damage, debuff, buff or heal; meta needs god_vnum and usually status faded or lost. See docs/builder/spellcraft.md.",
+  "spells": []
+}

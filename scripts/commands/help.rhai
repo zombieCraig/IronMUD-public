@@ -58,7 +58,7 @@ fn show_command_help(name, commands, connection_id) {
     for cmd in commands {
         if cmd.name == name {
             let colored = color_cmd_name(cmd.name, cmd.access, connection_id);
-            let output = colored + " - " + cmd.description;
+            let output = colored + " - " + cmd.description + contextual_help_extra(cmd.name, connection_id);
             send_client_message(connection_id, output);
             return;
         }
@@ -82,4 +82,46 @@ fn show_command_help(name, commands, connection_id) {
     } else {
         send_client_message(connection_id, "Unknown command: " + name);
     }
+}
+
+fn knows_codex_spell(name) {
+    for id in get_eligible_spells(name) {
+        if id.starts_with("cx_") { return true; }
+    }
+    return false;
+}
+
+// Extra help lines that only make sense for some players. Kept out of
+// commands.json so the average player's help stays lean.
+fn contextual_help_extra(name, connection_id) {
+    if name == "pray" {
+        let char = get_player_character(connection_id);
+        let out = "";
+        if char != () && spellcraft_enabled() && get_worship_god(char.name) != "" {
+            out += "\n  pray petition - in a temple, ask your god to shape a spell (shows what you still need)";
+            out += "\n  pray ritual   - once your trial is done, begin the rite that seals the spell";
+            out += "\n  pray restore <spell> - in a temple, ask your god to re-light a faded spell";
+        }
+        if char != () && spellcraft_enabled() && ritual_in_view(connection_id) {
+            out += "\n  pray push     - at a pause in your rite: deepen the gift, at a risk";
+            out += "\n  pray seal     - at a pause in your rite: inscribe the spell";
+            out += "\n  pray aid <name> - lend mana to someone's rite and steady their focus";
+        }
+        return out;
+    }
+    if name == "craft" {
+        let char = get_player_character(connection_id);
+        if char != () && spellcraft_enabled() && knows_codex_spell(char.name) {
+            return "\n  craft scroll <spell> - ink a spell of the gods you know onto a blank scroll";
+        }
+        return "";
+    }
+    if name == "worship" {
+        let char = get_player_character(connection_id);
+        if char != () && spellcraft_enabled() && get_worship_god(char.name) != "" {
+            return "\n  worship renounce - in a temple: renounce your god (it strikes you, and never forgets)";
+        }
+        return "";
+    }
+    return "";
 }

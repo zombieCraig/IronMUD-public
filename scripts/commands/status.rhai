@@ -301,11 +301,11 @@ fn show_basic_status(char, connection_id) {
         stamina_colored = get_stamina_colored(res_str, res_pct, connection_id);
     } else {
         let stamina_pct = 100;
-        if char.max_stamina > 0 {
-            stamina_pct = (char.stamina * 100) / char.max_stamina;
+        if char.effective_max_stamina() > 0 {
+            stamina_pct = (char.stamina * 100) / char.effective_max_stamina();
         }
-        let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
-        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
+        let stamina_bar = build_bar(char.stamina, char.effective_max_stamina(), 10);
+        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.effective_max_stamina();
         stamina_colored = get_stamina_colored(stamina_str, stamina_pct, connection_id);
     }
 
@@ -353,6 +353,9 @@ fn show_basic_status(char, connection_id) {
     } else {
         output += thirst_colored + "   " + hunger_colored + "\n";
     }
+
+    // What the gods hold of you (divine spellcraft pledges).
+    output += divine_pledge_status(char.name);
 
     // Rage pool + current form (werewolf). Rage builds in combat and via
     // 'rage'; high rage risks involuntary frenzy on the rage tick.
@@ -532,6 +535,9 @@ fn build_progression_block(char, connection_id) {
     if r.spell_levels > 0 {
         out += "Spells:  " + r.spell_levels + " total mastery levels\n";
     }
+    if r.spells_authored > 0 {
+        out += "Canon:   " + r.spells_authored + " spell" + (if r.spells_authored == 1 { "" } else { "s" }) + " sealed into a god's canon\n";
+    }
 
     if achievements_enabled() {
         // The denominator counts what this character can see: hidden
@@ -672,11 +678,11 @@ fn show_detailed_status(char, connection_id) {
         output += get_stamina_colored(res_str, res_pct, connection_id) + "\n";
     } else {
         let stamina_pct = 100;
-        if char.max_stamina > 0 {
-            stamina_pct = (char.stamina * 100) / char.max_stamina;
+        if char.effective_max_stamina() > 0 {
+            stamina_pct = (char.stamina * 100) / char.effective_max_stamina();
         }
-        let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
-        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
+        let stamina_bar = build_bar(char.stamina, char.effective_max_stamina(), 10);
+        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.effective_max_stamina();
         output += get_stamina_colored(stamina_str, stamina_pct, connection_id) + "\n";
     }
 
@@ -865,6 +871,14 @@ fn show_detailed_status(char, connection_id) {
     // Tattoos — permanent body marks applied via `apply`
     output += color_or(ansi_green("--- Tattoos ---"), "--- Tattoos ---", connection_id) + "\n";
     output += format_tattoos_detailed(char.name) + "\n";
+    let marks = get_character_marks(char.name);
+    if marks.len() > 0 {
+        output += color_or(ansi_green("--- Divine Marks ---"), "--- Divine Marks ---", connection_id) + "\n";
+        for m in marks {
+            output += "  " + m + "\n";
+        }
+        output += "\n";
+    }
 
     // Equipment details
     output += color_or(ansi_green("--- Equipment ---"), "--- Equipment ---", connection_id) + "\n";

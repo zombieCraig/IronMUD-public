@@ -92,6 +92,8 @@ pub struct Db {
     // Quest prototypes (key = vnum bytes, value = JSON QuestData). Per-player
     // progress lives on CharacterData; this tree only holds prototypes.
     quests: Arc<Tree>,
+    codex: Arc<Tree>,
+    canons: Arc<Tree>,
     // Site (IP-level) bans. Key = canonical IP string ("a.b.c.d" or v6 form),
     // value = JSON `SiteBanRecord`. Read pre-auth in the TCP accept loop.
     bans: Arc<Tree>,
@@ -299,6 +301,8 @@ impl Db {
         let achievements = db.open_tree("achievements")?;
         let custom_skills = db.open_tree("custom_skills")?;
         let quests = db.open_tree("quests")?;
+        let codex = db.open_tree("codex")?;
+        let canons = db.open_tree("canons")?;
         let bans = db.open_tree("bans")?;
         let ip_account_history = db.open_tree("ip_account_history")?;
         let email_audit = db.open_tree("email_audit")?;
@@ -341,6 +345,8 @@ impl Db {
             achievements: Arc::new(achievements),
             custom_skills: Arc::new(custom_skills),
             quests: Arc::new(quests),
+            codex: Arc::new(codex),
+            canons: Arc::new(canons),
             bans: Arc::new(bans),
             ip_account_history: Arc::new(ip_account_history),
             email_audit: Arc::new(email_audit),
@@ -735,6 +741,135 @@ impl Db {
             .into_iter()
             .filter(|q| q.giver_mob_vnum.as_deref() == Some(mob_vnum))
             .collect())
+    }
+
+    // === Canons (divine spellcraft) ===
+    //
+    // One `Canon` per god, keyed by god vnum. Shared world state: write only
+    // through `update_canon`.
+
+    /// The god's canon; an empty one if nothing is stored yet.
+    pub fn get_canon(&self, god_vnum: &str) -> Result<crate::types::Canon> {
+        match self.canons.get(god_vnum.as_bytes())? {
+            Some(ivec) => Ok(serde_json::from_slice(&ivec)?),
+            None => Ok(crate::types::Canon {
+                god_vnum: god_vnum.to_string(),
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Every stored canon.
+    pub fn list_canons(&self) -> Result<Vec<crate::types::Canon>> {
+        let mut out = Vec::new();
+        for kv in self.canons.iter() {
+            let (_k, v) = kv?;
+            if let Ok(c) = serde_json::from_slice(&v) {
+                out.push(c);
+            }
+        }
+        Ok(out)
+    }
+
+    /// CAS-update a god's canon, creating it if absent. The closure may run
+    /// more than once and must have no side effects; it returns false to
+    /// abandon the write (e.g. a claim that turned out to be taken), in
+    /// which case nothing is stored and `None` is returned.
+    pub fn update_canon<F>(&self, god_vnum: &str, mut f: F) -> Result<Option<crate::types::Canon>>
+    where
+        F: FnMut(&mut crate::types::Canon) -> bool,
+    {
+        let key = god_vnum.as_bytes();
+        loop {
+            let old = self.canons.get(key)?;
+            let mut canon: crate::types::Canon = match &old {
+                Some(iv) => serde_json::from_slice(iv)?,
+                None => crate::types::Canon {
+                    god_vnum: god_vnum.to_string(),
+                    ..Default::default()
+                },
+            };
+            if !f(&mut canon) {
+                return Ok(None);
+            }
+            let new = serde_json::to_vec(&canon)?;
+            match self.canons.compare_and_swap(key, old.as_ref(), Some(new))? {
+                Ok(()) => {
+                    self.canons.flush()?;
+                    return Ok(Some(canon));
+                }
+                Err(_conflict) => continue,
+            }
+        }
+    }
+
+    // === Codex (divine spellcraft) ===
+    //
+    // Backed by the `codex` sled tree. Stores `CodexEntry` keyed by spell id
+    // (`cx_` prefix). Shared record: concurrent writers go through
+    // `update_codex` (CAS). Every write must also be mirrored into
+    // `World.spell_definitions` by the caller (see `crate::spellcraft`).
+
+    /// Read one codex entry by spell id.
+    pub fn get_codex(&self, spell_id: &str) -> Result<Option<crate::types::CodexEntry>> {
+        match self.codex.get(spell_id.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Every codex entry. Unparseable records are skipped with a warning.
+    pub fn list_codex(&self) -> Result<Vec<crate::types::CodexEntry>> {
+        let mut out = Vec::new();
+        for kv in self.codex.iter() {
+            let (key, ivec) = kv?;
+            match serde_json::from_slice::<crate::types::CodexEntry>(&ivec) {
+                Ok(e) => out.push(e),
+                Err(e) => tracing::warn!(
+                    "skipping unreadable codex entry {}: {}",
+                    String::from_utf8_lossy(&key),
+                    e
+                ),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Insert a codex entry under `entry.def.id` only if that id is free.
+    /// Returns true if this call created it (the claim for a new spell id).
+    pub fn insert_codex_if_absent(&self, entry: &crate::types::CodexEntry) -> Result<bool> {
+        let value = serde_json::to_vec(entry)?;
+        let created = self
+            .codex
+            .compare_and_swap(entry.def.id.as_bytes(), None as Option<&[u8]>, Some(value))?
+            .is_ok();
+        if created {
+            self.codex.flush()?;
+        }
+        Ok(created)
+    }
+
+    /// CAS-update a codex entry. The closure may run more than once, so it
+    /// must have no side effects. Returns the stored entry, or None if the
+    /// id is not in the codex.
+    pub fn update_codex<F>(&self, spell_id: &str, mut f: F) -> Result<Option<crate::types::CodexEntry>>
+    where
+        F: FnMut(&mut crate::types::CodexEntry),
+    {
+        let updated = update_tree(&self.codex, spell_id.as_bytes(), |e| f(e))?;
+        if updated.is_some() {
+            self.codex.flush()?;
+        }
+        Ok(updated)
+    }
+
+    /// Remove a codex entry. Returns true if it existed.
+    pub fn delete_codex(&self, spell_id: &str) -> Result<bool> {
+        let existed = self.codex.remove(spell_id.as_bytes())?.is_some();
+        if existed {
+            self.codex.flush()?;
+        }
+        Ok(existed)
     }
 
     /// Flush all pending writes to disk. Call before shutdown.

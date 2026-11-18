@@ -249,6 +249,12 @@ pub struct DeityConfigRequest {
     pub blessing_effects: Vec<BlessingGrantRequest>,
     #[serde(default)]
     pub allow_permanent_smite: bool,
+    /// Divine spellcraft config. Omitted on an update = keep the current one;
+    /// `remove_spellcraft: true` turns it off.
+    #[serde(default)]
+    pub spellcraft: Option<crate::types::DeitySpellcraft>,
+    #[serde(default)]
+    pub remove_spellcraft: bool,
 }
 
 #[derive(Deserialize)]
@@ -258,8 +264,22 @@ pub struct BlessingGrantRequest {
     pub magnitude: i32,
 }
 
-fn convert_deity_config(req: DeityConfigRequest) -> Result<DeityConfig, ApiError> {
+/// `previous` is the mobile's current spellcraft config, kept when the
+/// request doesn't mention spellcraft (so editing a god's lore over MCP does
+/// not silently wipe its spell grants).
+fn convert_deity_config(
+    req: DeityConfigRequest,
+    previous: Option<crate::types::DeitySpellcraft>,
+) -> Result<DeityConfig, ApiError> {
     let mut config = DeityConfig::default();
+    config.spellcraft = if req.remove_spellcraft {
+        None
+    } else if let Some(mut sc) = req.spellcraft {
+        crate::spellcraft::deity::validate(&mut sc).map_err(ApiError::InvalidInput)?;
+        Some(sc)
+    } else {
+        previous
+    };
     if let Some(rank) = req.rank.as_deref() {
         config.rank = GodRank::from_str(rank).ok_or_else(|| {
             ApiError::InvalidInput(format!("Invalid deity rank '{}'. Use: god, demigod, ascended", rank))
@@ -932,7 +952,7 @@ async fn create_mobile(
     let damage_dice = req.damage_dice.clone().unwrap_or_else(|| "1d4".to_string());
 
     let deity = match req.deity {
-        Some(d) => Some(convert_deity_config(d)?),
+        Some(d) => Some(convert_deity_config(d, None)?),
         None => None,
     };
 
@@ -1428,7 +1448,8 @@ async fn update_mobile(
     if let Some(true) = req.remove_deity {
         mobile.deity = None;
     } else if let Some(deity_config) = req.deity {
-        mobile.deity = Some(convert_deity_config(deity_config)?);
+        let previous = mobile.deity.as_ref().and_then(|d| d.spellcraft.clone());
+        mobile.deity = Some(convert_deity_config(deity_config, previous)?);
     }
     if let Some(patron) = req.patron_god_vnum {
         mobile.patron_god_vnum = if patron.is_empty() { None } else { Some(patron) };

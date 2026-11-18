@@ -20,6 +20,7 @@ import { plantToolDefinitions } from "./tools/plants.js";
 import { recipeToolDefinitions } from "./tools/recipes.js";
 import { questToolDefinitions } from "./tools/quests.js";
 import { achievementToolDefinitions } from "./tools/achievements.js";
+import { codexToolDefinitions } from "./tools/codex.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
 import { bountyToolDefinitions } from "./tools/bounties.js";
 import { auditToolDefinitions } from "./tools/audit.js";
@@ -106,6 +107,7 @@ const allTools = [
   ...recipeToolDefinitions,
   ...questToolDefinitions,
   ...achievementToolDefinitions,
+  ...codexToolDefinitions,
   ...bugToolDefinitions,
   ...bountyToolDefinitions,
   ...auditToolDefinitions,
@@ -1727,6 +1729,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await api.deleteAchievement(key);
         return {
           content: [{ type: "text", text: `Achievement '${key}' deleted successfully` }],
+        };
+      }
+
+      // Divine spellcraft codex
+      case "list_codex": {
+        const spells = await api.listCodex();
+        return {
+          content: [{ type: "text", text: JSON.stringify(spells, null, 2) }],
+        };
+      }
+      case "get_codex_spell": {
+        const id = args?.id as string;
+        if (!id) throw new Error("id is required");
+        const entry = await api.getCodexSpell(id);
+        return {
+          content: [{ type: "text", text: JSON.stringify(entry, null, 2) }],
+        };
+      }
+      case "get_canon": {
+        const godVnum = args?.god_vnum as string;
+        if (!godVnum) throw new Error("god_vnum is required");
+        const canon = await api.getCanon(godVnum);
+        return {
+          content: [{ type: "text", text: JSON.stringify(canon, null, 2) }],
+        };
+      }
+      case "set_codex_status": {
+        const id = args?.id as string;
+        const status = args?.status as string;
+        if (!id) throw new Error("id is required");
+        if (!status) throw new Error("status is required");
+        const entry = await api.setCodexStatus(id, status);
+        return {
+          content: [{ type: "text", text: JSON.stringify(entry, null, 2) }],
+        };
+      }
+      case "set_codex_veto": {
+        const id = args?.id as string;
+        if (!id) throw new Error("id is required");
+        if (typeof args?.vetoed !== "boolean") throw new Error("vetoed (boolean) is required");
+        const entry = await api.setCodexVeto(id, args.vetoed as boolean);
+        return {
+          content: [{ type: "text", text: JSON.stringify(entry, null, 2) }],
         };
       }
 

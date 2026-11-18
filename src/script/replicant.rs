@@ -70,7 +70,7 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
         if ch.replicant_state.is_none() {
             ch.replicant_state = Some(ReplicantState::newly_incepted(now_secs()));
         }
-        ch.stamina = ch.max_stamina;
+        ch.stamina = ch.effective_max_stamina();
         cdb.save_character_data(ch.clone()).is_ok()
     });
 
@@ -103,7 +103,16 @@ pub fn register_replicant_functions(engine: &mut Engine, db: Arc<Db>, connection
     // get_pc_max_resolve(connection_id) -> i64. 0 for non-replicants.
     let conns = connections.clone();
     engine.register_fn("get_pc_max_resolve", move |connection_id: String| -> i64 {
-        read_replicant(&conns, &connection_id, |r| r.max_resolve as i64).unwrap_or(0)
+        // Net of divine pledges.
+        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
+            return 0;
+        };
+        let conns_lock = conns.lock();
+        conns_lock
+            .get(&conn_id)
+            .and_then(|s| s.character.as_ref())
+            .map(|c| c.effective_max_resolve() as i64)
+            .unwrap_or(0)
     });
 
     // get_pc_baseline_strikes(connection_id) -> i64. -1 for non-replicants.

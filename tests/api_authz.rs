@@ -423,3 +423,118 @@ async fn player_logs_need_their_own_scope() {
     let (s, body) = h.call("GET", "/logs/players", &legacy, json!(null)).await;
     assert_eq!(s, StatusCode::FORBIDDEN, "{body}");
 }
+
+// ---------- divine spellcraft codex ----------
+
+impl Harness {
+    /// Store a codex spell belonging to `god` and seat it in that god's canon.
+    fn codex_spell(&self, id: &str, name: &str, god: &str) {
+        let entry: ironmud::CodexEntry = serde_json::from_value(json!({
+            "def": {"id": id, "name": name, "description": "A prayer.", "spell_type": "heal"},
+            "meta": {"origin": "authored", "author": "alice", "god_vnum": god, "sealed_day": 12},
+        }))
+        .unwrap();
+        assert!(self.db().insert_codex_if_absent(&entry).unwrap());
+        self.db()
+            .update_canon(god, |c| {
+                c.slots.push(ironmud::CanonSlot {
+                    spell_id: id.to_string(),
+                    sealed_day: 12,
+                    devotion: 3.0,
+                    ..Default::default()
+                });
+                c.influence = 3;
+                true
+            })
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn codex_list_get_and_canon_are_readable() {
+    let h = Harness::new();
+    h.codex_spell("cx_mend", "Mending Light", "god_sun");
+    let reader = h.key("reader", false, false);
+
+    let (s, body) = h.call("GET", "/codex", &reader, Value::Null).await;
+    assert_eq!(s, StatusCode::OK);
+    let list = body["data"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["id"], "cx_mend");
+    assert_eq!(list[0]["god_vnum"], "god_sun");
+    assert_eq!(list[0]["status"], "canon");
+    assert_eq!(list[0]["origin"], "authored");
+    assert_eq!(list[0]["author"], "alice");
+    assert!(list[0]["tier"].is_u64());
+
+    let (s, body) = h.call("GET", "/codex/cx_mend", &reader, Value::Null).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body["data"]["def"]["name"], "Mending Light");
+    assert_eq!(body["data"]["meta"]["sealed_day"], 12);
+
+    let (s, _) = h.call("GET", "/codex/cx_nope", &reader, Value::Null).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    let (s, body) = h.call("GET", "/canons/god_sun", &reader, Value::Null).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body["data"]["influence"], 3);
+    assert_eq!(body["data"]["slots"][0]["spell_id"], "cx_mend");
+    assert_eq!(body["data"]["slots"][0]["spell_name"], "Mending Light");
+    assert!(body["data"]["god_name"].is_string());
+
+    let (s, _) = h.call("GET", "/canons/god_nobody", &reader, Value::Null).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn codex_moderation_requires_admin() {
+    let h = Harness::new();
+    h.codex_spell("cx_mend", "Mending Light", "god_sun");
+    let writer = h.key("builder", true, false);
+    let (s, _) = h
+        .call("PUT", "/codex/cx_mend/status", &writer, json!({"status": "lost"}))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = h
+        .call("PUT", "/codex/cx_mend/veto", &writer, json!({"vetoed": true}))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let e = h.db().get_codex("cx_mend").unwrap().unwrap();
+    assert_eq!(e.meta.status, ironmud::CanonStatus::Canon);
+    assert!(!e.meta.vetoed);
+}
+
+#[tokio::test]
+async fn codex_moderation_writes_and_mirrors_into_world() {
+    let h = Harness::new();
+    h.codex_spell("cx_mend", "Mending Light", "god_sun");
+    let admin = h.key("root", true, true);
+
+    let (s, _) = h
+        .call("PUT", "/codex/cx_mend/status", &admin, json!({"status": "bogus"}))
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    let (s, body) = h
+        .call("PUT", "/codex/cx_mend/status", &admin, json!({"status": "lost"}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body["data"]["meta"]["status"], "lost");
+    assert_eq!(
+        h.db().get_codex("cx_mend").unwrap().unwrap().meta.status,
+        ironmud::CanonStatus::Lost
+    );
+    assert!(h.api.state.lock().spell_definitions.contains_key("cx_mend"));
+
+    let (s, body) = h
+        .call("PUT", "/codex/cx_mend/veto", &admin, json!({"vetoed": true}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body["data"]["meta"]["vetoed"], true);
+    assert_eq!(body["data"]["meta"]["status"], "faded");
+
+    let (s, _) = h
+        .call("PUT", "/codex/cx_nope/status", &admin, json!({"status": "canon"}))
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

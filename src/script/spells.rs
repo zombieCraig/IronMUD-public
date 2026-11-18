@@ -157,6 +157,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // ever cast: the identity gates of `get_available_spells` (vampire, clan,
     // werewolf, tribe) without the skill or scroll gates. This is what the
     // `spells` listing shows, so a mage isn't shown every vampire discipline.
+    // Codex spells appear only once learned; `spells codex` is where the
+    // world's divine spells are browsed (and where Lost/vetoed stay hidden).
     let cloned_db = db.clone();
     let state_clone = state.clone();
     engine.register_fn("get_eligible_spells", move |char_name: String| -> rhai::Array {
@@ -168,7 +170,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         world
             .spell_definitions
             .iter()
-            .filter(|(_, spell)| identity_allows(spell, &char))
+            .filter(|(id, spell)| identity_allows(spell, &char) && (!spell.codex || char.learned_spells.contains(id)))
             .map(|(id, _)| rhai::Dynamic::from(id.clone()))
             .collect()
     });
@@ -434,14 +436,8 @@ fn now_secs() -> i64 {
 /// Add `spell_id` to the character's learned spells. True if the character
 /// now knows the spell (including when it already did).
 pub fn learn_spell(db: &Db, connections: &SharedConnections, char_name: &str, spell_id: &str) -> bool {
-    apply_to_character(db, connections, char_name, |c| {
-        if c.learned_spells.iter().any(|s| s == spell_id) {
-            return false;
-        }
-        c.learned_spells.push(spell_id.to_string());
-        true
-    })
-    .is_some()
+    crate::spellcraft::add_learned_spell(db, connections, char_name, spell_id)
+        != crate::spellcraft::LearnResult::NoCharacter
 }
 
 /// Put `spell_id` on cooldown for `secs` seconds from now.
@@ -487,7 +483,8 @@ pub fn recalculate_max_mana(db: &Db, connections: &SharedConnections, state: &Sh
         let effective_int = c.stat_int + buff_bonus + racial;
 
         let max = 50 + (magic_level * 10) + ((effective_int - 10).max(0) * 5);
-        c.max_mana = max;
+        // Stored net of the divine mana pledge (spellcraft::price).
+        c.max_mana = c.after_pledges(max as i64, crate::types::PledgeKind::Mana) as i32;
         // Clamp at effective ceiling (base + MaxManaBonus buffs).
         let eq_bonus: i32 = c
             .active_buffs
@@ -513,6 +510,9 @@ pub struct SpellXpOutcome {
     pub evolved_to: Option<String>,
     /// Level of the spell now held: the evolved spell's (1) after an evolution.
     pub new_level: i32,
+    /// The spell reached mastery 10 in this call (true even if it then
+    /// evolved). Happens once per spell.
+    pub mastered: bool,
 }
 
 /// Award per-spell mastery XP. Handles in-place leveling AND atomic evolution:
@@ -541,6 +541,9 @@ pub fn add_spell_experience(
             .map(|ev| (ev.level_required, ev.spell_id.clone()))
     };
 
+    // Codex spells cap learners below mastery; the author reaches 10.
+    let cap = crate::spellcraft::canon::mastery_cap(db, char_name, spell_id);
+
     let mut out = SpellXpOutcome::default();
     apply_to_character(db, connections, char_name, |char| {
         let already_at_cap = char
@@ -548,7 +551,7 @@ pub fn add_spell_experience(
             .entry(spell_id.to_string())
             .or_insert_with(crate::SpellProgress::default)
             .level
-            >= 10;
+            >= cap;
 
         if !already_at_cap {
             // Apply learning-rate trait modifiers (mirror skill XP path).
@@ -574,14 +577,15 @@ pub fn add_spell_experience(
 
             loop {
                 let xp_needed = crate::script::characters::xp_for_level(entry.level);
-                if xp_needed == 0 || entry.experience < xp_needed || entry.level >= 10 {
+                if xp_needed == 0 || entry.experience < xp_needed || entry.level >= cap {
                     break;
                 }
                 entry.experience -= xp_needed;
                 entry.level += 1;
                 out.leveled_up = true;
-                if entry.level >= 10 {
+                if entry.level >= cap {
                     entry.experience = 0;
+                    out.mastered = entry.level >= 10;
                     break;
                 }
             }
@@ -611,8 +615,18 @@ pub fn add_spell_experience(
                 out.new_level = 1;
             }
         }
+        if out.mastered {
+            *char
+                .achievement_counters
+                .entry(crate::spellcraft::gate::SPELLS_MASTERED_COUNTER.to_string())
+                .or_insert(0) += 1;
+        }
         true
     });
+    // After the write, never inside it: award_xp takes its own locks.
+    if out.mastered {
+        crate::spellcraft::on_spell_mastered(db, connections, state, char_name);
+    }
     out
 }
 

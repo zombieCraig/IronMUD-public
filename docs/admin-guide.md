@@ -29,7 +29,10 @@ Type `admin help` for the live list. Highlights:
 | `admin alts <account>` | Show accounts sharing the subject's IP (last 30d) or normalized email — banned alts are flagged |
 | `admin summon <player>` | Teleport a player to your location |
 | `admin heal <player>` | Fully heal a player |
-| `admin religion <player> set <god_vnum>\|clear` | Set or remove a player's god pact, bypassing artifact/quest gates (worship-system testing) |
+| `admin pledge <player> list\|add\|release\|forfeit` | Divine spellcraft pledges (see [Spellcraft](builder/spellcraft.md#admin-tools)) |
+| `admin mark <player> list\|add\|fade\|worsen\|remove` | Divine spellcraft marks |
+| `admin religion <player> set <god_vnum>\|clear` | Set or remove a player's god pact, bypassing artifact/quest gates (worship-system testing). `clear` records a former faith but forfeits nothing |
+| `admin religion <player> grudge [clear <god_vnum>]` | List the gods' grudges against a player, or lift one. Grudges never decay; this is the only way to clear another god's |
 | `admin morality <player> [+/-<delta> \| set <value>]` | Inspect or correct a player's alignment slider. No argument shows the current value and tier. Clamped to `[-200, 200]`. |
 | `admin reputation <player> [<faction> [+/-<delta> \| set <value>]]` | Inspect or correct faction standing. With no faction, lists every standing. The delta form propagates to opposed factions and tells the player; `set` assigns an absolute value and does neither, because a correction is not an act in the world. See [Factions](builder/factions.md). |
 | `admin broadcast <message>` | Server-wide announcement |
@@ -39,6 +42,7 @@ Type `admin help` for the live list. Highlights:
 | `admin reload` | Re-read class/race/spell/language definitions from the current preset (no setting change) |
 | `admin loadout [class\|race] <id> …` | Edit per-class and per-race starting kits (gold + items granted at character creation). Kits stack. See [Starting Kits](builder/classes.md). |
 | `admin ticks` | Show liveness of every background tick task. Stale entries point at a panicked tokio task that needs a server restart. |
+| `admin codex list \| show <id> \| seed \| status <id> canon\|faded\|lost \| veto <id> [off] \| rename <id> <name>` | Moderate codex spells (Ancient and player-sealed). `veto` fades a spell and hides it from players; `seed` adds new entries from `scripts/data/spells_ancient.json`. Also over the API: `GET /api/v1/codex`, `/codex/:id`, `/canons/:god`; admin keys `PUT /codex/:id/status` and `/codex/:id/veto` (MCP `list_codex`, `get_codex_spell`, `get_canon`, `set_codex_status`, `set_codex_veto`). See [Divine Spellcraft](builder/spellcraft.md). |
 
 Bans are honored everywhere: account bans gate `login.rhai`, site bans gate
 the TCP accept loop. Both expire lazily — the next read after `expires_at`
@@ -271,6 +275,29 @@ ironmud-admin settings delete <key>
 | `adoption_chance_per_day` | `0.10` | Per-day chance an orphaned migrant is adopted by eligible candidates |
 
 See `ironmud-admin settings list` on a live install for the complete list, including regen rates, corpse decay, and mail settings.
+
+#### Divine spellcraft settings
+
+Player-authored spells are under construction and ship **off**. Every gate is an `admin config`
+key, read at check time (no restart):
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `spellcraft.enabled` | `false` | Master switch for the whole system |
+| `spellcraft.min_magic` | `10` | Magic skill needed to petition |
+| `spellcraft.min_spellcraft` | `8` | Spellcraft skill needed to petition |
+| `spellcraft.min_mastered_spells` | `5` | Spells at mastery 10 needed to petition |
+| `spellcraft.min_favor` | `500` | Favor with the god (Exalted); a god may override |
+| `spellcraft.min_power_tier` | `3` | Weakest power tier (1-5) a canon spell may have; a god may override |
+| `spellcraft.char_cooldown_days` | `30` | Real days between one character's seals |
+| `spellcraft.god_petition_cooldown_days` | `7` | Game days a god waits between petitions; a god may override |
+| `spellcraft.pledge_floor_pct` | `60` | Pledges never take max HP/stamina below this % of base |
+| `spellcraft.regrow_days` | `14` | Game days for a released pledge to grow back |
+| `spellcraft.canon_grace_days` | `30` | Game days a new canon spell is safe from displacement |
+| `spellcraft.component_quality_base` / `_per_tier` | `40` / `15` | Ingredient quality needed: base + per_tier × tier |
+| `spellcraft.repact_cooldown_days` | `7` | Game days after `worship renounce` before a new pact |
+| `spellcraft.scribe_min_spellcraft` | `3` | Spellcraft skill needed for `craft scroll` |
+| `spellcraft.scribe_monopoly_days` | `14` | Game days after sealing that only the author may inscribe a canon spell |
 
 #### Death and corpse settings
 

@@ -171,6 +171,9 @@ pub fn create_worship_pact(db: &Db, connections: &SharedConnections, char_name: 
     if character.worship.is_some() {
         return "already_worshiping".to_string();
     }
+    if crate::spellcraft::heresy::repact_blocked(db, &character) {
+        return "cooldown".to_string();
+    }
 
     let gated = !config.pact_item_vnums.is_empty() || !config.pact_quest_ids.is_empty();
     let mut consume_item: Option<Uuid> = None;
@@ -243,14 +246,25 @@ pub fn force_worship_pact(db: &Db, connections: &SharedConnections, char_name: &
 /// Remove a character's pact entirely (admin/testing). Strips blessings but
 /// leaves wrath afflictions — the god's parting gift.
 pub fn clear_worship(db: &Db, connections: &SharedConnections, char_name: &str) -> bool {
+    let today = current_absolute_day(db);
+    let authored = |god: &str| crate::spellcraft::heresy::authored_for(db, char_name, god);
+    let god = read_character(db, connections, char_name).and_then(|c| c.worship.map(|w| w.god_vnum));
+    let spells = god.as_deref().map(authored).unwrap_or_default();
     mutate_character(db, connections, char_name, |ch| {
-        let had = ch.worship.is_some();
-        if let Some(ref w) = ch.worship {
-            let src = blessing_source(&w.god_vnum);
-            ch.active_buffs.retain(|b| b.source != src);
-        }
-        ch.worship = None;
-        had
+        let Some(w) = ch.worship.take() else {
+            return false;
+        };
+        let src = blessing_source(&w.god_vnum);
+        ch.active_buffs.retain(|b| b.source != src);
+        // Remembered, but not as apostasy: no grudge, nothing forfeit.
+        ch.former_faiths.push(crate::types::FormerFaith {
+            god_vnum: w.god_vnum,
+            from_day: w.pact_day,
+            to_day: today,
+            authored: spells.clone(),
+            renounced: false,
+        });
+        true
     })
     .unwrap_or(false)
 }
@@ -418,58 +432,99 @@ pub fn smite_worshiper(db: &Db, connections: &SharedConnections, char_name: &str
         Some(ref w) => w.god_vnum.clone(),
         None => return "no_pact".to_string(),
     };
-    let config = deity_config_by_vnum(db, &god_vnum).unwrap_or_default();
+    smite(db, connections, &god_vnum, char_name, severity, true)
+}
+
+/// The same ladder from any god, on anyone: a god punishing a trespasser
+/// who never swore to it (heresy, apostasy, a DG "the god strikes you").
+/// Leaves blessings alone, since the target has none from this god.
+/// Returns as [`smite_worshiper`], or "not_a_god".
+pub fn smite_character(
+    db: &Db,
+    connections: &SharedConnections,
+    god_vnum: &str,
+    char_name: &str,
+    severity: i32,
+) -> String {
+    if deity_config_by_vnum(db, god_vnum).is_none() {
+        return "not_a_god".to_string();
+    }
+    let own = read_character(db, connections, char_name)
+        .and_then(|c| c.worship.map(|w| w.god_vnum))
+        .is_some_and(|g| g == god_vnum);
+    smite(db, connections, god_vnum, char_name, severity, own)
+}
+
+fn smite(
+    db: &Db,
+    connections: &SharedConnections,
+    god_vnum: &str,
+    char_name: &str,
+    severity: i32,
+    strip_blessings: bool,
+) -> String {
+    let config = deity_config_by_vnum(db, god_vnum).unwrap_or_default();
     let god_name = {
-        let n = god_display_name(db, &god_vnum);
-        if n.is_empty() { "your god".to_string() } else { n }
+        let n = god_display_name(db, god_vnum);
+        if n.is_empty() { "a god".to_string() } else { n }
     };
     let severity = if severity >= 4 && !config.allow_permanent_smite {
         3
     } else {
         severity.clamp(1, 4)
     };
-    let wrath = wrath_source(&god_vnum);
-    let blessings = blessing_source(&god_vnum);
+    let wrath = wrath_source(god_vnum);
+    let blessings = blessing_source(god_vnum);
 
-    let outcome = mutate_character(db, connections, char_name, |ch| match severity {
-        1 => {
-            stamp_buff(&mut ch.active_buffs, EffectType::Curse, 1, GAME_DAY_SECS, &wrath);
-            "cursed"
-        }
-        2 => {
+    let outcome = mutate_character(db, connections, char_name, |ch| {
+        if strip_blessings && severity >= 2 {
             ch.active_buffs.retain(|b| b.source != blessings);
-            stamp_buff(&mut ch.active_buffs, EffectType::Curse, 2, 2 * GAME_DAY_SECS, &wrath);
-            "forsaken"
         }
-        3 => {
-            ch.active_buffs.retain(|b| b.source != blessings);
-            ch.hp = (ch.hp - ch.max_hp / 4).max(1);
-            stamp_buff(&mut ch.active_buffs, EffectType::Blind, 1, GAME_DAY_SECS, &wrath);
-            stamp_buff(&mut ch.active_buffs, EffectType::Curse, 3, 2 * GAME_DAY_SECS, &wrath);
-            "smitten"
-        }
-        _ => {
-            ch.active_buffs.retain(|b| b.source != blessings);
-            ch.hp = (ch.hp - ch.max_hp / 2).max(1);
-            stamp_buff(&mut ch.active_buffs, EffectType::Blind, 1, -1, &wrath);
-            stamp_buff(&mut ch.active_buffs, EffectType::Curse, 5, -1, &wrath);
-            "smitten_permanent"
+        match severity {
+            1 => {
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 1, GAME_DAY_SECS, &wrath);
+                "cursed"
+            }
+            2 => {
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 2, 2 * GAME_DAY_SECS, &wrath);
+                "forsaken"
+            }
+            3 => {
+                ch.hp = (ch.hp - ch.effective_max_hp() / 4).max(1);
+                stamp_buff(&mut ch.active_buffs, EffectType::Blind, 1, GAME_DAY_SECS, &wrath);
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 3, 2 * GAME_DAY_SECS, &wrath);
+                "smitten"
+            }
+            _ => {
+                ch.hp = (ch.hp - ch.effective_max_hp() / 2).max(1);
+                stamp_buff(&mut ch.active_buffs, EffectType::Blind, 1, -1, &wrath);
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 5, -1, &wrath);
+                "smitten_permanent"
+            }
         }
     });
     let outcome = match outcome {
         Some(o) => o,
         None => return "not_found".to_string(),
     };
-    let msg = match outcome {
-        "cursed" => format!(
+    let msg = match (outcome, strip_blessings) {
+        ("cursed", true) => format!(
             "\x1b[33m{} marks your neglect. A shadow of ill luck settles over you.\x1b[0m",
             god_name
         ),
-        "forsaken" => format!(
+        ("cursed", false) => format!(
+            "\x1b[33m{} has noticed you. A shadow of ill luck settles over you.\x1b[0m",
+            god_name
+        ),
+        ("forsaken", true) => format!(
             "\x1b[1;33m{} withdraws all blessing. The curse upon you deepens.\x1b[0m",
             god_name
         ),
-        "smitten" => format!(
+        ("forsaken", false) => format!(
+            "\x1b[1;33m{}'s displeasure falls on you. A heavy curse settles in.\x1b[0m",
+            god_name
+        ),
+        ("smitten", _) => format!(
             "\x1b[1;31m{} SMITES you! Divine fire sears your flesh and scorches your sight.\x1b[0m",
             god_name
         ),
@@ -505,6 +560,8 @@ pub fn atone_worship(db: &Db, connections: &SharedConnections, char_name: &str) 
         let cost = (ch.gold as i64 + ch.bank_gold) / 2;
         deduct_gold(ch, cost);
         ch.active_buffs.retain(|b| b.source != wrath);
+        // Your own god forgives; every other god's grudge stands.
+        ch.divine_grudges.remove(&god_vnum);
         if let Some(ref mut w) = ch.worship {
             w.last_tribute_day = today;
             w.anger_stage = 0;
@@ -593,6 +650,64 @@ pub fn punish_faith_offense(
         }
         _ => {
             smite_worshiper(db, connections, attacker_name, 3);
+            "smite".to_string()
+        }
+    }
+}
+
+/// Your own god punishes heresy (casting or learning another god's spell).
+/// `grudge` is your god's grudge count after this offence: favor falls by
+/// `10 + 5 × grudge`, then the curse ladder escalates with it, and a full
+/// smite lands from the third offence on. Never breaks the pact.
+/// Returns "" (no pact) | "first" | "second" | "smite".
+pub fn punish_heresy(db: &Db, connections: &SharedConnections, char_name: &str, grudge: u32) -> String {
+    let Some(god_vnum) = read_character(db, connections, char_name).and_then(|c| c.worship.map(|w| w.god_vnum)) else {
+        return String::new();
+    };
+    let loss = 10 + 5 * grudge.min(20) as i32;
+    let mut favor_shift = None;
+    mutate_character(db, connections, char_name, |ch| {
+        if let Some(ref mut w) = ch.worship {
+            let before = w.favor;
+            w.favor = w.favor.saturating_sub(loss);
+            favor_shift = Some((before, w.favor));
+        }
+    });
+    if let Some((before, after)) = favor_shift {
+        announce_favor_shift(db, connections, char_name, &god_vnum, before, after);
+    }
+    let god_name = {
+        let n = god_display_name(db, &god_vnum);
+        if n.is_empty() { "your god".to_string() } else { n }
+    };
+    let wrath = wrath_source(&god_vnum);
+    match grudge {
+        0 | 1 => {
+            mutate_character(db, connections, char_name, |ch| {
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 1, GAME_DAY_SECS, &wrath);
+            });
+            send_to_player(
+                connections,
+                char_name,
+                &format!(
+                    "\x1b[33m{god_name} sees you reach for another god's gift. A cold displeasure settles on you.\x1b[0m"
+                ),
+            );
+            "first".to_string()
+        }
+        2 => {
+            mutate_character(db, connections, char_name, |ch| {
+                stamp_buff(&mut ch.active_buffs, EffectType::Curse, 2, 2 * GAME_DAY_SECS, &wrath);
+            });
+            send_to_player(
+                connections,
+                char_name,
+                &format!("\x1b[1;33m{god_name} has seen this before. The curse upon you thickens.\x1b[0m"),
+            );
+            "second".to_string()
+        }
+        _ => {
+            smite(db, connections, &god_vnum, char_name, 3, true);
             "smite".to_string()
         }
     }

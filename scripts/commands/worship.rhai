@@ -3,10 +3,11 @@
 //   worship            - show your god and standing
 //   worship <god>      - swear the pact: the god must be in the room, or you
 //                        must invoke them by name in a temple
+//   worship renounce [confirm] - (spellcraft) renounce your god in a temple
 //
 // The pact is gated by the god's builder config: a pact artifact (consumed
-// on the spot) or a completed quest. There is no command to renounce a god —
-// the pact is for life (admins can clear it with `admin religion`).
+// on the spot) or a completed quest. Renouncing is apostasy: the god smites,
+// never forgets, and keeps what you pledged.
 
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
@@ -20,13 +21,30 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    let words = args.split(" ");
+    if words[0].to_lower() == "renounce" && spellcraft_enabled() {
+        let confirm = words.len() > 1 && words[1].to_lower() == "confirm";
+        send_client_message(connection_id, worship_renounce(char.name, confirm));
+        return;
+    }
+
     attempt_pact(char, args, connection_id);
+}
+
+fn grudge_footer(char) {
+    let grudges = divine_grudges(char.name);
+    if grudges.len() == 0 { return ""; }
+    let out = "\n\x1b[0;31mGods who remember your offences:\x1b[0m";
+    for g in grudges {
+        out += "\n  " + g;
+    }
+    return out;
 }
 
 fn show_worship_status(char, connection_id) {
     let god_vnum = get_worship_god(char.name);
     if god_vnum == "" {
-        send_client_message(connection_id, "You worship no god. Stand before one — or invoke one in a temple — with 'worship <god>'.");
+        send_client_message(connection_id, "You worship no god. Stand before one — or invoke one in a temple — with 'worship <god>'." + grudge_footer(char));
         return;
     }
     let name = get_god_display_name(god_vnum);
@@ -52,6 +70,7 @@ fn show_worship_status(char, connection_id) {
         output += "Your tribute is current.\n";
     }
     output += "Standing: " + get_worship_standing(char.name);
+    output += grudge_footer(char);
     send_client_message(connection_id, output);
 }
 
@@ -107,7 +126,7 @@ fn attempt_pact(char, args, connection_id) {
         if current == god_vnum {
             send_client_message(connection_id, "You are already sworn to " + current_name + ".");
         } else {
-            send_client_message(connection_id, "You are sworn to " + current_name + ". The gods do not release their own.");
+            send_client_message(connection_id, "You are sworn to " + current_name + ". The gods do not release their own" + (if spellcraft_enabled() { " (unless you renounce them: 'worship renounce')." } else { "." }));
         }
         return;
     }
@@ -117,6 +136,10 @@ fn attempt_pact(char, args, connection_id) {
 }
 
 fn handle_pact_result(char, god_vnum, result, connection_id) {
+    if result == "cooldown" {
+        send_client_message(connection_id, "You renounced a god too recently. No god will take you yet.");
+        return;
+    }
     if result == "gate_failed" {
         send_client_message(connection_id, "You feel yourself weighed... and found unworthy. An artifact of the god, or a deed done in their name, must open this path.");
         return;

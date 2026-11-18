@@ -9,6 +9,7 @@ pub mod audit;
 pub mod auth;
 pub mod bugs;
 pub mod build_requests;
+pub mod codex;
 pub mod dg_protos;
 pub mod error;
 pub mod items;
@@ -60,6 +61,8 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .nest("/recipes", recipes::routes())
         .nest("/quests", quests::routes())
         .nest("/achievements", achievements::routes())
+        .nest("/codex", codex::routes())
+        .nest("/canons", codex::canon_routes())
         .nest("/bugs", bugs::routes())
         .nest("/bounties", build_requests::routes())
         .nest("/audit", audit::routes())

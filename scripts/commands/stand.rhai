@@ -20,9 +20,9 @@ fn run_command(args, connection_id) {
 
     // Check if can wake from sleeping (10% stamina required)
     if char.position == "sleeping" {
-        let wake_threshold = char.max_stamina / 10;
+        let wake_threshold = char.effective_max_stamina() / 10;
         if char.stamina < wake_threshold {
-            send_client_message(connection_id, "You are too exhausted to wake up. You need at least 10% stamina (" + wake_threshold + "/" + char.max_stamina + ").");
+            send_client_message(connection_id, "You are too exhausted to wake up. You need at least 10% stamina (" + wake_threshold + "/" + char.effective_max_stamina() + ").");
             return;
         }
     }

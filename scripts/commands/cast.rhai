@@ -61,28 +61,27 @@ fn resolve_spell_id(input, char_name) {
 fn find_mob_target(char, target_arg, room_id) {
     let mobs = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
 
-    // If no target arg and in combat, use primary target
+    // If no target arg and in combat, use the first mobile target.
     if target_arg == "" {
         if is_in_combat(char.name) {
-            let targets = get_combat_targets(char.name);
-            if targets.len() > 0 {
-                return targets[0];
+            for t in get_combat_targets(char.name) {
+                if t.target_type == "mobile" {
+                    return t.target_id;
+                }
             }
         }
         return "";
     }
 
+    // `mobs` holds MobileData; callers want the id.
     let lower = target_arg.to_lower();
-    for mob_id in mobs {
-        let mob = get_mobile_data(mob_id);
-        if type_of(mob) != "()" {
-            if mob.name.to_lower().contains(lower) {
-                return mob_id;
-            }
-            for kw in mob.keywords {
-                if kw.to_lower().starts_with(lower) {
-                    return mob_id;
-                }
+    for mob in mobs {
+        if mob.name.to_lower().contains(lower) {
+            return mob.id;
+        }
+        for kw in mob.keywords {
+            if kw.to_lower().starts_with(lower) {
+                return mob.id;
             }
         }
     }
@@ -191,7 +190,7 @@ fn cast_damage(connection_id, char, spell, target_arg) {
     let verb = get_damage_verb(dtype);
 
     send_client_message(connection_id, "You cast " + spell["name"] + "! Your " + dtype + " energy " + verb + " " + mob.name + " for " + damage + " damage!");
-    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + "! " + dtype.to_upper() + " energy " + verb + " " + mob.name + "!", char.name);
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + "! " + dtype.to_upper() + " energy " + verb + " " + mob.name + "!", char.name);
 
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
@@ -239,7 +238,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
 
     if resisted {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " resists your magic!");
-        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but it has no effect.", char.name);
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " on " + mob.name + ", but it has no effect.", char.name);
         award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
@@ -248,7 +247,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
     // wildcard "*" buffs) subtract from the apply chance. Base 80%.
     if !roll_status_application(mob_id, effect, 80) {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " shrugs off your magic!");
-        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but the magic dissipates.", char.name);
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " on " + mob.name + ", but the magic dissipates.", char.name);
         award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
@@ -263,7 +262,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
                else { "settles over " + mob.name + "." };
 
     send_client_message(connection_id, "You cast " + spell["name"] + " — your magic " + verb);
-    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — the magic " + verb, char.name);
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " — the magic " + verb, char.name);
 
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
@@ -305,18 +304,19 @@ fn cast_buff(connection_id, char, spell, target_arg) {
         if cured_fear {
             send_client_message(connection_id, "Courage floods through you; your terror melts away.");
         }
-        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + ".", char.name);
+        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["seen_as"] + ".", char.name);
     } else {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + target_name + ".");
         // Notify target
         let target_conn = find_player_connection_by_name(target_name);
         if target_conn != "" {
-            send_client_message(target_conn, char.name + " casts " + spell["name"] + " on you.");
+            send_client_message(target_conn, char.name + " casts " + spell["seen_as"] + " on you.");
+            if spell["flavor_target"] != "" { send_client_message(target_conn, spell["flavor_target"]); }
             if cured_fear {
                 send_client_message(target_conn, "Courage floods through you; your terror melts away.");
             }
         }
-        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
+        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["seen_as"] + " on " + target_name + ".", char.name);
     }
 
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
@@ -375,13 +375,14 @@ fn cast_heal(connection_id, char, spell, target_arg) {
 
     if target_name == char.name {
         send_client_message(connection_id, "You cast " + spell["name"] + " and heal yourself for " + actual_heal + " HP.");
-        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " and is bathed in healing light.", char.name);
+        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["seen_as"] + " and is bathed in healing light.", char.name);
     } else {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + target_name + ", healing them for " + actual_heal + " HP.");
         if target_conn != "" {
-            send_client_message(target_conn, char.name + " casts " + spell["name"] + " on you, healing you for " + actual_heal + " HP.");
+            send_client_message(target_conn, char.name + " casts " + spell["seen_as"] + " on you, healing you for " + actual_heal + " HP.");
+            if spell["flavor_target"] != "" { send_client_message(target_conn, spell["flavor_target"]); }
         }
-        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
+        broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["seen_as"] + " on " + target_name + ".", char.name);
     }
 
     if target_is_synth {
@@ -683,13 +684,13 @@ fn cast_fear_at_mobile(connection_id, char, spell, mob_id, magnitude, duration) 
     let outcome = try_apply_fear(mob_id, 80, magnitude, duration, spell["name"]);
     if outcome == "immune" {
         send_client_message(connection_id, mob.name + " stands unshaken — your terror finds no purchase.");
-        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but it has no effect.", char.name);
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " on " + mob.name + ", but it has no effect.", char.name);
         award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
     if outcome == "resisted" {
         send_client_message(connection_id, mob.name + " shrugs off the creeping dread.");
-        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but the magic dissipates.", char.name);
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " on " + mob.name + ", but the magic dissipates.", char.name);
         award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
@@ -699,7 +700,7 @@ fn cast_fear_at_mobile(connection_id, char, spell, mob_id, magnitude, duration) 
     }
 
     send_client_message(connection_id, "You cast " + spell["name"] + " — stark terror floods " + mob.name + "'s eyes!");
-    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — stark terror floods " + mob.name + "'s eyes!", char.name);
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " — stark terror floods " + mob.name + "'s eyes!", char.name);
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
@@ -750,7 +751,7 @@ fn cast_fear_at_player(connection_id, char, spell, target_arg, zone, magnitude, 
     if outcome == "immune" {
         send_client_message(connection_id, victim.name + " stands unshaken — your terror finds no purchase.");
         if victim_conn != "" {
-            send_client_message(victim_conn, char.name + " casts " + spell["name"] + " on you, but it finds no purchase. " + char.name + " attacks you!");
+            send_client_message(victim_conn, char.name + " casts " + spell["seen_as"] + " on you, but it finds no purchase. " + char.name + " attacks you!");
         }
         award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
@@ -772,7 +773,7 @@ fn cast_fear_at_player(connection_id, char, spell, target_arg, zone, magnitude, 
     if victim_conn != "" {
         send_client_message(victim_conn, "\x1b[1;31mStark, unreasoning terror floods your mind as " + char.name + " attacks you!\x1b[0m");
     }
-    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — " + victim.name + " blanches in terror!", char.name);
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["seen_as"] + " — " + victim.name + " blanches in terror!", char.name);
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
@@ -989,6 +990,13 @@ fn run_command(args, connection_id) {
     // Tier-1 and tier-2 powers remain available; this only gates the
     // top-of-tree powers (Dominate proper, Time Stop, Mask of a Thousand
     // Faces, etc.).
+    // Codex spells: how observers see the name ("Ember Lance, gift of
+    // Vorun"), the author's own cast lines, and the author's full form.
+    let codex = codex_cast_info(char.name, spell_id, spell["name"]);
+    spell["seen_as"] = codex["seen_as"];
+    spell["flavor_target"] = codex["flavor_target"];
+    let true_form = codex["true_form"];
+
     if is_thinblood(connection_id) && spell["skill_required"] >= 5 {
         send_client_message(connection_id, "Your blood is too thin to channel this. Find your clan to claim its full power.");
         return;
@@ -998,6 +1006,7 @@ fn run_command(args, connection_id) {
     let cost_reduction = get_trait_effect_sum(char.name, "spell_cost_reduction");
     let cost_increase = get_trait_effect_sum(char.name, "spell_cost_increase");
     let effective_mana_cost = spell["mana_cost"] * (100 - cost_reduction + cost_increase) / 100;
+    if true_form { effective_mana_cost = effective_mana_cost * 75 / 100; }
     if effective_mana_cost < 1 { effective_mana_cost = 1; }
 
     // Validate mana
@@ -1021,6 +1030,7 @@ fn run_command(args, connection_id) {
 
     // Validate reagent
     let reagent = spell["reagent_vnum"];
+    if true_form { reagent = ""; }
     if reagent != "" {
         if !has_reagent(char.name, reagent) {
             send_client_message(connection_id, "You lack the required reagent to cast " + spell["name"] + ".");
@@ -1070,6 +1080,23 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if codex["flavor_caster"] != "" {
+        send_client_message(connection_id, codex["flavor_caster"]);
+    }
+    if codex["flavor_room"] != "" {
+        broadcast_to_room_except(char.current_room_id, codex["flavor_room"], char.name);
+    }
+    if true_form {
+        send_client_message(connection_id, "\x1b[0;35m(true form)\x1b[0m");
+    }
+    // Another god's spell: backlash, and the gods may answer.
+    if codex["codex"] {
+        let heresy = codex_heresy(char.name, spell_id);
+        if heresy != "" {
+            send_client_message(connection_id, heresy);
+        }
+    }
+
     // Deduct mana (use effective cost with trait modifiers)
     let updated_char = get_player_character(connection_id);
     if type_of(updated_char) != "()" {
@@ -1102,6 +1129,7 @@ fn run_command(args, connection_id) {
     let old_level = get_skill_level(char.name, "magic");
     add_skill_experience(char.name, "magic", xp);
     notify_achievement_counter(char.name, "spells.cast", 1);
+    codex_note_cast(char.name, spell_id);
     let new_level = get_skill_level(char.name, "magic");
 
     if new_level > old_level {

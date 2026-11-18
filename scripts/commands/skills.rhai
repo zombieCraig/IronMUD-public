@@ -20,6 +20,11 @@ fn run_command(args, connection_id) {
         output += render_category(category.name, category.skills, all_skills);
     }
 
+    // Divine spellcraft is earned late and only by some; show it once begun.
+    if all_skills.contains("spellcraft") {
+        output += render_category("Divine", ["spellcraft"], all_skills);
+    }
+
     // Category: Custom (builder-defined) — surfaces only the keys this
     // character has a non-zero base value for or is buffed in. Empty for
     // worlds that don't use the custom-skill registry.

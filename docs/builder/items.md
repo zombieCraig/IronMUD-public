@@ -373,6 +373,12 @@ package. Usable as a cursed equip-affect, a potion/food effect, or from
 scripts via `apply_buff`/`apply_buff_to_mobile` with effect `"rage"`.
 Magnitude is unused.
 
+The `regen_penalty` variant slows recovery: every regen tick cuts the
+bearer's HP, stamina and mana regeneration by `magnitude` percent (several
+sources add up, capped at 90%; regeneration never drops below 1 per tick).
+Divine marks carry it for gods whose price is Weariness; it works as a
+cursed equip-affect too.
+
 The `fear_aura` variant terrifies the wearer's combat opponents, never the
 wearer: each combat round, every enemy actively fighting the wearer rolls
 `magnitude`% (0 → 15%) to gain a short `feared` buff. Feared mobiles flee

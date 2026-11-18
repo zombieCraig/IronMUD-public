@@ -36,12 +36,18 @@ fn stamp_tattoo(ch: &mut CharacterData, item: &ItemData) {
         source_vnum: item.vnum.clone(),
         affects: item.affects.clone(),
     });
-    for affect in &item.affects {
+    stamp_affects(ch, &source, &item.affects);
+}
+
+/// Stamp `affects` as permanent buffs sourced `source`. Shared by tattoos
+/// and divine marks; pure, the caller persists.
+pub(crate) fn stamp_affects(ch: &mut CharacterData, source: &str, affects: &[crate::types::ItemAffect]) {
+    for affect in affects {
         ch.active_buffs.push(ActiveBuff {
             effect_type: affect.effect_type,
             magnitude: affect.magnitude,
             remaining_secs: -1,
-            source: source.clone(),
+            source: source.to_string(),
             damage_type: affect.damage_type,
             vs_effect: affect.vs_effect.clone(),
             skill_key: affect.skill_key.clone(),

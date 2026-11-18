@@ -560,32 +560,17 @@ pub fn is_language_skill(state: &SharedState, skill: &str) -> bool {
     state.lock().language_definitions.contains_key(&skill.to_lowercase())
 }
 
-/// Push the updated character into the live session so an online player's
-/// in-memory copy does not go stale and get flushed back over the award by
-/// the regen tick.
-fn sync_to_session(connections: &SharedConnections, ch: &CharacterData) {
-    {
-        let mut conns = connections.lock();
-        for (_, session) in conns.iter_mut() {
-            let matches = session
-                .character
-                .as_ref()
-                .map(|c| c.name.eq_ignore_ascii_case(&ch.name))
-                .unwrap_or(false);
-            if matches {
-                session.character = Some(ch.clone());
-                return;
-            }
-        }
-    }
-}
-
 /// One-call facade for every caller that does not already hold the character:
 /// Rhai scripts, quest rewards, dialogue effects, DG commands.
 ///
-/// Order is load -> award -> save -> sync session -> report -> notify. The
-/// notify step runs last so achievement writes land after the character save
-/// rather than being overwritten by it.
+/// The award is applied through `achievements::apply_to_character`, so an
+/// online player's *session* copy is the one changed (and saved). Loading the
+/// DB row and writing it back over the session — what this used to do — threw
+/// away anything the session had not flushed yet, gold from `purse` included.
+///
+/// Order is award -> save -> report -> notify. The notify step runs last so
+/// achievement writes land after the character save rather than being
+/// overwritten by it.
 pub fn award_xp(
     db: &Db,
     connections: &SharedConnections,
@@ -595,20 +580,19 @@ pub fn award_xp(
     amount: i32,
     source: XpSource,
 ) -> XpOutcome {
-    let Ok(Some(mut ch)) = db.get_character_data(&char_name.to_lowercase()) else {
-        return XpOutcome::default();
-    };
-
+    // World before Connections: `apply_to_character` holds Connections.
     let is_lang = is_language_skill(state, skill);
-    let outcome = award_xp_to_character(&mut ch, skill, amount, is_lang);
+    let mut outcome = XpOutcome::default();
+    let saved = crate::script::achievements::apply_to_character(db, connections, char_name, |ch| {
+        outcome = award_xp_to_character(ch, skill, amount, is_lang);
+        outcome.applied != 0 || outcome.leveled
+    });
+    if saved.is_none() {
+        return XpOutcome::default();
+    }
     if outcome.applied == 0 && !outcome.leveled {
         return outcome;
     }
-
-    if db.save_character_data(ch.clone()).is_err() {
-        return XpOutcome::default();
-    }
-    sync_to_session(connections, &ch);
     report_xp(connections, char_name, skill, &outcome, source);
     notify_xp_achievements(db, connections, state, char_name, skill, &outcome);
     outcome
@@ -637,6 +621,9 @@ pub struct Renown {
     pub quests: i32,
     /// Sum of per-spell mastery levels.
     pub spell_levels: i32,
+    /// Spells this character sealed into a god's canon
+    /// (`spells.authored`, reconciled from the codex).
+    pub spells_authored: i32,
 }
 
 /// A derived breadth score. Deliberately *not* a stored field and not a
@@ -659,11 +646,19 @@ pub fn renown(ch: &CharacterData) -> Renown {
     let achievements = ch.achievements_unlocked.len() as i32;
     let quests = ch.completed_quests.len() as i32;
     let spell_levels: i32 = ch.spell_progress.values().map(|s| s.level).sum();
+    let spells_authored = ch
+        .achievement_counters
+        .get(crate::spellcraft::ritual::AUTHORED_COUNTER)
+        .copied()
+        .unwrap_or(0)
+        .min(i32::MAX as u32) as i32;
 
     // Scored on the wide totals — a polyglot's languages are real progression
     // and should raise their Renown. The core figures below exist only so a
     // display has something with a stable denominator.
-    let total = skill_levels + 3 * mastered + 2 * achievements + quests + spell_levels / 2;
+    // An authored spell is the rarest thing here: a capstone quest, a trial
+    // and a ritual each, so it outweighs a mastered skill.
+    let total = skill_levels + 3 * mastered + 2 * achievements + quests + spell_levels / 2 + 5 * spells_authored;
 
     let core: Vec<i32> = CORE_SKILLS
         .iter()
@@ -681,12 +676,45 @@ pub fn renown(ch: &CharacterData) -> Renown {
         achievements,
         quests,
         spell_levels,
+        spells_authored,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An award to an online player must change the session copy and keep
+    /// whatever the session had not flushed yet; it used to load the DB row
+    /// and write it back over the session.
+    #[test]
+    fn award_xp_is_session_first_and_keeps_unflushed_state() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        let ch = char_with("foraging", 0, 0);
+        db.save_character_data(ch.clone()).unwrap();
+
+        let conns: SharedConnections = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (itx, irx) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
+        let mut session = crate::PlayerSession::new_for_test(tx, itx);
+        let mut live = ch.clone();
+        live.gold = 777; // e.g. a purse credit not yet flushed to the DB
+        session.character = Some(live);
+        conns.lock().insert(uuid::Uuid::new_v4(), session);
+        std::mem::forget((rx, irx));
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
+
+        let out = award_xp(&db, &conns, &state, "Tester", "foraging", 40, XpSource::Gather);
+        assert_eq!(out.applied, 40);
+
+        let session_ch = conns.lock().values().find_map(|s| s.character.clone()).unwrap();
+        assert_eq!(session_ch.gold, 777, "unflushed session gold survives an XP award");
+        assert_eq!(session_ch.skills["foraging"].experience, 40);
+        let stored = db.get_character_data("tester").unwrap().unwrap();
+        assert_eq!(stored.skills["foraging"].experience, 40);
+        assert_eq!(stored.gold, 777);
+    }
 
     /// CharacterData has no `Default`, so build it from JSON and let serde's
     /// field defaults fill the rest — same approach the dialogue tests use.
@@ -1063,6 +1091,12 @@ mod tests {
         assert_eq!(r.spell_levels, 5);
         // 14 skill + 3*1 mastered + 2*0 achievements + 2 quests + 5/2 spells
         assert_eq!(r.total, 14 + 3 + 2 + 2);
+
+        // A sealed spell weighs five.
+        ch.achievement_counters.insert("spells.authored".into(), 2);
+        let r = renown(&ch);
+        assert_eq!(r.spells_authored, 2);
+        assert_eq!(r.total, 14 + 3 + 2 + 2 + 10);
     }
 
     #[test]

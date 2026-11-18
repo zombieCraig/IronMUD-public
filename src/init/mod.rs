@@ -4,7 +4,7 @@
 //! - Script loading and hot-reload
 //! - Game data loading (classes, traits, races, recipes)
 
-mod data;
+pub(crate) mod data;
 mod scripts;
 
 pub use data::*;

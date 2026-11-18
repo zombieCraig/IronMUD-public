@@ -147,6 +147,16 @@ pub enum DialogueCondition {
         faction: String,
         value: i32,
     },
+    /// True when the speaker has an active pact with the god `vnum`.
+    WorshipsGod {
+        vnum: String,
+    },
+    /// True when the speaker worships a god and their favor with it is at
+    /// least `value` (25 Noticed, 100 Favored, 250 Blessed, 500 Exalted).
+    /// The godless fail.
+    FavorAtLeast {
+        value: i32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +276,22 @@ pub enum DialogueEffect {
     Reputation {
         faction: String,
         delta: i32,
+    },
+    /// A temple teacher shares one of its god's canon spells
+    /// (`spellcraft::canon::teach_canon`): `spell` names one, or the oldest
+    /// the player lacks. Needs worship of the god at Favored or better and
+    /// the spell's magic level; charges `gold_cost` gold and `favor_cost`
+    /// favor. `god_vnum` defaults to the speaking mob when it is a god, else
+    /// to the player's own god. Faded spells are never taught.
+    TeachCanonSpell {
+        #[serde(default)]
+        god_vnum: Option<String>,
+        #[serde(default)]
+        spell: Option<String>,
+        #[serde(default)]
+        gold_cost: i32,
+        #[serde(default)]
+        favor_cost: i32,
     },
     TeachSkill {
         skill: String,

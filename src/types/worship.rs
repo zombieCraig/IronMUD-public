@@ -87,6 +87,94 @@ pub struct DeityConfig {
     /// Gates the stage-4 permanent smite (e.g. permanent Blind).
     #[serde(default)]
     pub allow_permanent_smite: bool,
+    /// Divine spellcraft: this god grants player-authored spells. None = it
+    /// grants none.
+    #[serde(default)]
+    pub spellcraft: Option<DeitySpellcraft>,
+}
+
+/// How a god grants player-authored spells (`medit <god> deity spellcraft`).
+/// The allow-lists bound what a petition may draft; an empty list allows
+/// nothing of that kind. Override fields left `None` use the server setting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeitySpellcraft {
+    /// Subset of damage/debuff/buff/heal.
+    #[serde(default)]
+    pub allowed_types: Vec<String>,
+    /// `damage_type` values damage spells may use.
+    #[serde(default)]
+    pub allowed_elements: Vec<String>,
+    /// `buff_effect` (EffectType) values buffs/debuffs may use.
+    #[serde(default)]
+    pub allowed_effects: Vec<String>,
+    /// Subset of self/self_or_friendly/enemy.
+    #[serde(default)]
+    pub allowed_targets: Vec<String>,
+    /// Spells the god's canon holds at once.
+    #[serde(default = "default_canon_cap")]
+    pub canon_cap: u32,
+    /// Overrides `spellcraft.god_petition_cooldown_days`.
+    #[serde(default)]
+    pub petition_cooldown_days: Option<i64>,
+    /// Overrides `spellcraft.min_favor`.
+    #[serde(default)]
+    pub min_favor: Option<i64>,
+    /// Overrides `spellcraft.min_power_tier`.
+    #[serde(default)]
+    pub min_power_tier: Option<i64>,
+    /// Favor spent when a spell is sealed.
+    #[serde(default = "default_spellcraft_favor_cost")]
+    pub favor_cost: i64,
+    /// Capstone quest that must be complete before any petition.
+    #[serde(default)]
+    pub unlock_quest_id: Option<String>,
+    /// Priests of this god teach its canon spells.
+    #[serde(default = "default_true")]
+    pub priest_teaches: bool,
+    /// What the god takes beyond the base HP pledge.
+    #[serde(default)]
+    pub price_style: super::PriceStyle,
+    /// The tasks this god sets a petitioner, picked by the drafted spell's
+    /// nature (`spellcraft::draft::pick_trial`). No matching rule = no petition.
+    #[serde(default)]
+    pub trial_rules: Vec<super::TrialRule>,
+    /// Brands the god puts on a spell's author (one at sealing, more on a
+    /// backlash). Empty = a plain sigil with no affects.
+    #[serde(default)]
+    pub mark_pool: Vec<super::MarkTemplate>,
+}
+
+impl Default for DeitySpellcraft {
+    fn default() -> Self {
+        DeitySpellcraft {
+            allowed_types: Vec::new(),
+            allowed_elements: Vec::new(),
+            allowed_effects: Vec::new(),
+            allowed_targets: Vec::new(),
+            canon_cap: default_canon_cap(),
+            petition_cooldown_days: None,
+            min_favor: None,
+            min_power_tier: None,
+            favor_cost: default_spellcraft_favor_cost(),
+            unlock_quest_id: None,
+            priest_teaches: true,
+            price_style: super::PriceStyle::default(),
+            trial_rules: Vec::new(),
+            mark_pool: Vec::new(),
+        }
+    }
+}
+
+fn default_canon_cap() -> u32 {
+    5
+}
+
+fn default_spellcraft_favor_cost() -> i64 {
+    250
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for DeityConfig {
@@ -102,6 +190,7 @@ impl Default for DeityConfig {
             tribute_gold_percent: default_tribute_gold_percent(),
             blessing_effects: Vec::new(),
             allow_permanent_smite: false,
+            spellcraft: None,
         }
     }
 }

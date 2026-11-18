@@ -53,6 +53,9 @@ import type {
   AchievementSummary,
   CreateAchievementRequest,
   UpdateAchievementRequest,
+  CodexSummary,
+  CodexEntry,
+  CanonView,
   DgProto,
   DgProtoSummary,
   DgProtoResponse,
@@ -1036,6 +1039,27 @@ export class IronMUDApiClient {
 
   async deleteAchievement(key: string): Promise<void> {
     await this.request("delete", `/achievements/${encodeURIComponent(key)}`);
+  }
+
+  // Divine spellcraft codex
+  async listCodex(): Promise<CodexSummary[]> {
+    return this.listRequest<CodexSummary>("/codex");
+  }
+
+  async getCodexSpell(id: string): Promise<CodexEntry> {
+    return this.request<CodexEntry>("get", `/codex/${encodeURIComponent(id)}`);
+  }
+
+  async getCanon(godVnum: string): Promise<CanonView> {
+    return this.request<CanonView>("get", `/canons/${encodeURIComponent(godVnum)}`);
+  }
+
+  async setCodexStatus(id: string, status: string): Promise<CodexEntry> {
+    return this.request<CodexEntry>("put", `/codex/${encodeURIComponent(id)}/status`, { status });
+  }
+
+  async setCodexVeto(id: string, vetoed: boolean): Promise<CodexEntry> {
+    return this.request<CodexEntry>("put", `/codex/${encodeURIComponent(id)}/veto`, { vetoed });
   }
 
   // DG Scripts trigger prototypes

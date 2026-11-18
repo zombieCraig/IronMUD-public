@@ -222,7 +222,14 @@ export type DialogueCondition =
    * 50 is Accepted, 200 Honored, 500 Revered; a faction the player has
    * never dealt with reads 0.
    */
-  | { kind: "reputation_at_least"; faction: string; value: number };
+  | { kind: "reputation_at_least"; faction: string; value: number }
+  /** True when the player has an active pact with the god `vnum`. */
+  | { kind: "worships_god"; vnum: string }
+  /**
+   * True when the player worships a god and their favor with it is at least
+   * `value`: 25 Noticed, 100 Favored, 250 Blessed, 500 Exalted. The godless fail.
+   */
+  | { kind: "favor_at_least"; value: number };
 
 export type DialogueEffect =
   | { kind: "set_flag"; name: string; scope?: FlagScope }
@@ -255,6 +262,7 @@ export type DialogueEffect =
    * `gold_cost` to 0.
    */
   | { kind: "teach_skill"; skill: string; amount: number; cap?: number; gold_cost?: number }
+  | { kind: "teach_canon_spell"; god_vnum?: string; spell?: string; gold_cost?: number; favor_cost?: number }
   /** Shifts the morality slider, clamped to [-200, 200]. */
   | { kind: "morality"; delta: number }
   /**
@@ -531,6 +539,57 @@ export interface DeityConfig {
   tribute_gold_percent?: number;
   blessing_effects?: { effect: string; magnitude: number }[];
   allow_permanent_smite?: boolean;
+  /** Divine spellcraft: lets worshippers seal spells. Omit on update to keep the current config. */
+  spellcraft?: DeitySpellcraft;
+  /** Set true to stop this god granting spells. */
+  remove_spellcraft?: boolean;
+}
+
+export interface DeitySpellcraft {
+  /** Subset of damage/debuff/buff/heal. Empty allows none. */
+  allowed_types?: string[];
+  /** Damage types damage spells may use. */
+  allowed_elements?: string[];
+  /** Effect types buffs/debuffs may use. */
+  allowed_effects?: string[];
+  /** Subset of self/self_or_friendly/enemy. */
+  allowed_targets?: string[];
+  /** Spells the canon holds at once (1-20, default 5). */
+  canon_cap?: number;
+  /** Game days between petitions; omit for the server setting. */
+  petition_cooldown_days?: number;
+  /** Favor needed to petition; omit for the server setting (500). */
+  min_favor?: number;
+  /** Weakest power tier (1-5) accepted; omit for the server setting (3). */
+  min_power_tier?: number;
+  /** Favor spent when a spell is sealed (default 250). */
+  favor_cost?: number;
+  /** Capstone quest that must be complete before any petition. */
+  unlock_quest_id?: string;
+  /** Priests of this god teach its canon spells (default true). */
+  priest_teaches?: boolean;
+  /** What the god takes beyond the base HP pledge (default flesh). */
+  price_style?: "flesh" | "mind" | "essence" | "fortune" | "weariness" | "fate";
+  /** The god's trials; the most specific match for a drafted spell is set. None = petitions refused. */
+  trial_rules?: TrialRule[];
+  /** Brands put on a spell's author: one at sealing, more on a backlash. Empty = a plain sigil. */
+  mark_pool?: MarkTemplate[];
+}
+
+export interface MarkTemplate {
+  short_desc: string;
+  body_part?: string;
+  /** Same shape as item affects, e.g. { effect_type: "regen_penalty", magnitude: 15 }. */
+  affects?: { effect_type: string; magnitude?: number; damage_type?: string; vs_effect?: string; skill_key?: string }[];
+}
+
+export interface TrialRule {
+  quest_id: string;
+  when_type?: string;
+  when_element?: string;
+  when_effect?: string;
+  /** Applies only to spells at least this strong. */
+  min_power?: number;
 }
 
 export interface SimulationConfig {
@@ -1524,6 +1583,67 @@ export interface UpdateAchievementRequest {
   criterion?: AchievementCriterion;
   reward?: AchievementReward;
   hidden?: boolean;
+}
+
+// === Divine spellcraft codex ===
+
+export type CanonStatus = "canon" | "faded" | "lost";
+export type SpellOrigin = "ancient" | "authored";
+
+export interface CodexSummary {
+  id: string;
+  name: string;
+  god_vnum: string;
+  god_name: string;
+  status: CanonStatus;
+  origin: SpellOrigin;
+  author?: string | null;
+  author_disgraced: boolean;
+  vetoed: boolean;
+  spell_type: string;
+  /** Power tier from the spellcraft power model (0 = outside the player budget). */
+  tier: number;
+  sealed_day: number;
+  /** Lifetime casts by anyone but the current author. */
+  casts_by_others: number;
+}
+
+export interface CodexMeta {
+  origin: SpellOrigin;
+  author?: string | null;
+  god_vnum: string;
+  status: CanonStatus;
+  sealed_day: number;
+  lineage: Array<Record<string, unknown>>;
+  witnesses: string[];
+  author_disgraced: boolean;
+  flavor: { caster: string; room: string; target: string };
+  version: number;
+  vetoed: boolean;
+  casts_by_others: number;
+}
+
+export interface CodexEntry {
+  /** Full SpellDefinition (id, name, spell_type, mana_cost, ...). */
+  def: { id: string; name: string; spell_type: string; [key: string]: unknown };
+  meta: CodexMeta;
+}
+
+export interface CanonSlotView {
+  spell_id: string;
+  spell_name?: string | null;
+  sealed_day: number;
+  devotion: number;
+  warned: boolean;
+  devotion_day: number;
+}
+
+export interface CanonView {
+  god_vnum: string;
+  god_name: string;
+  influence: number;
+  last_petition_day?: number | null;
+  slots: CanonSlotView[];
 }
 
 // === DG Scripts trigger prototypes ===

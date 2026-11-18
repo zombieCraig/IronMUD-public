@@ -116,6 +116,9 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         "worship_tribute" => cmd_worship_tribute(rest, ctx),
         "worship_favor" => cmd_worship_favor(rest, ctx),
         "worship_smite" => cmd_worship_smite(rest, ctx),
+        // `god_smite <player> <god_vnum> <severity 1-4>` — any god strikes
+        //   anyone, sworn or not ("the god strikes the trespasser").
+        "god_smite" => cmd_god_smite(rest, ctx),
 
         // `social <name> [target]` — fire a CircleMUD-style social as
         // the script's self. Only meaningful when self is a mob.
@@ -234,6 +237,7 @@ pub const COMMANDS: &[&str] = &[
     "worship_tribute",
     "worship_favor",
     "worship_smite",
+    "god_smite",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -326,6 +330,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
             | "worship_tribute"
             | "worship_favor"
             | "worship_smite"
+            | "god_smite"
     )
 }
 
@@ -1758,6 +1763,18 @@ fn cmd_worship_smite(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             .and_then(|t| t.parse().ok())
             .unwrap_or(1);
         crate::script::worship::smite_worshiper(&ctx.db, &ctx.connections, &player, severity);
+    }
+    Ok(())
+}
+
+fn cmd_god_smite(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if let Some((player, remainder)) = resolve_player_name(rest, ctx) {
+        let mut words = remainder.split_whitespace();
+        let Some(god) = words.next() else {
+            return Ok(());
+        };
+        let severity: i32 = words.next().and_then(|t| t.parse().ok()).unwrap_or(1);
+        crate::script::worship::smite_character(&ctx.db, &ctx.connections, god, &player, severity);
     }
     Ok(())
 }

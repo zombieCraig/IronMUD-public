@@ -647,7 +647,16 @@ pub(super) fn set_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str, value:
             }
             false
         }
-        ScopeRef::Player(pname) => set_player_dg_var(ctx, pname, name, Some(value)),
+        ScopeRef::Player(pname) => {
+            let written = set_player_dg_var(ctx, pname, name, Some(value));
+            // DG steps of quests (`DgFlag` objectives) advance here, so a
+            // trial can be "light the three braziers" in DG. After the write,
+            // with no lock held.
+            if written {
+                crate::quest::handle_dg_flag_set(&ctx.db, &ctx.connections, &ctx.state, pname, name, value);
+            }
+            written
+        }
     }
 }
 

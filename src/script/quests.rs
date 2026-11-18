@@ -564,16 +564,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // quest_offer(player_name, vnum) -> String ("" success, error otherwise)
     {
         let cloned_db = db.clone();
+        let cloned_conns = connections.clone();
         engine.register_fn("quest_offer", move |player_name: String, vnum: String| -> String {
-            crate::quest::offer(&cloned_db, &player_name, &vnum)
+            crate::quest::offer(&cloned_db, &cloned_conns, &player_name, &vnum)
         });
     }
 
     // quest_abandon(player_name, vnum) -> String
     {
         let cloned_db = db.clone();
+        let cloned_conns = connections.clone();
         engine.register_fn("quest_abandon", move |player_name: String, vnum: String| -> String {
-            crate::quest::abandon(&cloned_db, &player_name, &vnum)
+            crate::quest::abandon(&cloned_db, &cloned_conns, &player_name, &vnum)
         });
     }
 

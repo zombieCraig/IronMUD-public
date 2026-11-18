@@ -48,6 +48,8 @@ Conditions are evaluated when classifying a choice for display. All conditions o
 | `quest_complete` | `vnum` | Player has completed this quest at least once. |
 | `quest_completable` | `vnum` | Quest is active AND every objective is satisfied — gate the "I'm ready to turn it in" branch. |
 | `reputation_at_least` | `faction`, `value` | Player's standing with the faction meets the threshold. 50 is Accepted, 200 Honored, 500 Revered; a faction the player has never dealt with reads 0, so any non-positive threshold passes by default. See [Factions](factions.md). |
+| `worships_god` | `vnum` | Player has an active pact with the god whose mobile vnum is `vnum`. See [Worship](worship.md). |
+| `favor_at_least` | `value` | Player worships a god and their favor with it meets the threshold: 25 Noticed, 100 Favored, 250 Blessed, 500 Exalted. The godless fail. |
 
 ## Effects
 
@@ -61,6 +63,7 @@ Effects fire when a choice is selected, in declared order. They also fire from n
 | `take_item` | `vnum`, `qty` | Removes from the player's inventory. No-op message if the player doesn't have the items. |
 | `award_skill_xp` | `skill`, `amount` | Awards XP on the shared `xp_for_level` curve (the cost per rung rises; 100 clears level 0 but not level 3), capped at level 10. The learning traits apply. |
 | `teach_skill` | `skill`, `amount`, `cap`, `gold_cost` | A paid lesson. Charges `gold_cost`, then awards `amount` XP — but only while the player is below `cap`. At or above `cap` it refuses with a message and charges nothing, as does an insufficient purse. `cap` defaults to 1, `gold_cost` to 0. |
+| `teach_canon_spell` | `god_vnum?`, `spell?`, `gold_cost`, `favor_cost` | A temple teacher shares a canon spell of the god (default: the speaking mob if it is a god, else the player's own god). With no `spell`, it teaches the oldest one the player lacks. Needs worship at Favored or better and the spell's magic level. Never teaches faded spells. See [spellcraft](spellcraft.md#canon-life). |
 | `morality` | `delta` | Shifts the alignment slider, clamped to `[-200, 200]`. A tier crossing prints the matching "feel" line; smaller nudges are silent. |
 | `reputation` | `faction`, `delta` | Shifts standing with a faction, clamped to `[-1000, 1000]`, and moves that faction's declared enemies the opposite way. Crossing a band announces itself; smaller nudges are silent. Combat can only *lower* standing, so this and the quest reward are the only ways it rises — use this when the goodwill is in the conversation itself. |
 | `set_counter` | `key`, `value` | Sets an achievement counter. |
@@ -112,6 +115,8 @@ The OLC editor lives in `medit`. The full subcommand set:
 | `quest_completable` | `<quest_vnum>` | |
 | `has_achievement` | `<achievement_key>` | |
 | `reputation_at_least` | `<faction> <value>` | 50 Accepted, 200 Honored, 500 Revered. |
+| `worships_god` | `<god_vnum>` | |
+| `favor_at_least` | `<value>` | 25 Noticed, 100 Favored, 250 Blessed, 500 Exalted. |
 
 ### Inline effect kinds (`addfx`)
 
@@ -123,6 +128,7 @@ The OLC editor lives in `medit`. The full subcommand set:
 | `take_item` | `<vnum> [qty]` | |
 | `award_skill_xp` | `<skill_key> <amount>` | Shared XP curve, cap level 10. |
 | `teach_skill` | `<skill_key> <amount> [cap] [gold_cost]` | Paid lesson. `cap` defaults to 1, `gold_cost` to 0. |
+| `teach_canon_spell` | `<god_vnum\|-> [gold] [favor] [spell name]` | Teach a canon spell. `-` = the speaking god or the player's own. |
 | `morality` | `<delta>` | Non-zero. Clamped to `[-200, 200]`. |
 | `reputation` | `<faction> <delta>` | Non-zero. Clamped to `[-1000, 1000]`. Opposed factions move too. |
 | `set_counter` | `<counter_key> <value>` | |

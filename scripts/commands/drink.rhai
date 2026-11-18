@@ -137,7 +137,7 @@ fn apply_poison(char, magnitude, duration, connection_id) {
 
 fn apply_stamina(char, magnitude, connection_id) {
     char.stamina = char.stamina + magnitude;
-    if char.stamina > char.max_stamina { char.stamina = char.max_stamina; }
+    if char.stamina > char.effective_max_stamina() { char.stamina = char.effective_max_stamina(); }
     save_character_data(char);
     set_player_character(connection_id, char);
     send_client_message(connection_id, "You feel energized!");

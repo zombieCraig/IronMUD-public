@@ -15,6 +15,10 @@ pub(super) fn complete_medit(
 ) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
+    if words.len() >= 3 && words[2].to_lowercase() == "deity" {
+        return complete_deity(words, completing_word, &partial);
+    }
+
     match words.len() {
         // `medit ` (trailing space, nothing to filter yet) — surface every
         // mobile vnum so the builder can see what's available.
@@ -301,6 +305,43 @@ pub(super) fn complete_medit(
         {
             filter_dynamic(spell_names, &partial, CompletionType::SpellName)
         }
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// `medit <vnum> deity ...`, including the `spellcraft` group.
+fn complete_deity(words: &[&str], completing_word: bool, partial: &str) -> CompletionResult {
+    // Index of the word being completed (or the next one, after a space).
+    let at = if completing_word { words.len() - 1 } else { words.len() };
+    let word = |i: usize| words.get(i).map(|w| w.to_lowercase()).unwrap_or_default();
+    let pick = |opts: &[&str], kind: CompletionType| {
+        if completing_word {
+            filter_static(opts, partial, kind)
+        } else {
+            all_static(opts, kind)
+        }
+    };
+    match at {
+        3 => pick(DEITY_ACTIONS, CompletionType::DeityAction),
+        4 if word(3) == "spellcraft" => pick(DEITY_SPELLCRAFT_FIELDS, CompletionType::DeitySpellcraftField),
+        5 if word(3) == "spellcraft" && matches!(word(4).as_str(), "types" | "elements" | "effects" | "targets") => {
+            pick(SPELLCRAFT_LIST_OPS, CompletionType::SpellcraftListOp)
+        }
+        5 if word(3) == "spellcraft" && word(4) == "price" => {
+            pick(SPELLCRAFT_PRICE_STYLES, CompletionType::SpellcraftListOp)
+        }
+        5 if word(3) == "spellcraft" && matches!(word(4).as_str(), "trial" | "mark") => {
+            pick(SPELLCRAFT_LIST_OPS, CompletionType::SpellcraftListOp)
+        }
+        5 if word(3) == "spellcraft" && word(4) == "priest" => {
+            pick(SET_TOGGLE_VALUES, CompletionType::SpellcraftListOp)
+        }
+        6 if word(3) == "spellcraft" && matches!(word(5).as_str(), "add" | "remove") => match word(4).as_str() {
+            "types" => pick(SPELLCRAFT_SPELL_TYPES, CompletionType::SpellType),
+            "targets" => pick(SPELLCRAFT_TARGETS, CompletionType::SpellTarget),
+            "elements" => pick(DAMAGE_TYPES, CompletionType::DamageType),
+            _ => CompletionResult::empty(),
+        },
         _ => CompletionResult::empty(),
     }
 }

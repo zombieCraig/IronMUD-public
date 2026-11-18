@@ -1202,7 +1202,7 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         "mana" => ch.mana.to_string(),
         "maxmana" => ch.max_mana.to_string(),
         "move" => ch.stamina.to_string(),
-        "maxmove" => ch.max_stamina.to_string(),
+        "maxmove" => ch.effective_max_stamina().to_string(),
         "gold" => ch.gold.to_string(),
         "vnum" => "-1".to_string(), // PCs have no vnum (matches tbamud).
         "is_pc" => "1".to_string(),
@@ -1933,7 +1933,7 @@ fn mutate_character(ctx: &EvalCtx, name: &str, fn_name: &str, n: i32) -> String 
                 ch.hp
             }
             "move" => {
-                ch.stamina = ch.stamina.saturating_add(n).clamp(0, ch.max_stamina);
+                ch.stamina = ch.stamina.saturating_add(n).clamp(0, ch.effective_max_stamina());
                 ch.stamina
             }
             "drunk" => {

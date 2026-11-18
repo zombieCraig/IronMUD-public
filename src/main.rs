@@ -30,9 +30,9 @@ use ticks::{
     run_combat_tick, run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick,
     run_garden_tick, run_heartbeat_watchdog, run_hunger_tick, run_hunting_tick, run_leaderboard_tick,
     run_migration_tick, run_mobile_effects_tick, run_mutation_tick, run_periodic_trigger_tick, run_psyche_tick,
-    run_pursuit_tick, run_quest_tick, run_rage_tick, run_regen_tick, run_rent_tick, run_resolve_tick, run_rot_tick,
-    run_routine_tick, run_simulation_tick, run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick,
-    run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick, run_worship_tick,
+    run_pursuit_tick, run_quest_tick, run_rage_tick, run_regen_tick, run_rent_tick, run_resolve_tick, run_ritual_tick,
+    run_rot_tick, run_routine_tick, run_simulation_tick, run_slow_move_tick, run_spawn_tick, run_spoilage_tick,
+    run_sun_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick, run_worship_tick,
 };
 
 #[derive(Parser, Debug)]
@@ -211,6 +211,7 @@ async fn main() -> Result<()> {
     let tick_db35 = db.clone(); // Clone db for worship anger tick
     let tick_db36 = db.clone(); // Clone db for leaderboard scan tick
     let tick_db37 = db.clone(); // Clone db for builder score scan tick
+    let tick_db38 = db.clone(); // Clone db for spellcraft ritual tick
     let api_db = db.clone(); // Clone db for REST API
     let ops_db = db.clone(); // Clone db for the ops endpoints
 
@@ -252,6 +253,7 @@ async fn main() -> Result<()> {
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
         leaderboards: ironmud::leaderboard::Leaderboards::default(),
+        codex_cast_counts: std::collections::HashMap::new(),
     }));
 
     // Register types and functions
@@ -565,6 +567,15 @@ async fn main() -> Result<()> {
     let worship_state = state.clone();
     ticks::supervise::supervise("worship", connections.clone(), move || {
         run_worship_tick(tick_db35.clone(), worship_connections.clone(), worship_state.clone())
+    });
+
+    // Start the divine spellcraft ritual tick (advances sealing rites a
+    // stage at a time; collapses abandoned ones).
+    let ritual_db = tick_db38;
+    let ritual_connections = connections.clone();
+    let ritual_state = state.clone();
+    ticks::supervise::supervise("ritual", connections.clone(), move || {
+        run_ritual_tick(ritual_db.clone(), ritual_connections.clone(), ritual_state.clone())
     });
 
     // Start background leaderboard tick (full character scan, rebuilds the

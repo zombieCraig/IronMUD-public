@@ -1,5 +1,7 @@
 // spells.rhai - List available spells
 // Usage: spells
+//        spells codex [god]   - spells of the gods: canon, faded, rumoured
+//        spells info <spell>  - where a spell comes from
 
 fn get_type_header(stype) {
     if stype == "damage" { return "-- Damage Spells --"; }
@@ -40,6 +42,17 @@ fn run_command(args, connection_id) {
     let magic_level = get_skill_level(char.name, "magic");
     if magic_level < 1 {
         send_client_message(connection_id, "You have no training in magic.");
+        return;
+    }
+
+    let words = args.split(" ");
+    let sub = if words.len() > 0 { words[0].to_lower() } else { "" };
+    if sub == "codex" {
+        show_codex(connection_id, char, join_words_from(words, 1));
+        return;
+    }
+    if sub == "info" {
+        show_spell_info(connection_id, char, join_words_from(words, 1));
         return;
     }
 
@@ -142,4 +155,142 @@ fn run_command(args, connection_id) {
     }
 
     send_client_message(connection_id, "Use '\x1b[1mcast <spell> [target]\x1b[0m' to cast a spell.");
+    send_client_message(connection_id, "'\x1b[1mspells info <spell>\x1b[0m' tells where a spell comes from; '\x1b[1mspells codex\x1b[0m' lists the spells of the gods.");
+}
+
+fn join_words_from(words, start) {
+    let out = "";
+    for i in start..words.len() {
+        if words[i] == "" { continue; }
+        if out != "" { out += " "; }
+        out += words[i];
+    }
+    return out;
+}
+
+fn knows_spell(char_name, spell_id) {
+    for a in get_available_spells(char_name) {
+        if a == spell_id { return true; }
+    }
+    return false;
+}
+
+fn status_label(status) {
+    if status == "canon" { return "\x1b[1;33mCanon\x1b[0m"; }
+    if status == "faded" { return "\x1b[0;37mFaded\x1b[0m"; }
+    return "\x1b[0;31mLost\x1b[0m";
+}
+
+fn author_label(m) {
+    if m.author == "" { return "unknown hands"; }
+    if m.author_disgraced { return m.author + " the Faithless"; }
+    return m.author;
+}
+
+// Codex spells of a god this world doesn't have are godless.
+fn god_label(god_vnum) {
+    let name = get_god_display_name(god_vnum);
+    if name == "" { return "a forgotten god"; }
+    return name;
+}
+
+// The god filter matches a vnum exactly or the start of the god's name.
+fn god_matches(god_vnum, filter) {
+    if filter == "" { return true; }
+    let f = filter.to_lower();
+    if god_vnum.to_lower() == f { return true; }
+    return get_god_display_name(god_vnum).to_lower().starts_with(f);
+}
+
+// Each god's influence: the devotion its canon holds, most venerated first.
+fn influence_lines(filter) {
+    let out = "";
+    for c in canon_influences() {
+        if !god_matches(c.god_vnum, filter) || c.held == 0 { continue; }
+        out += "  " + god_label(c.god_vnum) + ": influence " + c.influence + " (" + c.held + " in canon)\n";
+    }
+    if out == "" { return ""; }
+    return "\x1b[1;35mInfluence\x1b[0m\n" + out;
+}
+
+fn show_codex(connection_id, char, filter) {
+    let shown = 0;
+    let rumoured = 0;
+    let out = "\x1b[1;35m=== The Codex ===\x1b[0m\n";
+    for m in codex_list(false) {
+        if !god_matches(m.god_vnum, filter) { continue; }
+        // Lost spells are only rumours: counted, never named.
+        if m.status == "lost" {
+            rumoured += 1;
+            continue;
+        }
+        shown += 1;
+        let known = if knows_spell(char.name, m.id) { "  \x1b[1;32m(known)\x1b[0m" } else { "" };
+        out += "  \x1b[1;36m" + m.name + "\x1b[0m  [" + status_label(m.status) + ", tier " + m.tier + "]" + known + "\n";
+        out += "    of " + god_label(m.god_vnum) + ", by " + author_label(m) + "\n";
+    }
+    if shown == 0 && rumoured == 0 {
+        if filter == "" {
+            send_client_message(connection_id, "No spell of the gods is known to the world.");
+        } else {
+            send_client_message(connection_id, "No spell of the gods matches '" + filter + "'.");
+        }
+        return;
+    }
+    if rumoured > 0 {
+        out += "  \x1b[0;37mRumoured, but lost: " + rumoured + "\x1b[0m\n";
+    }
+    out += influence_lines(filter);
+    out += "Use 'spells info <spell>' for a spell's history.";
+    send_client_message(connection_id, out);
+}
+
+fn show_spell_info(connection_id, char, query) {
+    if query == "" {
+        send_client_message(connection_id, "Usage: spells info <spell>");
+        return;
+    }
+    let spell_id = find_spell_id(query);
+    let m = if spell_id == "" { #{} } else { get_codex_meta(spell_id) };
+    // Lost and vetoed codex spells stay hidden unless the reader knows them.
+    let known = spell_id != "" && knows_spell(char.name, spell_id);
+    let hidden = m.len() > 0 && (m.vetoed || m.status == "lost") && !known;
+    let info = if spell_id == "" { #{} } else { get_spell_info(spell_id) };
+    if info.len() == 0 || hidden {
+        send_client_message(connection_id, "You know of no spell called '" + query + "'.");
+        return;
+    }
+
+    let tier = spell_power_tier(spell_id);
+    let out = "\x1b[1;36m" + info["name"] + "\x1b[0m  (" + info["spell_type"] + (if tier > 0 { ", tier " + tier } else { "" }) + ")\n";
+    out += "  " + info["description"] + "\n";
+    if m.len() > 0 {
+        out += "  A spell of " + god_label(m.god_vnum) + ", " + status_label(m.status) + ".\n";
+        if m.origin == "ancient" {
+            out += "  An ancient working, set down by " + author_label(m) + ".\n";
+        } else {
+            // After a restoration the author is the restorer; the first
+            // sealer is the first lineage entry.
+            let first = if m.lineage.len() > 0 && m.lineage[0].kind == "authored" { m.lineage[0].who } else { "" };
+            if first != "" && first != m.author {
+                out += "  Sealed by " + first + ".\n";
+            } else {
+                out += "  Sealed by " + author_label(m) + ".\n";
+            }
+        }
+        for l in m.lineage {
+            if l.kind == "restored" {
+                out += "  Restored by " + l.who + ".\n";
+            }
+        }
+    } else {
+        out += "  A spell of common lore.\n";
+    }
+    // Exact numbers are for those who know the spell.
+    if known {
+        out += "  Mana: " + info["mana_cost"] + "  CD: " + info["cooldown_secs"] + "s  Skill: " + info["skill_required"];
+    } else {
+        out += "  You do not know this spell.";
+    }
+    send_client_message(connection_id, out);
 }

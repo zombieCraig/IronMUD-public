@@ -165,6 +165,28 @@ pub struct CharacterData {
     // Active god pact + standing. None = worships no god. See types/worship.rs.
     #[serde(default)]
     pub worship: Option<WorshipState>,
+    /// Unix seconds of this character's last spell petition offered to a
+    /// god (divine spellcraft). Gates `spellcraft.char_cooldown_days`.
+    #[serde(default)]
+    pub last_petition_at: Option<i64>,
+    /// A petition the god has accepted, waiting on its trial and ritual.
+    #[serde(default)]
+    pub pending_petition: Option<super::FrozenPetition>,
+    /// A sealing ritual in progress (divine spellcraft, §5).
+    #[serde(default)]
+    pub pending_ritual: Option<super::RitualState>,
+    /// Vigour held by gods for sealed spells (divine spellcraft, §6).
+    #[serde(default)]
+    pub divine_pledges: Vec<super::DivinePledge>,
+    /// Gods' brands on their spells' author.
+    #[serde(default)]
+    pub divine_marks: Vec<super::DivineMark>,
+    /// Gods' grudges, by god vnum. Survive faith changes; never decay.
+    #[serde(default)]
+    pub divine_grudges: HashMap<String, super::Grudge>,
+    /// Gods this character once worshipped, oldest first.
+    #[serde(default)]
+    pub former_faiths: Vec<super::FormerFaith>,
     // Active language for say/tell/whisper/shout. Defaults to "common".
     #[serde(default = "default_language")]
     pub current_language: String,
@@ -440,6 +462,44 @@ impl CharacterData {
     /// then reduced by the worst torso wound. Every heal, regen cap and
     /// health display uses this, so a trait means the same thing to a
     /// potion as it does to resting. Never below 1.
+    /// How much of `kind` this character's open pledges hold right now.
+    pub fn pledged(&self, kind: super::PledgeKind) -> i32 {
+        self.divine_pledges.iter().map(|p| p.holding(kind)).sum()
+    }
+
+    /// Lower `cap` by what the pledges hold of `kind`, never below the
+    /// strictest open pledge's floor (a percent of `cap`).
+    pub fn after_pledges(&self, cap: i64, kind: super::PledgeKind) -> i64 {
+        let held = self.pledged(kind) as i64;
+        if held <= 0 {
+            return cap;
+        }
+        let floor_pct = self
+            .divine_pledges
+            .iter()
+            .filter(|p| p.is_open())
+            .map(|p| p.floor_pct as i64)
+            .max()
+            .unwrap_or(0);
+        (cap - held).max(cap * floor_pct / 100)
+    }
+
+    /// Max stamina after divine pledges. Everything that caps or reads the
+    /// stamina ceiling uses this.
+    pub fn effective_max_stamina(&self) -> i32 {
+        self.after_pledges(self.max_stamina as i64, super::PledgeKind::Stamina)
+            .clamp(0, i32::MAX as i64) as i32
+    }
+
+    /// A replicant's max Resolve after divine pledges; 0 for everyone else.
+    pub fn effective_max_resolve(&self) -> i32 {
+        let Some(r) = self.replicant_state.as_ref() else {
+            return 0;
+        };
+        self.after_pledges(r.max_resolve as i64, super::PledgeKind::Resolve)
+            .clamp(1, i32::MAX as i64) as i32
+    }
+
     pub fn effective_max_hp(&self) -> i32 {
         let bonus: i64 = self
             .active_buffs
@@ -465,6 +525,8 @@ impl CharacterData {
         if torso > 0 {
             cap = cap * (100 - torso) / 100;
         }
+        // Divine pledges, floored against the pre-pledge value.
+        cap = self.after_pledges(cap, super::PledgeKind::Hp);
         cap.clamp(1, i32::MAX as i64) as i32
     }
 }

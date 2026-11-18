@@ -57,6 +57,7 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
         leaderboards: ironmud::leaderboard::Leaderboards::default(),
+        codex_cast_counts: std::collections::HashMap::new(),
     }))
 }
 
@@ -114,11 +115,11 @@ fn quest_offer_adds_to_active_then_idempotent() {
         db.save_quest_data(&q).expect("save quest");
         save_character(&db, "alice");
 
-        assert_eq!(ironmud::quest::offer(&db, "alice", "qst:1"), "");
+        assert_eq!(ironmud::quest::offer(&db, &empty_connections(), "alice", "qst:1"), "");
         let ch = db.get_character_data("alice").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:1"));
         // Second offer fails (already on quest).
-        let err = ironmud::quest::offer(&db, "alice", "qst:1");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "alice", "qst:1");
         assert!(err.contains("already"));
     }));
     result.unwrap();
@@ -135,7 +136,7 @@ fn quest_kill_listener_increments_progress() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "bob");
-        ironmud::quest::offer(&db, "bob", "qst:2");
+        ironmud::quest::offer(&db, &empty_connections(), "bob", "qst:2");
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
@@ -169,7 +170,7 @@ fn quest_item_turn_in_consumes_item_and_advances() {
         q.rewards.push(QuestReward::Gold { amount: 25 });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "carol");
-        ironmud::quest::offer(&db, "carol", "qst:3");
+        ironmud::quest::offer(&db, &empty_connections(), "carol", "qst:3");
 
         // Make a mob with vnum "100".
         let mut mob = MobileData::new("courier".into());
@@ -209,7 +210,7 @@ fn quest_item_turn_in_ignores_unrelated_item() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "dan");
-        ironmud::quest::offer(&db, "dan", "qst:4");
+        ironmud::quest::offer(&db, &empty_connections(), "dan", "qst:4");
 
         let mut mob = MobileData::new("courier".into());
         mob.vnum = "100".into();
@@ -248,7 +249,7 @@ fn quest_completion_grants_skill_xp() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "eve");
-        ironmud::quest::offer(&db, "eve", "qst:5");
+        ironmud::quest::offer(&db, &empty_connections(), "eve", "qst:5");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
         ironmud::quest::handle_mob_kill(&db, &conns, &state, &["eve".to_string()], "200");
@@ -273,7 +274,7 @@ fn quest_repeatable_can_re_accept_after_completion() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "frank");
-        ironmud::quest::offer(&db, "frank", "qst:6");
+        ironmud::quest::offer(&db, &empty_connections(), "frank", "qst:6");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
         ironmud::quest::handle_mob_kill(&db, &conns, &state, &["frank".to_string()], "300");
@@ -281,7 +282,7 @@ fn quest_repeatable_can_re_accept_after_completion() {
         assert!(ch.completed_quests.contains("qst:6"));
         assert!(!ch.active_quests.contains_key("qst:6"));
         // Re-accept allowed because repeatable.
-        assert_eq!(ironmud::quest::offer(&db, "frank", "qst:6"), "");
+        assert_eq!(ironmud::quest::offer(&db, &empty_connections(), "frank", "qst:6"), "");
         let ch = db.get_character_data("frank").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:6"));
     }));
@@ -299,11 +300,11 @@ fn quest_non_repeatable_refuses_re_accept() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "gina");
-        ironmud::quest::offer(&db, "gina", "qst:7");
+        ironmud::quest::offer(&db, &empty_connections(), "gina", "qst:7");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
         ironmud::quest::handle_mob_kill(&db, &conns, &state, &["gina".to_string()], "400");
-        let err = ironmud::quest::offer(&db, "gina", "qst:7");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "gina", "qst:7");
         assert!(err.contains("already completed"));
     }));
     result.unwrap();
@@ -320,7 +321,7 @@ fn quest_abandon_drops_progress() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "henry");
-        ironmud::quest::offer(&db, "henry", "qst:8");
+        ironmud::quest::offer(&db, &empty_connections(), "henry", "qst:8");
 
         // Make some progress, then abandon.
         let conns = empty_connections();
@@ -333,13 +334,13 @@ fn quest_abandon_drops_progress() {
             Some(2)
         );
 
-        assert_eq!(ironmud::quest::abandon(&db, "henry", "qst:8"), "");
+        assert_eq!(ironmud::quest::abandon(&db, &empty_connections(), "henry", "qst:8"), "");
         let ch = db.get_character_data("henry").unwrap().unwrap();
         assert!(!ch.active_quests.contains_key("qst:8"));
         assert!(!ch.completed_quests.contains("qst:8"));
 
         // Re-accept resets progress.
-        ironmud::quest::offer(&db, "henry", "qst:8");
+        ironmud::quest::offer(&db, &empty_connections(), "henry", "qst:8");
         let ch = db.get_character_data("henry").unwrap().unwrap();
         let progress = ch.active_quests.get("qst:8").unwrap();
         assert!(progress.kill_progress.is_empty());
@@ -375,8 +376,8 @@ fn quest_party_credit_advances_all_damagers() {
 
         save_character(&db, "alice");
         save_character(&db, "bob");
-        ironmud::quest::offer(&db, "alice", "qst:party");
-        ironmud::quest::offer(&db, "bob", "qst:party");
+        ironmud::quest::offer(&db, &empty_connections(), "alice", "qst:party");
+        ironmud::quest::offer(&db, &empty_connections(), "bob", "qst:party");
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
@@ -415,7 +416,7 @@ fn quest_expires_when_duration_elapsed() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "racer");
-        ironmud::quest::offer(&db, "racer", "qst:tl1");
+        ironmud::quest::offer(&db, &empty_connections(), "racer", "qst:tl1");
 
         // Backdate started_at so duration has already elapsed.
         let mut ch = db.get_character_data("racer").unwrap().unwrap();
@@ -431,7 +432,7 @@ fn quest_expires_when_duration_elapsed() {
         assert!(!ch.completed_quests.contains("qst:tl1"));
 
         // Re-offer should be allowed (no completed-non-repeatable block).
-        let err = ironmud::quest::offer(&db, "racer", "qst:tl1");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "racer", "qst:tl1");
         assert_eq!(err, "");
     }));
     result.unwrap();
@@ -460,14 +461,14 @@ fn quest_offer_blocked_by_prereq() {
         save_character(&db, "novice");
 
         // Refused without prereq.
-        let err = ironmud::quest::offer(&db, "novice", "qst:p2");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "novice", "qst:p2");
         assert!(err.contains("must first complete"), "got: {}", err);
 
         // Mark prereq as complete; now offer succeeds.
         let mut ch = db.get_character_data("novice").unwrap().unwrap();
         ch.completed_quests.insert("qst:p1".into());
         db.save_character_data(ch).unwrap();
-        let err = ironmud::quest::offer(&db, "novice", "qst:p2");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "novice", "qst:p2");
         assert_eq!(err, "");
     }));
     result.unwrap();
@@ -489,7 +490,7 @@ fn quest_offer_blocked_by_skill_total() {
         save_character(&db, "apprentice");
 
         // Total = 0; refused.
-        let err = ironmud::quest::offer(&db, "apprentice", "qst:s1");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "apprentice", "qst:s1");
         assert!(err.contains("not skilled"), "got: {}", err);
 
         // Bump skills past threshold.
@@ -510,7 +511,7 @@ fn quest_offer_blocked_by_skill_total() {
         );
         db.save_character_data(ch).unwrap();
 
-        let err = ironmud::quest::offer(&db, "apprentice", "qst:s1");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "apprentice", "qst:s1");
         assert_eq!(err, "");
     }));
     result.unwrap();
@@ -543,7 +544,7 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
         save_character(&db, "investigator");
 
         // Zero unlocked: refused.
-        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "investigator", "qst:endgame");
         assert!(err.contains("haven't proven enough"), "got: {}", err);
 
         // Two unlocked: still refused (below threshold of 3).
@@ -557,7 +558,7 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
             ironmud::types::AchievementUnlock { unlocked_at: 1 },
         );
         db.save_character_data(ch).unwrap();
-        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "investigator", "qst:endgame");
         assert!(err.contains("haven't proven enough"), "got: {}", err);
 
         // Third unlocked: gate opens.
@@ -567,7 +568,7 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
             ironmud::types::AchievementUnlock { unlocked_at: 1 },
         );
         db.save_character_data(ch).unwrap();
-        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "investigator", "qst:endgame");
         assert_eq!(err, "");
         let ch = db.get_character_data("investigator").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:endgame"));
@@ -595,7 +596,7 @@ fn quest_offer_blocked_by_reputation_prereq() {
         save_character(&db, "courier");
 
         // A faction you have never dealt with reads 0, so the gate holds.
-        let err = ironmud::quest::offer(&db, "courier", "qst:trusted");
+        let err = ironmud::quest::offer(&db, &empty_connections(), "courier", "qst:trusted");
         assert!(err.contains("don't trust you"), "got: {}", err);
         assert!(
             ironmud::quest::describe_quest_offers(&db, "courier", "mob:sergeant").is_none(),
@@ -607,7 +608,7 @@ fn quest_offer_blocked_by_reputation_prereq() {
         ch.reputation
             .insert("iron_guard".into(), ironmud::reputation::ACCEPTED_FLOOR - 1);
         db.save_character_data(ch).unwrap();
-        assert!(ironmud::quest::offer(&db, "courier", "qst:trusted").contains("don't trust you"));
+        assert!(ironmud::quest::offer(&db, &empty_connections(), "courier", "qst:trusted").contains("don't trust you"));
 
         // At the floor: the gate opens, and so does the cue.
         let mut ch = db.get_character_data("courier").unwrap().unwrap();
@@ -618,7 +619,10 @@ fn quest_offer_blocked_by_reputation_prereq() {
             ironmud::quest::describe_quest_offers(&db, "courier", "mob:sergeant").as_deref(),
             Some("(has a quest for you)")
         );
-        assert_eq!(ironmud::quest::offer(&db, "courier", "qst:trusted"), "");
+        assert_eq!(
+            ironmud::quest::offer(&db, &empty_connections(), "courier", "qst:trusted"),
+            ""
+        );
         assert!(
             db.get_character_data("courier")
                 .unwrap()
@@ -643,7 +647,7 @@ fn quest_kill_any_mob_objective_accumulates_and_completes() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "deputy");
-        ironmud::quest::offer(&db, "deputy", "qst:bounty");
+        ironmud::quest::offer(&db, &empty_connections(), "deputy", "qst:bounty");
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
@@ -698,7 +702,7 @@ fn quest_visit_room_listener_completes_visit_quest() {
         q.objectives.push(QuestObjective::VisitRoom { vnum: "tav_42".into() });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "wanderer");
-        ironmud::quest::offer(&db, "wanderer", "qst:60");
+        ironmud::quest::offer(&db, &empty_connections(), "wanderer", "qst:60");
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
@@ -724,7 +728,7 @@ fn quest_dg_flag_listener_completes_flag_quest() {
         });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "thinker");
-        ironmud::quest::offer(&db, "thinker", "qst:61");
+        ironmud::quest::offer(&db, &empty_connections(), "thinker", "qst:61");
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
@@ -764,7 +768,7 @@ fn quest_describe_quest_offers_returns_cue() {
         let cue = ironmud::quest::describe_quest_offers(&db, "scout", "hunter");
         assert_eq!(cue.as_deref(), Some("(has a quest for you)"));
 
-        ironmud::quest::offer(&db, "scout", "qst:70");
+        ironmud::quest::offer(&db, &empty_connections(), "scout", "qst:70");
 
         // Active but not completable -> no cue.
         let cue = ironmud::quest::describe_quest_offers(&db, "scout", "hunter");
@@ -829,7 +833,7 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
         });
         db.save_quest_data(&q).expect("save quest");
         save_character(&db, "hero");
-        ironmud::quest::offer(&db, "hero", "qst:50");
+        ironmud::quest::offer(&db, &empty_connections(), "hero", "qst:50");
 
         // Build state with the achievement def registered.
         let conns = empty_connections();
@@ -851,4 +855,77 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
         );
     }));
     result.unwrap();
+}
+
+// ---------- session-first writes for online players ----------
+
+/// Put `ch` online; the returned connections hold the authoritative copy.
+fn online(ch: &CharacterData) -> SharedConnections {
+    let conns = empty_connections();
+    let (tx_client, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (tx_input, rx_in) = tokio::sync::mpsc::channel::<ironmud::InputEvent>(1);
+    let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
+    session.character = Some(ch.clone());
+    conns.lock().insert(uuid::Uuid::new_v4(), session);
+    std::mem::forget((rx, rx_in));
+    conns
+}
+
+fn live(conns: &SharedConnections) -> CharacterData {
+    conns.lock().values().find_map(|s| s.character.clone()).expect("online")
+}
+
+/// The regen tick saves the session copy over the DB every few seconds.
+/// Every quest write used to go to the DB only, so for a logged-in player it
+/// was undone by the next flush: offers vanished, kills never counted.
+#[test]
+fn quest_writes_survive_the_session_flush() {
+    let (db, _temp) = fresh_db("session_first");
+    let mut q = make_quest("qst:wolves", "Wolves");
+    q.objectives = vec![QuestObjective::KillMob {
+        vnum: "wolf".into(),
+        count: 1,
+    }];
+    q.rewards = vec![QuestReward::Gold { amount: 25 }];
+    db.save_quest_data(&q).unwrap();
+    let ch = save_character(&db, "ranger");
+    let conns = online(&ch);
+    let state = make_state(&db, &conns);
+    let flush = || db.save_character_data(live(&conns)).unwrap();
+
+    assert_eq!(ironmud::quest::offer(&db, &conns, "ranger", "qst:wolves"), "");
+    flush();
+    assert!(
+        db.get_character_data("ranger")
+            .unwrap()
+            .unwrap()
+            .active_quests
+            .contains_key("qst:wolves")
+    );
+
+    ironmud::quest::handle_mob_kill(&db, &conns, &state, &["ranger".to_string()], "wolf");
+    flush();
+    let after = db.get_character_data("ranger").unwrap().unwrap();
+    assert!(
+        after.completed_quests.contains("qst:wolves"),
+        "kill completed the quest"
+    );
+    assert_eq!(after.gold, ch.gold + 25, "gold reward reached the session");
+
+    let mut again = make_quest("qst:again", "Again");
+    again.objectives = vec![QuestObjective::KillMob {
+        vnum: "wolf".into(),
+        count: 9,
+    }];
+    db.save_quest_data(&again).unwrap();
+    ironmud::quest::offer(&db, &conns, "ranger", "qst:again");
+    assert_eq!(ironmud::quest::abandon(&db, &conns, "ranger", "qst:again"), "");
+    flush();
+    assert!(
+        !db.get_character_data("ranger")
+            .unwrap()
+            .unwrap()
+            .active_quests
+            .contains_key("qst:again")
+    );
 }

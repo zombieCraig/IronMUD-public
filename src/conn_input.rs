@@ -1484,6 +1484,14 @@ pub(crate) fn script_mode(cx: &ConnCx<'_>, input: &str, mode: &str) -> bool {
         // verification originates); login.rhai's gate also routes
         // through create.rhai for consistent handling.
         Some("scripts/commands/create.rhai".to_string())
+    } else if mode == crate::spellcraft::petition::MODE {
+        // Divine spellcraft drafting: every line goes to pray.rhai, so no
+        // drafting word reaches the global parser. A petitioner who is
+        // attacked drops out of the mode and the line runs as a command.
+        match crate::spellcraft::petition::route(connections, connection_id) {
+            Some(script) => Some(script.to_string()),
+            None => return false,
+        }
     } else if mode == "mail_compose" {
         // mail compose stays in mail.rhai so @attach/@detach/@@/@
         // and free-form lines all reach handle_compose_mode.

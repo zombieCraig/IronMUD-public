@@ -944,9 +944,17 @@ neglect.
 |---------|-------------|
 | `worship` | Show your god and your standing with them |
 | `worship <god>` | Swear the pact (god present, or named in a temple) |
+| `craft scroll <spell>` | (Spellcraft) Write a spell of the gods you know onto a blank scroll |
+| `worship renounce` | (Spellcraft) In a temple: renounce your god. It strikes you, keeps what you pledged, and never forgets. Confirm with `worship renounce confirm` |
+| `read <scroll> confirm` | Learn another god's spell after the warning (heresy: the gods remember) |
 | `pray` | In a temple: offer devotion; blessed if your tribute is current |
 | `pray tribute` | Pay what the god demands (usually a share of your gold) |
 | `pray atone` | Surrender half your wealth to lift divine wrath |
+| `pray petition` | In a temple: see what your god asks before it will grant you a spell; once you qualify, shape the spell and offer it (where the server allows it) |
+| `pray ritual` | After your god's trial: begin the rite that seals your spell (needs the components) |
+| `pray push` / `pray seal` | At a pause in your rite: deepen the gift at a risk, or inscribe it |
+| `pray restore <spell>` | In a temple: ask your god to re-light one of its faded spells (a trial and rite, as for a petition) |
+| `pray aid <name>` | Lend mana to someone's rite in the room and steady their focus |
 
 Things to know before you kneel:
 
@@ -1437,6 +1445,35 @@ The scroll crumbles to dust.
 ```
 
 Once learned, the spell appears in your `spells` list permanently.
+
+### Spells of the Gods
+
+Some spells were not written by any wizard's guild: they were sealed by a god, sometimes through a
+mortal who paid dearly for them. These live in the **codex**.
+
+- `spells codex [god]` lists the spells of the gods the world knows of: their god, who made them,
+  their power tier (1-5) and whether they are still **Canon** (taught by the faithful) or **Faded**.
+  Lost spells are only rumoured.
+- `spells info <spell>` tells where any spell comes from. Exact costs are shown only for spells you
+  know.
+
+Like scroll spells, a spell of the gods must be learned before you can cast it.
+
+**How they spread.** A god's priests may teach the spells its canon holds to their faithful. Anyone
+can learn one from a scroll, and anyone who knows a spell of the gods (with some skill in
+spellcraft) can write one: carry a blank scroll and `craft scroll <spell>`. It costs the spell's
+mana. For a while after a spell is sealed, only its author may write it down. Learning or casting
+another god's spell is **heresy**: it hurts, and gods remember.
+
+**Sealing your own.** A devoted worshipper with deep magic can ask their god to shape a new spell:
+`pray petition` in a temple shows what you still need. The god sets a trial, then a ritual
+(`pray ritual`) seals the spell into the god's canon, at a price paid in your own flesh and marks.
+An author casts their spell's true form (cheaper, no reagent, mastery to 10). Each spell you seal
+raises your Renown, and every cast of it by other hands counts toward the **Most Venerated
+Authors** board (`top`). `spells codex` also shows each god's **influence**: how much its canon is
+used.
+
+A faded spell that no one living knows, and no scroll still teaches, is eventually **lost**.
 
 ### Mana
 

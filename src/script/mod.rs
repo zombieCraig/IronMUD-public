@@ -57,14 +57,15 @@ mod shops;
 mod simulation;
 pub mod social;
 mod spawn;
-mod spells;
+mod spellcraft;
+pub(crate) mod spells;
 mod stealth;
 pub mod synth;
 pub mod tattoos;
 mod transport;
 pub mod trigger_sandbox;
 mod triggers;
-mod utilities;
+pub(crate) mod utilities;
 pub mod vampire;
 pub mod werewolf;
 pub mod worship;
@@ -222,6 +223,9 @@ pub fn registration_steps(db: Arc<Db>, connections: SharedConnections, state: Sh
         ("garden", |e, db, connections, state| garden::register(e, db.clone())),
         ("spells", |e, db, connections, state| {
             spells::register(e, db.clone(), connections.clone(), state.clone())
+        }),
+        ("spellcraft", |e, db, connections, state| {
+            spellcraft::register(e, db.clone(), connections.clone(), state.clone())
         }),
         ("lookup", |e, db, connections, state| {
             lookup::register(e, db.clone(), state.clone())
@@ -392,7 +396,7 @@ fn register_core(engine: &mut Engine, db: Arc<Db>, connections: SharedConnection
         .register_get("stamina", |c: &mut CharacterData| c.stamina as i64)
         .register_set("stamina", |c: &mut CharacterData, val: i64| {
             c.stamina = if c.replicant_state.is_some() {
-                c.max_stamina
+                c.effective_max_stamina()
             } else {
                 val as i32
             };
@@ -556,6 +560,13 @@ fn register_core(engine: &mut Engine, db: Arc<Db>, connections: SharedConnection
                 is_grouped: false,
                 clan_tag: None,
                 worship: None,
+                last_petition_at: None,
+                pending_petition: None,
+                pending_ritual: None,
+                divine_pledges: Vec::new(),
+                divine_marks: Vec::new(),
+                divine_grudges: std::collections::HashMap::new(),
+                former_faiths: Vec::new(),
                 current_language: "common".to_string(),
                 // Character stats (default 10)
                 stat_str: 10,

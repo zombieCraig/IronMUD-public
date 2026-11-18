@@ -1,5 +1,6 @@
 // scripts/commands/read.rhai
 // read <item> - Read an item, possibly learning a recipe from it
+// read <scroll> confirm - learn another god's spell after the warning
 
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
@@ -17,6 +18,13 @@ fn run_command(args, connection_id) {
     if args == "" {
         send_client_message(connection_id, "Read what?");
         return;
+    }
+
+    // `read <scroll> confirm` completes a heresy warning.
+    let confirmed = false;
+    if args.ends_with(" confirm") {
+        confirmed = true;
+        args = args.sub_string(0, args.len() - 8);
     }
 
     // Check inventory first
@@ -63,7 +71,7 @@ fn run_command(args, connection_id) {
     // Check if item teaches a spell
     let spell_id = get_item_teaches_spell(item.id);
     if spell_id != () {
-        learn_spell_from_scroll(char, item, spell_id, connection_id);
+        learn_spell_from_scroll(char, item, spell_id, connection_id, confirmed, args);
         return;
     }
 
@@ -170,7 +178,7 @@ fn show_transport_sign(item, transport_id, connection_id) {
     send_client_message(connection_id, output);
 }
 
-fn learn_spell_from_scroll(char, item, spell_id, connection_id) {
+fn learn_spell_from_scroll(char, item, spell_id, connection_id, confirmed, keyword) {
     // Check if already learned
     if has_learned_spell(char.name, spell_id) {
         send_client_message(connection_id, "You read " + item.short_desc + ".");
@@ -195,8 +203,18 @@ fn learn_spell_from_scroll(char, item, spell_id, connection_id) {
     }
 
     // Learn the spell
-    let learned = learn_spell(char.name, spell_id);
-    if !learned {
+    let learned = if confirmed {
+        spellcraft_learn_confirmed(char.name, spell_id, "scroll")
+    } else {
+        spellcraft_learn(char.name, spell_id, "scroll")
+    };
+    if learned == "needs_confirm" {
+        send_client_message(connection_id, "You read " + item.short_desc + ".");
+        send_client_message(connection_id, heresy_learn_warning(char.name, spell_id));
+        send_client_message(connection_id, "To learn it anyway, type 'read " + keyword + " confirm' within a minute.");
+        return;
+    }
+    if learned != "learned" {
         send_client_message(connection_id, "Something went wrong learning the spell.");
         return;
     }

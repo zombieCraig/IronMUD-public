@@ -26,6 +26,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "pledge" || subcommand == "mark" {
+        let rest = if args.len() > subcommand.len() { args.sub_string(subcommand.len() + 1) } else { "" };
+        if subcommand == "pledge" {
+            send_client_message(connection_id, admin_pledge(rest));
+        } else {
+            send_client_message(connection_id, admin_mark(rest));
+        }
+        return;
+    }
+
     if subcommand == "kick" {
         handle_kick(connection_id, args, char);
         return;
@@ -177,6 +187,11 @@ fn run_command(args, connection_id) {
 
     if subcommand == "loadout" {
         handle_loadout(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "codex" {
+        handle_codex(connection_id, args);
         return;
     }
 
@@ -618,17 +633,24 @@ fn handle_embrace(connection_id, args, admin_char) {
     }
 }
 
-// admin religion <player> set <god_vnum> | clear
+// admin religion <player> set <god_vnum> | clear | grudge [clear <god_vnum>]
 // Testing surface for the worship system: sets or removes a player's pact,
 // bypassing the artifact/quest gates (rank-God check still applies on set).
+// `clear` records the god as a former faith without forfeiting anything.
+// Grudges never decay; `grudge clear` is the only way to lift one.
 fn handle_religion(connection_id, args, admin_char) {
     let parts = args.split(" ");
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear");
+        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear | grudge [clear <god_vnum>]");
         return;
     }
     let target_name = parts[1];
     let action = parts[2].to_lower();
+
+    if action == "grudge" || action == "grudges" {
+        handle_religion_grudge(connection_id, target_name, parts);
+        return;
+    }
 
     let target_conn = find_player_connection_by_name(target_name);
     if target_conn == "" {
@@ -652,7 +674,7 @@ fn handle_religion(connection_id, args, admin_char) {
     }
 
     if action != "set" || parts.len() < 4 {
-        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear");
+        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear | grudge [clear <god_vnum>]");
         return;
     }
     let god_vnum = parts[3];
@@ -668,6 +690,27 @@ fn handle_religion(connection_id, args, admin_char) {
     let god_name = get_god_display_name(god_vnum);
     send_client_message(connection_id, "Set " + target_char.name + "'s religion to " + god_name + " (" + god_vnum + ").");
     send_client_message(target_conn, "\x1b[1;36mA divine presence settles into your soul. You now worship " + god_name + ".\x1b[0m");
+}
+
+fn handle_religion_grudge(connection_id, target_name, parts) {
+    if parts.len() >= 5 && parts[3].to_lower() == "clear" {
+        if clear_divine_grudge(target_name, parts[4]) {
+            send_client_message(connection_id, "Cleared " + parts[4] + "'s grudge against " + target_name + ".");
+        } else {
+            send_client_message(connection_id, parts[4] + " holds no grudge against " + target_name + ".");
+        }
+        return;
+    }
+    let lines = divine_grudges(target_name);
+    if lines.len() == 0 {
+        send_client_message(connection_id, "No god holds a grudge against " + target_name + ".");
+        return;
+    }
+    let out = "Grudges against " + target_name + ":";
+    for l in lines {
+        out += "\n  " + l;
+    }
+    send_client_message(connection_id, out);
 }
 
 fn handle_embrace_revoke(connection_id, args, admin_char) {
@@ -751,6 +794,8 @@ fn handle_config(connection_id, args, admin_char) {
         "smtp_host", "smtp_port", "smtp_from_address", "smtp_from_name",
         "email_verification_subject", "password_reset_subject", "email_test_subject"
     ];
+    // Divine spellcraft knobs come from the Rust settings registry.
+    for k in spellcraft_setting_keys() { allowed_keys.push(k); }
 
     if parts.len() < 2 || parts[1] == "" || parts[1] == "list" {
         let output = "Configurable settings:\n";
@@ -872,6 +917,8 @@ fn show_help(connection_id) {
     help += "  admin kick <player> [reason]      - Forcibly disconnect a player\n";
     help += "  admin summon <player>             - Teleport a player to your location\n";
     help += "  admin heal <player>               - Fully heal a player (HP, wounds, conditions)\n";
+    help += "  admin pledge <player> list|add|release|forfeit - Divine pledges (spellcraft)\n";
+    help += "  admin mark <player> list|add|fade|worsen|remove - Divine marks (spellcraft)\n";
     help += "  admin settime <hour> <day> <month> <year> - Set the game time\n";
     help += "  admin broadcast <message>         - Send announcement to all players\n";
     help += "  admin shutdown <seconds> [reason] - Shutdown server with countdown\n";
@@ -892,6 +939,7 @@ fn show_help(connection_id) {
     help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
     help += "  admin religion <player> set <god_vnum> | clear - Set or remove a player's god pact (testing)\n";
+    help += "  admin religion <player> grudge [clear <god_vnum>] - List or lift gods' grudges (they never decay)\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
     help += "  admin config [<key>] [<value>]    - Read, write, or list runtime settings\n";
     help += "  admin ticks                       - Show liveness of every background tick task\n";
@@ -899,6 +947,7 @@ fn show_help(connection_id) {
     help += "  admin account ...                 - Account management (type 'admin account' for help)\n";
     help += "  admin world ...                   - World statistics and management (type 'admin world' for help)\n";
     help += "  admin loadout ...                 - Edit class/race starting kits (type 'admin loadout' for help)\n";
+    help += "  admin codex ...                   - Moderate codex (player/ancient) spells (type 'admin codex' for help)\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }
@@ -1527,7 +1576,7 @@ fn handle_heal(connection_id, args, admin_char) {
 
     // Heal HP and stamina (effective max: item bonuses, traits, torso wound).
     target_char.hp = target_char.effective_max_hp();
-    target_char.stamina = target_char.max_stamina;
+    target_char.stamina = target_char.effective_max_stamina();
 
     // Clear unconscious/bleedout state
     target_char.is_unconscious = false;
@@ -2607,4 +2656,113 @@ fn handle_email_test(connection_id, args, admin_char) {
     } else {
         send_client_message(connection_id, "Test email to " + address + " FAILED: " + outcome);
     }
+}
+
+// `admin codex` — moderate spells in the codex (divine spellcraft).
+//   admin codex list                         — every codex spell, vetoed included
+//   admin codex show <id>                    — one spell's history and numbers
+//   admin codex seed                         — add new entries from spells_ancient.json
+//   admin codex status <id> canon|faded|lost — set canon standing
+//   admin codex veto <id> [off]              — Faded + hidden from players (off lifts it)
+//   admin codex rename <id> <name>           — rename (same rules as a new spell)
+fn show_codex_usage(connection_id) {
+    let help = "Codex moderation:\n";
+    help += "  admin codex list                         - All codex spells (vetoed included)\n";
+    help += "  admin codex show <id>                    - History and numbers for one spell\n";
+    help += "  admin codex seed                         - Add new entries from scripts/data/spells_ancient.json\n";
+    help += "  admin codex status <id> canon|faded|lost - Set canon standing\n";
+    help += "  admin codex veto <id> [off]              - Fade and hide from players; 'off' lifts the veto\n";
+    help += "  admin codex rename <id> <name>           - Rename (same name rules as a new spell)";
+    send_client_message(connection_id, help);
+}
+
+fn handle_codex(connection_id, args) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        show_codex_usage(connection_id);
+        return;
+    }
+    let action = parts[1].to_lower();
+    if action == "list" { codex_admin_list(connection_id); return; }
+    if action == "seed" {
+        send_client_message(connection_id, "Codex seed: " + codex_seed());
+        return;
+    }
+    if parts.len() < 3 {
+        show_codex_usage(connection_id);
+        return;
+    }
+    let id = parts[2].to_lower();
+    if action == "show" { codex_admin_show(connection_id, id); return; }
+    if action == "status" {
+        if parts.len() < 4 { show_codex_usage(connection_id); return; }
+        codex_admin_report(connection_id, codex_set_status(id, parts[3]), id + " is now " + parts[3].to_lower() + ".");
+        return;
+    }
+    if action == "veto" {
+        let lift = parts.len() >= 4 && parts[3].to_lower() == "off";
+        let done = if lift { "Veto lifted on " + id + " (still faded)." } else { id + " is vetoed: faded and hidden." };
+        codex_admin_report(connection_id, codex_set_veto(id, !lift), done);
+        return;
+    }
+    if action == "rename" {
+        if parts.len() < 4 { show_codex_usage(connection_id); return; }
+        let name = "";
+        for i in 3..parts.len() {
+            if parts[i] == "" { continue; }
+            if name != "" { name += " "; }
+            name += parts[i];
+        }
+        codex_admin_report(connection_id, codex_rename(id, name), id + " is now called " + name + ".");
+        return;
+    }
+    show_codex_usage(connection_id);
+}
+
+fn codex_admin_report(connection_id, result, done) {
+    if result == "ok" {
+        send_client_message(connection_id, done);
+    } else {
+        send_client_message(connection_id, result);
+    }
+}
+
+fn codex_admin_list(connection_id) {
+    let entries = codex_list(true);
+    if entries.len() == 0 {
+        send_client_message(connection_id, "The codex is empty.");
+        return;
+    }
+    let out = "Codex (" + entries.len() + " spells):\n";
+    for e in entries {
+        let author = if e.author == "" { "-" } else { e.author };
+        let flags = if e.vetoed { " [VETOED]" } else { "" };
+        out += "  " + pad_right(e.id, 24) + pad_right(e.name, 24) + pad_right(e.status, 7) + " T" + e.tier
+            + "  " + e.origin + "  god " + e.god_vnum + "  by " + author + flags + "\n";
+    }
+    send_client_message(connection_id, out);
+}
+
+fn codex_admin_show(connection_id, id) {
+    let m = get_codex_meta(id);
+    if m.len() == 0 {
+        send_client_message(connection_id, "No codex spell '" + id + "'.");
+        return;
+    }
+    let info = get_spell_info(id);
+    let out = m.name + " (" + id + ")  " + m.spell_type + ", tier " + m.tier + "\n";
+    out += "  Status: " + m.status + (if m.vetoed { " [VETOED]" } else { "" }) + "   Origin: " + m.origin + "   Version: " + m.version + "\n";
+    out += "  God: " + m.god_vnum + "   Author: " + (if m.author == "" { "-" } else { m.author })
+        + (if m.author_disgraced { " (the Faithless)" } else { "" }) + "   Sealed day: " + m.sealed_day + "\n";
+    for l in m.lineage {
+        out += "  Lineage: " + l.kind + " by " + l.who + " on day " + l.day + "\n";
+    }
+    if m.witnesses.len() > 0 {
+        out += "  Witnesses: " + m.witnesses.reduce(|acc, w| if acc == "" { w } else { acc + ", " + w }, "") + "\n";
+    }
+    if info.len() > 0 {
+        out += "  Mana " + info["mana_cost"] + "  CD " + info["cooldown_secs"] + "s  Skill " + info["skill_required"] + "\n";
+        out += "  " + info["description"];
+    }
+    send_client_message(connection_id, out);
 }

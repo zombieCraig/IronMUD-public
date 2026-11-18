@@ -133,6 +133,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
         leaderboards: ironmud::leaderboard::Leaderboards::default(),
+        codex_cast_counts: std::collections::HashMap::new(),
     };
     (Arc::new(Mutex::new(world)), connections)
 }

@@ -23,6 +23,21 @@ pub(super) fn complete_admin(
     if words.len() >= 2 && words[1].to_lowercase() == "world" {
         return complete_world(words, completing_word, &partial);
     }
+    if words.len() >= 2 && words[1].to_lowercase() == "codex" {
+        let at = if completing_word { words.len() - 1 } else { words.len() };
+        let pick = |opts: &[&str], kind: CompletionType| {
+            if completing_word {
+                filter_static(opts, &partial, kind)
+            } else {
+                all_static(opts, kind)
+            }
+        };
+        return match at {
+            2 => pick(ADMIN_CODEX_ACTIONS, CompletionType::AdminCodexAction),
+            4 if words[2].eq_ignore_ascii_case("status") => pick(CODEX_STATUSES, CompletionType::CodexStatus),
+            _ => CompletionResult::empty(),
+        };
+    }
 
     match words.len() {
         // admin - show all subcommands

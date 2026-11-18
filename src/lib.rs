@@ -68,6 +68,7 @@ pub mod session;
 pub mod settings;
 pub mod social;
 pub mod spawn;
+pub mod spellcraft;
 pub mod synth;
 pub mod telnet;
 pub mod text;
@@ -202,6 +203,12 @@ pub struct PlayerSession {
     pub pending_ai_target: Option<claude::AiDescriptionTarget>,
     // Fishing state
     pub fishing_state: Option<FishingState>,
+    /// Divine spellcraft: the spell being shaped in the `petitioning` mode.
+    /// Session-only; lost on disconnect, by design.
+    pub spell_draft: Option<crate::types::SpellDraft>,
+    /// Divine spellcraft: a pending confirmation (`learn:<spell_id>` or
+    /// `renounce:<god_vnum>`) and the unix second it lapses.
+    pub spellcraft_confirm: Option<(String, i64)>,
     // AFK (Away From Keyboard) status
     pub afk: bool,
     // Idle tracking (unix timestamp of last activity)
@@ -339,6 +346,9 @@ pub struct World {
     /// because ranking needs every character in the database and that must
     /// never run on a player's command.
     pub leaderboards: crate::leaderboard::Leaderboards,
+    /// Casts of codex spells since the last devotion drain
+    /// (`spellcraft::canon`), keyed by spell id. In memory only.
+    pub codex_cast_counts: HashMap<String, crate::spellcraft::canon::CastTally>,
     /// Last builder-score scan. Same shape and same reasoning as
     /// `leaderboards`: a full-world read installed wholesale by a tick and
     /// read by the `build` command. `generated_at == 0` means the first scan
@@ -420,6 +430,7 @@ impl World {
             ip_limiter: Arc::new(ratelimit::IpRateLimiter::new()),
             command_throttle: Arc::new(throttle::CommandThrottle::new()),
             leaderboards: crate::leaderboard::Leaderboards::default(),
+            codex_cast_counts: HashMap::new(),
         }
     }
 
@@ -1872,6 +1883,8 @@ impl PlayerSession {
             pending_ai_response: None,
             pending_ai_target: None,
             fishing_state: None,
+            spell_draft: None,
+            spellcraft_confirm: None,
             afk: false,
             last_activity_time: 0,
             abbrev_enabled: true,
@@ -1924,7 +1937,7 @@ impl PlayerSession {
         if reported.contains("STAMINA_MAX") {
             let _ = tx_raw.send(telnet::build_msdp_var(
                 "STAMINA_MAX",
-                &char_data.max_stamina.to_string(),
+                &char_data.effective_max_stamina().to_string(),
             ));
         }
         if reported.contains("MANA") {
@@ -2212,6 +2225,8 @@ pub async fn handle_connection(
                 pending_ai_response: None,
                 pending_ai_target: None,
                 fishing_state: None,
+                spell_draft: None,
+                spellcraft_confirm: None,
                 afk: false,
                 last_activity_time: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -2745,6 +2760,16 @@ pub async fn handle_connection(
                 }
             }
 
+            // Divine spellcraft rites: the ritualist's own commands may
+            // disturb their rite, as may others' speech in the room. The room
+            // is kept so a move in or out can disturb it after the command.
+            let ritual_room_before = if is_logged_in {
+                let db_clone = state.lock().db.clone();
+                crate::spellcraft::ritual::on_command(&db_clone, &connections, &state, connection_id, &resolved_command)
+            } else {
+                None
+            };
+
             // DG OnCommand hook: fire any OnCommand triggers on the room,
             // its mobs, and the player's items before the rhai dispatch.
             // Return(0) cancels the host command. Skip while not logged in.
@@ -2837,6 +2862,10 @@ pub async fn handle_connection(
                 format!("Unknown command: {}\n", command_name)
             };
             play_log.command(&log_ctx, &resolved_command, single_cmd, log_outcome);
+            if let Some(before) = ritual_room_before {
+                let db_clone = state.lock().db.clone();
+                crate::spellcraft::ritual::after_command(&db_clone, &connections, connection_id, before);
+            }
 
             if !result_message.is_empty() {
                 if let Err(e) = tx_client.send(result_message) {

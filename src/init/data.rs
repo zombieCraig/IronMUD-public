@@ -102,7 +102,7 @@ mod social_metadata_tests {
 
 /// Parse a JSON object into `HashMap<String, T>`, skipping keys that start with `_`
 /// so files may carry sibling documentation fields like `"_doc": "..."`.
-fn parse_doc_tolerant_map<T: serde::de::DeserializeOwned>(
+pub(crate) fn parse_doc_tolerant_map<T: serde::de::DeserializeOwned>(
     content: &str,
 ) -> Result<HashMap<String, T>, serde_json::Error> {
     let raw: HashMap<String, serde_json::Value> = serde_json::from_str(content)?;
@@ -438,6 +438,18 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         Err(_) => {
             // Optional — quiet when missing.
         }
+    }
+
+    // Codex spells (divine spellcraft) overlay last, after the preset
+    // replaced the map, so preset switches and reloads keep them.
+    let codex_db = world.db.clone();
+    let seeded = crate::spellcraft::codex::seed_ancient(&codex_db, &mut world.spell_definitions);
+    if !seeded.added.is_empty() || !seeded.errors.is_empty() {
+        info!("Ancient spell seed: {}", seeded.summary());
+    }
+    let codex_count = crate::spellcraft::overlay_codex(&codex_db, &mut world.spell_definitions);
+    if codex_count > 0 {
+        info!("Loaded {} codex spells from database", codex_count);
     }
 
     // Load language definitions. Falls back to the class_preset (or "fantasy")

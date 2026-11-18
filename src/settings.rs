@@ -67,6 +67,29 @@ pub const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("email_daily_cap", "20"),
     ("email_monthly_cap", "150"),
     ("email_verification_code_ttl_secs", "1800"),
+    // Divine spellcraft (player-authored spells). Read by
+    // `spellcraft::Settings::load`; the system ships dark.
+    ("spellcraft.enabled", "false"),
+    ("spellcraft.min_magic", "10"),
+    ("spellcraft.min_spellcraft", "8"),
+    ("spellcraft.min_mastered_spells", "5"),
+    ("spellcraft.min_favor", "500"),
+    ("spellcraft.min_power_tier", "3"),
+    ("spellcraft.char_cooldown_days", "30"),
+    ("spellcraft.god_petition_cooldown_days", "7"),
+    ("spellcraft.pledge_floor_pct", "60"),
+    ("spellcraft.regrow_days", "14"),
+    ("spellcraft.repact_cooldown_days", "7"),
+    ("spellcraft.canon_grace_days", "30"),
+    ("spellcraft.component_quality_base", "40"),
+    ("spellcraft.component_quality_per_tier", "15"),
+    ("spellcraft.max_power", "160"),
+    ("spellcraft.hp_pledge_pct", "20"),
+    ("spellcraft.ritual_stage_secs", "120"),
+    ("spellcraft.ritual_max_pushes", "3"),
+    ("spellcraft.ritual_linkdead_secs", "300"),
+    ("spellcraft.scribe_min_spellcraft", "3"),
+    ("spellcraft.scribe_monopoly_days", "14"),
 ];
 
 /// Default value for a setting key, or `None` if the key is unknown.

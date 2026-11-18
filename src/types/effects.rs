@@ -224,6 +224,10 @@ pub enum EffectType {
     /// `Feared` on each opponent per round with `magnitude`% chance
     /// (0 → default 15). Behavior code only ever checks `Feared`.
     FearAura,
+    /// Slower recovery: the regen tick cuts HP, stamina and mana regeneration
+    /// by `magnitude` percent (summed, capped at 90). Carried by divine marks
+    /// (the Weariness price).
+    RegenPenalty,
 }
 
 impl EffectType {
@@ -302,6 +306,7 @@ impl EffectType {
             "fear" | "feared" | "afraid" | "terrified" => Some(EffectType::Feared),
             "courage" | "brave" | "bravery" | "heroism" => Some(EffectType::Courage),
             "fear_aura" | "fearaura" | "dread_aura" | "dreadaura" => Some(EffectType::FearAura),
+            "regen_penalty" | "regenpenalty" | "weariness" | "weary" => Some(EffectType::RegenPenalty),
             _ => None,
         }
     }
@@ -359,6 +364,7 @@ impl EffectType {
             EffectType::Feared => "feared",
             EffectType::Courage => "courage",
             EffectType::FearAura => "fear_aura",
+            EffectType::RegenPenalty => "regen_penalty",
         }
     }
 
@@ -415,6 +421,7 @@ impl EffectType {
             "feared",
             "courage",
             "fear_aura",
+            "regen_penalty",
         ]
     }
 }
@@ -478,7 +485,7 @@ impl Default for ActiveBuff {
 /// worn, each `ItemAffect` is stamped onto the wearer's `active_buffs` as a
 /// permanent `ActiveBuff` sourced as `"item:<item-uuid>"`; on remove, all
 /// buffs with that source are stripped. See `src/db.rs::equip_and_stamp_buffs`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ItemAffect {
     pub effect_type: EffectType,
     #[serde(default)]

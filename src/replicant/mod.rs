@@ -172,6 +172,7 @@ pub fn comfort_replicant_by_name(db: &db::Db, connections: &SharedConnections, t
         Some(c) => c,
         None => return ComfortOutcome::NotApplicable,
     };
+    let max_resolve = ch.effective_max_resolve();
     let r = match ch.replicant_state.as_mut() {
         Some(r) => r,
         None => return ComfortOutcome::NotApplicable,
@@ -179,12 +180,14 @@ pub fn comfort_replicant_by_name(db: &db::Db, connections: &SharedConnections, t
     if now < r.comfort_cooldown_until {
         return ComfortOutcome::TooRattled;
     }
-    if r.resolve >= r.max_resolve {
+    if r.resolve >= max_resolve {
         return ComfortOutcome::Full;
     }
     r.comfort_cooldown_until = now + COMFORT_RECEIVE_COOLDOWN_SECS;
-    let new_resolve = r.change_resolve(COMFORT_RESOLVE_RESTORE);
-    let max = r.max_resolve;
+    r.change_resolve(COMFORT_RESOLVE_RESTORE);
+    r.resolve = r.resolve.min(max_resolve);
+    let new_resolve = r.resolve;
+    let max = max_resolve;
     let _ = db.save_character_data(ch.clone());
     ComfortOutcome::Restored(COMFORT_RESOLVE_RESTORE, new_resolve, max)
 }
@@ -193,6 +196,9 @@ pub fn comfort_replicant_by_name(db: &db::Db, connections: &SharedConnections, t
 /// integration tests can drive it without constructing a PlayerSession.
 /// Returns (anything_changed, message_for_player_if_any).
 pub fn apply_resolve_tick_to_character(ch: &mut CharacterData, now: i64) -> (bool, Option<&'static str>) {
+    // Divine pledges lower both ceilings (read before borrowing the state).
+    let max_resolve = ch.effective_max_resolve();
+    let max_stamina = ch.effective_max_stamina();
     let r = match ch.replicant_state.as_mut() {
         Some(r) => r,
         None => return (false, None),
@@ -213,15 +219,19 @@ pub fn apply_resolve_tick_to_character(ch: &mut CharacterData, now: i64) -> (boo
 
     // Slow recovery while sleeping (not during a breakdown).
     let breaking_down = r.is_breaking_down(now);
-    if !breaking_down && ch.position == CharacterPosition::Sleeping && r.resolve < r.max_resolve {
+    if !breaking_down && ch.position == CharacterPosition::Sleeping && r.resolve < max_resolve {
         r.change_resolve(RESOLVE_REGEN_SLEEPING);
+        modified = true;
+    }
+    if r.resolve > max_resolve {
+        r.resolve = max_resolve;
         modified = true;
     }
     r.last_resolve_tick = now;
 
     // Belt-and-braces tireless invariant.
-    if ch.stamina != ch.max_stamina {
-        ch.stamina = ch.max_stamina;
+    if ch.stamina != max_stamina {
+        ch.stamina = max_stamina;
         modified = true;
     }
 

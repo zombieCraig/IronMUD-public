@@ -1726,6 +1726,7 @@ fn build_commands_help(mobile_id, mobile) {
         output += "  medit " + display_id + " deity tribute interval <days> | gold <pct>\n";
         output += "  medit " + display_id + " deity bless add <effect> <mag> | remove <idx>\n";
         output += "  medit " + display_id + " deity permanent_smite on|off     - Allow stage-4 permanent smite\n";
+        output += "  medit " + display_id + " deity spellcraft ...             - Let worshippers seal spells (type it for help)\n";
     } else {
         output += "\n  medit " + display_id + " deity setup <god|demigod|ascended> - Mark as deity (worship system)\n";
     }
@@ -4583,7 +4584,7 @@ fn handle_combat_spells_subcommand(mobile, mobile_id, parts, connection_id) {
 // marked as a deity; the full group appears in help once it is.
 
 fn handle_deity_subcommand(mobile, mobile_id, parts, connection_id) {
-    let action = if parts.len() < 4 { "show" } else { parts[3].to_lower() };
+    let action = if parts.len() < 3 { "show" } else { parts[2].to_lower() };
 
     if action == "show" { show_deity_config(mobile_id, connection_id); return; }
     if action == "setup" { handle_deity_setup(mobile_id, parts, connection_id); return; }
@@ -4595,9 +4596,10 @@ fn handle_deity_subcommand(mobile, mobile_id, parts, connection_id) {
     if action == "tribute" { handle_deity_tribute(mobile_id, parts, connection_id); return; }
     if action == "bless" { handle_deity_bless(mobile_id, parts, connection_id); return; }
     if action == "permanent_smite" { handle_deity_permanent_smite(mobile_id, parts, connection_id); return; }
+    if action == "spellcraft" { handle_deity_spellcraft(mobile_id, parts, connection_id); return; }
 
     send_client_message(connection_id, "Unknown deity action: " + action);
-    send_client_message(connection_id, "Valid: setup, remove, epithet, lore, enemy, pact, tribute, bless, permanent_smite");
+    send_client_message(connection_id, "Valid: setup, remove, epithet, lore, enemy, pact, tribute, bless, permanent_smite, spellcraft");
 }
 
 fn show_deity_config(mobile_id, connection_id) {
@@ -4615,6 +4617,7 @@ fn show_deity_config(mobile_id, connection_id) {
     output += "  Pact quest ids:   " + format_deity_list(cfg["pact_quest_ids"]) + " (any one completed)\n";
     output += "  Tribute:   every " + cfg["tribute_interval_days"] + " game day(s), " + cfg["tribute_gold_percent"] + "% of total gold\n";
     output += "  Permanent smite: " + (if cfg["allow_permanent_smite"] { "ON" } else { "off" }) + "\n";
+    output += "  Spellcraft: " + (if deity_spellcraft_get(mobile_id) == () { "off" } else { "ON (medit <id> deity spellcraft)" }) + "\n";
     output += "  Blessings:\n";
     let blessings = cfg["blessing_effects"];
     if blessings.len() == 0 {
@@ -4640,11 +4643,11 @@ fn format_deity_list(list) {
 }
 
 fn handle_deity_setup(mobile_id, parts, connection_id) {
-    if parts.len() < 5 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit <id> deity setup <god|demigod|ascended>");
         return;
     }
-    let rank = parts[4].to_lower();
+    let rank = parts[3].to_lower();
     if set_mobile_deity_rank(mobile_id, rank) {
         send_client_message(connection_id, "Deity rank set to " + rank + ". Only rank 'god' accepts worship.");
         if rank == "god" {
@@ -4664,11 +4667,11 @@ fn handle_deity_remove(mobile_id, connection_id) {
 }
 
 fn handle_deity_text(mobile_id, parts, kind, connection_id) {
-    if parts.len() < 5 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit <id> deity " + kind + " <text>");
         return;
     }
-    let text = build_string_from_parts(parts, 4);
+    let text = build_string_from_parts(parts, 3);
     let ok = if kind == "epithet" { set_deity_epithet(mobile_id, text) } else { set_deity_lore(mobile_id, text) };
     if ok {
         send_client_message(connection_id, "Deity " + kind + " set to: " + text);
@@ -4678,12 +4681,12 @@ fn handle_deity_text(mobile_id, parts, kind, connection_id) {
 }
 
 fn handle_deity_list(mobile_id, parts, kind, connection_id) {
-    if parts.len() < 6 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit <id> deity " + kind + " add|remove <vnum>");
         return;
     }
-    let op = parts[4].to_lower();
-    let value = parts[5];
+    let op = parts[3].to_lower();
+    let value = parts[4];
     let ok = if op == "add" {
         deity_list_add(mobile_id, kind, value)
     } else if op == "remove" {
@@ -4699,18 +4702,18 @@ fn handle_deity_list(mobile_id, parts, kind, connection_id) {
 }
 
 fn handle_deity_pact(mobile_id, parts, connection_id) {
-    if parts.len() < 7 {
+    if parts.len() < 6 {
         send_client_message(connection_id, "Usage: medit <id> deity pact item|quest add|remove <id>");
         return;
     }
-    let kind_word = parts[4].to_lower();
+    let kind_word = parts[3].to_lower();
     let kind = if kind_word == "item" { "pact_item" } else if kind_word == "quest" { "pact_quest" } else { "" };
     if kind == "" {
         send_client_message(connection_id, "Pact gate kind must be 'item' or 'quest'.");
         return;
     }
-    let op = parts[5].to_lower();
-    let value = parts[6];
+    let op = parts[4].to_lower();
+    let value = parts[5];
     let ok = if op == "add" {
         deity_list_add(mobile_id, kind, value)
     } else if op == "remove" {
@@ -4726,12 +4729,12 @@ fn handle_deity_pact(mobile_id, parts, connection_id) {
 }
 
 fn handle_deity_tribute(mobile_id, parts, connection_id) {
-    if parts.len() < 6 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit <id> deity tribute interval <days> | gold <percent>");
         return;
     }
-    let which = parts[4].to_lower();
-    let value = try_parse_int(parts[5]);
+    let which = parts[3].to_lower();
+    let value = try_parse_int(parts[4]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -4756,13 +4759,13 @@ fn handle_deity_tribute(mobile_id, parts, connection_id) {
 }
 
 fn handle_deity_bless(mobile_id, parts, connection_id) {
-    if parts.len() < 6 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit <id> deity bless add <effect> <magnitude> | remove <index>");
         return;
     }
-    let op = parts[4].to_lower();
+    let op = parts[3].to_lower();
     if op == "remove" {
-        let idx = try_parse_int(parts[5]);
+        let idx = try_parse_int(parts[4]);
         if idx == () {
             send_client_message(connection_id, "Invalid index.");
             return;
@@ -4775,19 +4778,19 @@ fn handle_deity_bless(mobile_id, parts, connection_id) {
         return;
     }
     if op == "add" {
-        if parts.len() < 7 {
+        if parts.len() < 6 {
             send_client_message(connection_id, "Usage: medit <id> deity bless add <effect> <magnitude>");
             return;
         }
-        let magnitude = try_parse_int(parts[6]);
+        let magnitude = try_parse_int(parts[5]);
         if magnitude == () {
             send_client_message(connection_id, "Invalid magnitude.");
             return;
         }
-        if deity_bless_add(mobile_id, parts[5], magnitude) {
-            send_client_message(connection_id, "Blessing added: " + parts[5] + " +" + magnitude);
+        if deity_bless_add(mobile_id, parts[4], magnitude) {
+            send_client_message(connection_id, "Blessing added: " + parts[4] + " +" + magnitude);
         } else {
-            send_client_message(connection_id, "Unknown effect type '" + parts[5] + "' (or not a deity).");
+            send_client_message(connection_id, "Unknown effect type '" + parts[4] + "' (or not a deity).");
         }
         return;
     }
@@ -4795,11 +4798,11 @@ fn handle_deity_bless(mobile_id, parts, connection_id) {
 }
 
 fn handle_deity_permanent_smite(mobile_id, parts, connection_id) {
-    if parts.len() < 5 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit <id> deity permanent_smite on|off");
         return;
     }
-    let value = parts[4].to_lower();
+    let value = parts[3].to_lower();
     if value != "on" && value != "off" {
         send_client_message(connection_id, "Usage: medit <id> deity permanent_smite on|off");
         return;
@@ -4812,11 +4815,11 @@ fn handle_deity_permanent_smite(mobile_id, parts, connection_id) {
 }
 
 fn handle_patron_subcommand(mobile_id, parts, connection_id) {
-    if parts.len() < 4 {
+    if parts.len() < 3 {
         send_client_message(connection_id, "Usage: medit <id> patron <god_vnum> | clear");
         return;
     }
-    let value = parts[3];
+    let value = parts[2];
     if value.to_lower() == "clear" {
         set_mobile_patron_god(mobile_id, "");
         send_client_message(connection_id, "Patron god cleared.");
@@ -4824,4 +4827,123 @@ fn handle_patron_subcommand(mobile_id, parts, connection_id) {
     }
     set_mobile_patron_god(mobile_id, value);
     send_client_message(connection_id, "Patron god set to " + value + ". Killing this mob now counts for/against worshipers.");
+}
+
+// `medit <id> deity spellcraft ...` — make a god grant player-authored spells.
+// The allow-lists bound what petitions may draft; an empty list allows none.
+fn show_deity_spellcraft_usage(connection_id) {
+    let out = "Divine spellcraft for this god:\n";
+    out += "  deity spellcraft                               - Show the configuration\n";
+    out += "  deity spellcraft enable | disable              - Grant spells / stop (disable discards the config)\n";
+    out += "  deity spellcraft types add|remove <type>       - damage, debuff, buff, heal\n";
+    out += "  deity spellcraft elements add|remove <damage type>\n";
+    out += "  deity spellcraft effects add|remove <effect>   - buff/debuff effects\n";
+    out += "  deity spellcraft targets add|remove <target>   - self, self_or_friendly, enemy\n";
+    out += "  deity spellcraft <list> clear\n";
+    out += "  deity spellcraft cap <1-20>                    - Spells the canon holds at once\n";
+    out += "  deity spellcraft cooldown <days>|default       - Game days between petitions (overrides server)\n";
+    out += "  deity spellcraft favor <n>|default             - Favor needed to petition (overrides server)\n";
+    out += "  deity spellcraft tier <1-5>|default            - Weakest power tier accepted (overrides server)\n";
+    out += "  deity spellcraft cost <n>                      - Favor spent when a spell is sealed\n";
+    out += "  deity spellcraft unlock <quest_id>|none        - Capstone quest required before any petition\n";
+    out += "  deity spellcraft priest on|off                 - Priests of this god teach its canon\n";
+    out += "  deity spellcraft price <style>                 - flesh, mind, essence, fortune, weariness, fate\n";
+    out += "  deity spellcraft trial add <quest> [type=..] [element=..] [effect=..] [power=N]\n";
+    out += "                                                 - A trial; the most specific match is set\n";
+    out += "  deity spellcraft trial remove <n> | trial clear\n";
+    out += "  deity spellcraft mark add <body part> <effect[:mag]>[,<effect[:mag]>] <description>\n";
+    out += "                                                 - A brand for the author (one at sealing)\n";
+    out += "  deity spellcraft mark remove <n> | mark clear";
+    send_client_message(connection_id, out);
+}
+
+fn handle_deity_spellcraft(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        show_deity_spellcraft(mobile_id, connection_id);
+        return;
+    }
+    let field = parts[3].to_lower();
+    if field == "help" { show_deity_spellcraft_usage(connection_id); return; }
+    if field == "enable" || field == "disable" {
+        let r = deity_spellcraft_enable(mobile_id, field == "enable");
+        if r == "ok" {
+            send_client_message(connection_id, if field == "enable" { "This god now grants spells. Configure its allow-lists next." } else { "This god no longer grants spells." });
+        } else {
+            send_client_message(connection_id, r);
+        }
+        return;
+    }
+    let is_list = field == "types" || field == "elements" || field == "effects" || field == "targets" || field == "trial" || field == "mark";
+    let op = "set";
+    let value_start = 4;
+    if is_list {
+        if parts.len() < 5 { show_deity_spellcraft_usage(connection_id); return; }
+        op = parts[4].to_lower();
+        value_start = 5;
+    }
+    let value = if parts.len() > value_start { build_string_from_parts(parts, value_start) } else { "" };
+    if value == "" && op != "clear" {
+        show_deity_spellcraft_usage(connection_id);
+        return;
+    }
+    let r = deity_spellcraft_edit(mobile_id, field, op, value);
+    if r == "ok" {
+        show_deity_spellcraft(mobile_id, connection_id);
+    } else {
+        send_client_message(connection_id, r);
+    }
+}
+
+fn format_override(v, server_key) {
+    if v == () { return "server (" + get_setting_or_default_value(server_key) + ")"; }
+    return "" + v;
+}
+
+fn get_setting_or_default_value(key) {
+    let v = get_setting(key);
+    if v == "" { return get_setting_default(key); }
+    return v;
+}
+
+fn show_deity_spellcraft(mobile_id, connection_id) {
+    let c = deity_spellcraft_get(mobile_id);
+    if c == () {
+        send_client_message(connection_id, "This god grants no spells. 'medit <id> deity spellcraft enable' to start; 'deity spellcraft help' for the options.");
+        return;
+    }
+    let out = "\n=== Divine Spellcraft ===\n";
+    out += "  Types:     " + format_deity_list(c["allowed_types"]) + "\n";
+    out += "  Elements:  " + format_deity_list(c["allowed_elements"]) + "\n";
+    out += "  Effects:   " + format_deity_list(c["allowed_effects"]) + "\n";
+    out += "  Targets:   " + format_deity_list(c["allowed_targets"]) + "\n";
+    out += "  Canon cap: " + c["canon_cap"] + "\n";
+    out += "  Petition cooldown: " + format_override(c["petition_cooldown_days"], "spellcraft.god_petition_cooldown_days") + " game day(s)\n";
+    out += "  Min favor: " + format_override(c["min_favor"], "spellcraft.min_favor") + "\n";
+    out += "  Min tier:  " + format_override(c["min_power_tier"], "spellcraft.min_power_tier") + "\n";
+    out += "  Favor cost on sealing: " + c["favor_cost"] + "\n";
+    out += "  Unlock quest: " + (if c["unlock_quest_id"] == "" { "(none)" } else { c["unlock_quest_id"] }) + "\n";
+    out += "  Priests teach canon: " + (if c["priest_teaches"] { "yes" } else { "no" }) + "\n";
+    out += "  Price:     " + c["price_style"] + " (plus the base HP pledge)\n";
+    out += "  Trials:\n";
+    if c["trials"].len() == 0 {
+        out += "    (none: petitions will be refused until one is added)\n";
+    }
+    let n = 0;
+    for t in c["trials"] {
+        n += 1;
+        out += "    " + n + ") " + t + "\n";
+    }
+    out += "  Marks:\n";
+    if c["marks"].len() == 0 {
+        out += "    (none: authors get a plain sigil)\n";
+    }
+    n = 0;
+    for m in c["marks"] {
+        n += 1;
+        out += "    " + n + ") " + m + "\n";
+    }
+    if !spellcraft_enabled() {
+        out += "  (spellcraft is switched off server-wide: admin config spellcraft.enabled)\n";
+    }
+    send_client_message(connection_id, out);
 }

@@ -133,6 +133,13 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // `craft scroll <spell>`: ink a spell of the gods onto a blank scroll.
+    if spellcraft_enabled() && (args == "scroll" || args.starts_with("scroll ")) {
+        let spell = if args == "scroll" { "" } else { args.sub_string(7) };
+        send_client_message(connection_id, spellcraft_scribe(char.name, spell));
+        return;
+    }
+
     // Parse recipe name
     let recipe_name = args;
     if recipe_name == "" {

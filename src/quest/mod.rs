@@ -46,41 +46,62 @@ pub fn now_secs_pub() -> i64 {
     now_secs()
 }
 
+/// Change a character session-first and return what `f` produced.
+///
+/// An online player's session copy is authoritative: the regen tick flushes
+/// it over the DB, so a DB-only load→mutate→save here is silently undone a few
+/// seconds later (which is what used to happen to every quest offer, kill
+/// credit and completion for a logged-in player). `f` returns
+/// `(changed, output)`; the character is saved only when `changed`.
+///
+/// `f` runs under the Connections lock: no `notify`, no World lock, no call
+/// back into anything that writes the character. DB reads are fine.
+fn with_character<R>(
+    db: &Db,
+    connections: &SharedConnections,
+    char_name: &str,
+    f: impl FnOnce(&mut CharacterData) -> (bool, R),
+) -> Option<R> {
+    let mut out = None;
+    crate::script::achievements::apply_to_character(db, connections, char_name, |ch| {
+        let (changed, r) = f(ch);
+        out = Some(r);
+        changed
+    })?;
+    out
+}
+
+fn notify_all(connections: &SharedConnections, char_name: &str, lines: &[String]) {
+    for line in lines {
+        notify(connections, char_name, line);
+    }
+}
+
 /// Walk an online player's active quests and drop any whose
 /// duration_secs has elapsed since started_at. Sends a "[ Quest expired:
 /// X ]" line per drop. Saves once at the end if anything changed.
 pub fn expire_quests_for(db: &Db, connections: &SharedConnections, char_name: &str, now: i64) {
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return,
-    };
-    if ch.active_quests.is_empty() {
-        return;
-    }
-    let mut expired: Vec<(String, String)> = Vec::new();
-    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
-    for qvnum in &active_keys {
-        let quest = match db.get_quest_data(qvnum) {
-            Ok(Some(q)) => q,
-            _ => continue,
-        };
-        let duration = match quest.duration_secs {
-            Some(d) if d > 0 => d,
-            _ => continue,
-        };
-        let started = ch.active_quests.get(qvnum).map(|aq| aq.started_at).unwrap_or(0);
-        if now.saturating_sub(started) >= duration {
-            expired.push((quest.vnum.clone(), quest.name.clone()));
+    let expired = with_character(db, connections, char_name, |ch| {
+        let mut names = Vec::new();
+        let keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+        for qvnum in keys {
+            let Ok(Some(quest)) = db.get_quest_data(&qvnum) else {
+                continue;
+            };
+            let duration = match quest.duration_secs {
+                Some(d) if d > 0 => d,
+                _ => continue,
+            };
+            let started = ch.active_quests.get(&qvnum).map(|aq| aq.started_at).unwrap_or(0);
+            if now.saturating_sub(started) >= duration {
+                ch.active_quests.remove(&qvnum);
+                names.push(quest.name);
+            }
         }
-    }
-    if expired.is_empty() {
-        return;
-    }
-    for (vnum, _) in &expired {
-        ch.active_quests.remove(vnum);
-    }
-    let _ = db.save_character_data(ch);
-    for (_, name) in expired {
+        (!names.is_empty(), names)
+    })
+    .unwrap_or_default();
+    for name in expired {
         let line = format!("\x1b[1;31m[ Quest expired: {} ]\x1b[0m", name);
         notify(connections, char_name, &line);
     }
@@ -118,20 +139,32 @@ pub fn find_quest(db: &Db, keyword_or_vnum: &str) -> Option<QuestData> {
 }
 
 /// Offer a quest to a character. Returns "" on success, error string otherwise.
-pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return "no such character".to_string(),
-    };
+pub fn offer(db: &Db, connections: &SharedConnections, char_name: &str, vnum: &str) -> String {
     let quest = match db.get_quest_data(vnum) {
         Ok(Some(q)) => q,
         _ => return format!("no such quest `{}`", vnum),
     };
+    with_character(db, connections, char_name, |ch| match offer_refusal(db, ch, &quest) {
+        Some(why) => (false, why),
+        None => {
+            let aq = ActiveQuest {
+                started_at: now_secs(),
+                ..Default::default()
+            };
+            ch.active_quests.insert(quest.vnum.clone(), aq);
+            (true, String::new())
+        }
+    })
+    .unwrap_or_else(|| "no such character".to_string())
+}
+
+/// Why `ch` can't take `quest` right now, or `None` if they can.
+fn offer_refusal(db: &Db, ch: &CharacterData, quest: &QuestData) -> Option<String> {
     if ch.active_quests.contains_key(&quest.vnum) {
-        return format!("You are already on quest `{}`.", quest.name);
+        return Some(format!("You are already on quest `{}`.", quest.name));
     }
     if ch.completed_quests.contains(&quest.vnum) && !quest.repeatable {
-        return format!("You have already completed `{}`.", quest.name);
+        return Some(format!("You have already completed `{}`.", quest.name));
     }
     // Slice 3a: prereq + skill gates.
     if let Some(prereq) = &quest.prereq_quest_vnum {
@@ -142,56 +175,45 @@ pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
                 .flatten()
                 .map(|q| q.name)
                 .unwrap_or_else(|| prereq.clone());
-            return format!("You must first complete `{}`.", pname);
+            return Some(format!("You must first complete `{}`.", pname));
         }
     }
     if let Some(min_total) = quest.min_player_skill_total {
         let total: i32 = ch.skills.values().map(|sp| sp.level).sum();
         if total < min_total {
-            return format!("You're not skilled enough yet ({} / {}).", total, min_total);
+            return Some(format!("You're not skilled enough yet ({} / {}).", total, min_total));
         }
     }
     if let Some(set) = &quest.achievement_set_prereq {
         if !set.is_satisfied(&ch.achievements_unlocked) {
-            return format!(
+            return Some(format!(
                 "You haven't proven enough yet ({} / {} pieces in place).",
                 set.unlocked_count(&ch.achievements_unlocked),
                 set.min_count,
-            );
+            ));
         }
     }
     if let Some(rep) = &quest.reputation_prereq {
         if !rep.is_satisfied(&ch.reputation) {
-            return format!(
+            return Some(format!(
                 "They don't trust you enough for that yet ({}).",
                 crate::reputation::LADDER.standing_line(crate::reputation::standing(&ch.reputation, &rep.faction)),
-            );
+            ));
         }
     }
-    let aq = ActiveQuest {
-        started_at: now_secs(),
-        ..Default::default()
-    };
-    ch.active_quests.insert(quest.vnum.clone(), aq);
-    if let Err(e) = db.save_character_data(ch) {
-        return format!("save error: {}", e);
-    }
-    String::new()
+    None
 }
 
 /// Abandon an active quest. Returns "" on success, error string otherwise.
-pub fn abandon(db: &Db, char_name: &str, vnum: &str) -> String {
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return "no such character".to_string(),
-    };
-    if ch.active_quests.remove(vnum).is_none() {
-        return format!("you are not on quest `{}`", vnum);
-    }
-    if let Err(e) = db.save_character_data(ch) {
-        return format!("save error: {}", e);
-    }
-    String::new()
+pub fn abandon(db: &Db, connections: &SharedConnections, char_name: &str, vnum: &str) -> String {
+    with_character(db, connections, char_name, |ch| {
+        if ch.active_quests.remove(vnum).is_none() {
+            (false, format!("you are not on quest `{}`", vnum))
+        } else {
+            (true, String::new())
+        }
+    })
+    .unwrap_or_else(|| "no such character".to_string())
 }
 
 /// Are all of the quest's objectives satisfied for this character right now?
@@ -267,15 +289,38 @@ pub fn try_complete(
         Ok(Some(q)) => q,
         _ => return false,
     };
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return false,
+    // Claim the completion first: the active->completed move happens in one
+    // session-first write, so two racing turn-ins can't both pay out.
+    // Rewards that touch the character load it again through the same path.
+    // Completability (which may scan inventory) is judged on a snapshot,
+    // outside the lock; the claim only re-checks the quest is still active.
+    let Some(snapshot) = with_character(db, connections, char_name, |ch| (false, ch.clone())) else {
+        return false;
     };
-    if !is_completable(db, &ch, &quest) {
+    if !is_completable(db, &snapshot, &quest) {
         return false;
     }
+    let claimed = with_character(db, connections, char_name, |ch| {
+        if !ch.active_quests.contains_key(&quest.vnum) {
+            return (false, None);
+        }
+        // Per-quest choice vars (set by `DialogueEffect::SetQuestChoice`) are
+        // read before the active quest is removed — reward variants like
+        // `EmbraceAnarch` consume them.
+        let choice_vars = ch
+            .active_quests
+            .remove(&quest.vnum)
+            .map(|aq| aq.choice_vars)
+            .unwrap_or_default();
+        ch.completed_quests.insert(quest.vnum.clone());
+        (true, Some((ch.name.clone(), choice_vars)))
+    })
+    .flatten();
+    let Some((name, choice_vars)) = claimed else {
+        return false;
+    };
 
-    // For BringItem objectives WITHOUT return_to_mob_vnum, we consume from
+    // BringItem objectives WITHOUT return_to_mob_vnum are consumed from
     // inventory now (turn-in completion via dialogue effect).
     for obj in &quest.objectives {
         if let QuestObjective::BringItem {
@@ -285,33 +330,14 @@ pub fn try_complete(
         } = obj
         {
             if return_to_mob_vnum.is_none() {
-                consume_inventory_items(db, &ch.name, vnum, *qty);
+                consume_inventory_items(db, &name, vnum, *qty);
             }
         }
     }
 
-    // Capture per-quest choice vars (set by `DialogueEffect::SetQuestChoice`)
-    // before the active quest is removed below — reward variants like
-    // `EmbraceAnarch` consume runtime choices recorded on the active quest.
-    let choice_vars = ch
-        .active_quests
-        .get(&quest.vnum)
-        .map(|aq| aq.choice_vars.clone())
-        .unwrap_or_default();
-
-    // Move the quest from active to completed BEFORE granting rewards so a
-    // reward that itself touches character state (gold, achievements) sees a
-    // consistent quest state.
-    ch.active_quests.remove(&quest.vnum);
-    ch.completed_quests.insert(quest.vnum.clone());
-
     if !quest.completion_text.is_empty() {
         notify(connections, char_name, &quest.completion_text);
     }
-
-    // Persist the active->completed transition before reward calls (some of
-    // which load character independently).
-    let _ = db.save_character_data(ch.clone());
 
     // Resolve the giver mob's display name once for reward variants that
     // need it (e.g. EmbraceClan stamps the sire). Falls back to None if the
@@ -328,7 +354,7 @@ pub fn try_complete(
             db,
             connections,
             state,
-            &ch.name,
+            &name,
             reward,
             giver_name.as_deref(),
             &choice_vars,
@@ -339,7 +365,7 @@ pub fn try_complete(
     // — bumping first would be overwritten by the next reward's save.
     // Counts turn-ins rather than distinct quests: a repeatable quest is meant
     // to be repeated, and `completed_quests` already records the distinct set.
-    crate::script::achievements::notify_counter_core(db, connections, state, &ch.name, "quests.completed", 1);
+    crate::script::achievements::notify_counter_core(db, connections, state, &name, "quests.completed", 1);
 
     let line = format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name);
     notify(connections, char_name, &line);
@@ -381,10 +407,9 @@ fn apply_reward(
 ) {
     match reward {
         QuestReward::Gold { amount } => {
-            if let Ok(Some(mut ch)) = db.get_character_data(&char_name.to_lowercase()) {
-                let next = (ch.gold as i64).saturating_add(*amount);
-                ch.gold = next.clamp(0, i32::MAX as i64) as i32;
-                let _ = db.save_character_data(ch);
+            // Through the purse: session-first, and it keeps the gold
+            // counters and high-water marks the other credit paths keep.
+            if crate::purse::add_gold(db, connections, state, char_name, *amount) {
                 notify(connections, char_name, &format!("[ +{} gold ]", amount));
             }
         }
@@ -468,97 +493,54 @@ fn apply_reward(
             }
         }
         QuestReward::LearnRecipe { recipe_id } => {
-            if let Ok(Some(mut ch)) = db.get_character_data(&char_name.to_lowercase()) {
-                if ch.learned_recipes.insert(recipe_id.clone()) {
-                    let _ = db.save_character_data(ch);
-                    notify(
-                        connections,
-                        char_name,
-                        &format!("[ You have learned a new recipe: {} ]", recipe_id),
-                    );
-                }
+            let learned = with_character(db, connections, char_name, |ch| {
+                let new = ch.learned_recipes.insert(recipe_id.clone());
+                (new, new)
+            })
+            .unwrap_or(false);
+            if learned {
+                notify(
+                    connections,
+                    char_name,
+                    &format!("[ You have learned a new recipe: {} ]", recipe_id),
+                );
             }
         }
         QuestReward::EmbraceClan { clan } => {
-            // Persisted-state variant — operates on the DB-loaded
-            // character, then we explicitly sync the live session so a
-            // logged-in player sees the uplift in their next score view.
-            let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-                Ok(Some(c)) => c,
-                _ => return,
-            };
-            if ch.vampire_state.is_none() {
-                tracing::warn!(
-                    char = %char_name,
-                    clan = %clan,
-                    "EmbraceClan reward fired on a mortal — no vampire state to upgrade",
-                );
-                return;
-            }
-            if crate::script::vampire::pc_clan_from_traits(&ch).is_some() {
-                tracing::warn!(
-                    char = %char_name,
-                    clan = %clan,
-                    "EmbraceClan reward fired on already-acknowledged kindred — skipping",
-                );
-                return;
-            }
             let sire = giver_name.map(str::to_string);
-            if !crate::script::vampire::apply_clan_acknowledgment(&mut ch, clan, sire) {
-                return;
-            }
-            let _ = db.save_character_data(ch.clone());
-            // Sync live session so the player sees the new state without
-            // re-login (mirrors how SkillXp reward leaves the in-memory
-            // session stale, but for VampireState the visible jump is
-            // bigger and we have ch already in hand).
-            {
-                let mut conns = connections.lock();
-                for (_id, sess) in conns.iter_mut() {
-                    if let Some(sc) = sess.character.as_mut() {
-                        if sc.name.eq_ignore_ascii_case(char_name) {
-                            *sc = ch.clone();
-                            break;
-                        }
-                    }
+            let embraced = with_character(db, connections, char_name, |ch| {
+                if ch.vampire_state.is_none() {
+                    tracing::warn!(
+                        char = %char_name,
+                        clan = %clan,
+                        "EmbraceClan reward fired on a mortal — no vampire state to upgrade",
+                    );
+                    return (false, false);
                 }
+                if crate::script::vampire::pc_clan_from_traits(ch).is_some() {
+                    tracing::warn!(
+                        char = %char_name,
+                        clan = %clan,
+                        "EmbraceClan reward fired on already-acknowledged kindred — skipping",
+                    );
+                    return (false, false);
+                }
+                let ok = crate::script::vampire::apply_clan_acknowledgment(ch, clan, sire);
+                (ok, ok)
+            })
+            .unwrap_or(false);
+            if embraced {
+                notify(
+                    connections,
+                    char_name,
+                    &format!(
+                        "\x1b[1;31m[ Your blood thickens. You are kindred of clan {}. ]\x1b[0m",
+                        clan
+                    ),
+                );
             }
-            notify(
-                connections,
-                char_name,
-                &format!(
-                    "\x1b[1;31m[ Your blood thickens. You are kindred of clan {}. ]\x1b[0m",
-                    clan
-                ),
-            );
         }
         QuestReward::EmbraceAnarch { discipline } => {
-            let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-                Ok(Some(c)) => c,
-                _ => return,
-            };
-            if ch.vampire_state.is_none() {
-                tracing::warn!(
-                    char = %char_name,
-                    "EmbraceAnarch reward fired on a mortal — no vampire state to upgrade",
-                );
-                return;
-            }
-            if crate::script::vampire::pc_clan_from_traits(&ch).is_some() {
-                tracing::warn!(
-                    char = %char_name,
-                    "EmbraceAnarch reward fired on already-acknowledged kindred — skipping",
-                );
-                return;
-            }
-            if ch.traits.iter().any(|t| t == crate::script::vampire::ANARCH_TRAIT) {
-                tracing::warn!(
-                    char = %char_name,
-                    "EmbraceAnarch reward fired on a character already walking the Anarch path — skipping",
-                );
-                return;
-            }
-
             // Resolve the discipline: hardcoded > runtime choice_var > bail.
             let resolved = discipline
                 .as_ref()
@@ -570,20 +552,18 @@ fn apply_reward(
                         .map(|s| s.trim().to_lowercase())
                         .filter(|s| !s.is_empty())
                 });
-            let resolved = match resolved {
-                Some(d) => d,
-                None => {
-                    tracing::warn!(
-                        char = %char_name,
-                        "EmbraceAnarch reward fired without a discipline (neither hardcoded nor choice_vars[\"discipline\"]) — skipping",
-                    );
-                    return;
-                }
+            let Some(resolved) = resolved else {
+                tracing::warn!(
+                    char = %char_name,
+                    "EmbraceAnarch reward fired without a discipline (neither hardcoded nor choice_vars[\"discipline\"]) — skipping",
+                );
+                return;
             };
-
             // Validate against the canonical discipline allow-list.
-            let allowed = crate::script::vampire::known_disciplines();
-            if !allowed.iter().any(|d| d == &resolved) {
+            if !crate::script::vampire::known_disciplines()
+                .iter()
+                .any(|d| d == &resolved)
+            {
                 tracing::warn!(
                     char = %char_name,
                     discipline = %resolved,
@@ -591,30 +571,42 @@ fn apply_reward(
                 );
                 return;
             }
-
-            if !crate::script::vampire::apply_anarch_acknowledgment(&mut ch, &resolved) {
-                return;
-            }
-            let _ = db.save_character_data(ch.clone());
-            {
-                let mut conns = connections.lock();
-                for (_id, sess) in conns.iter_mut() {
-                    if let Some(sc) = sess.character.as_mut() {
-                        if sc.name.eq_ignore_ascii_case(char_name) {
-                            *sc = ch.clone();
-                            break;
-                        }
-                    }
+            let embraced = with_character(db, connections, char_name, |ch| {
+                if ch.vampire_state.is_none() {
+                    tracing::warn!(
+                        char = %char_name,
+                        "EmbraceAnarch reward fired on a mortal — no vampire state to upgrade",
+                    );
+                    return (false, false);
                 }
+                if crate::script::vampire::pc_clan_from_traits(ch).is_some() {
+                    tracing::warn!(
+                        char = %char_name,
+                        "EmbraceAnarch reward fired on already-acknowledged kindred — skipping",
+                    );
+                    return (false, false);
+                }
+                if ch.traits.iter().any(|t| t == crate::script::vampire::ANARCH_TRAIT) {
+                    tracing::warn!(
+                        char = %char_name,
+                        "EmbraceAnarch reward fired on a character already walking the Anarch path — skipping",
+                    );
+                    return (false, false);
+                }
+                let ok = crate::script::vampire::apply_anarch_acknowledgment(ch, &resolved);
+                (ok, ok)
+            })
+            .unwrap_or(false);
+            if embraced {
+                notify(
+                    connections,
+                    char_name,
+                    &format!(
+                        "\x1b[1;31m[ Your blood thickens. You walk the Anarch road — your gift is {}. ]\x1b[0m",
+                        resolved
+                    ),
+                );
             }
-            notify(
-                connections,
-                char_name,
-                &format!(
-                    "\x1b[1;31m[ Your blood thickens. You walk the Anarch road — your gift is {}. ]\x1b[0m",
-                    resolved
-                ),
-            );
         }
     }
 }
@@ -657,57 +649,44 @@ fn credit_one_kill(
     char_name: &str,
     mob_proto_vnum: &str,
 ) {
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return,
-    };
-    let mut dirty = false;
-    let mut auto_complete: Vec<String> = Vec::new();
-    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
-    for qvnum in &active_keys {
-        let quest = match db.get_quest_data(qvnum) {
-            Ok(Some(q)) => q,
-            _ => continue,
-        };
-        let progress = match ch.active_quests.get_mut(qvnum) {
-            Some(p) => p,
-            None => continue,
-        };
-        for obj in &quest.objectives {
-            match obj {
-                QuestObjective::KillMob { vnum, count } => {
-                    if vnum == mob_proto_vnum {
+    let (lines, auto_complete) = with_character(db, connections, char_name, |ch| {
+        let mut lines = Vec::new();
+        let mut auto_complete = Vec::new();
+        let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+        for qvnum in &active_keys {
+            let Ok(Some(quest)) = db.get_quest_data(qvnum) else {
+                continue;
+            };
+            let Some(progress) = ch.active_quests.get_mut(qvnum) else {
+                continue;
+            };
+            for obj in &quest.objectives {
+                match obj {
+                    QuestObjective::KillMob { vnum, count } if vnum == mob_proto_vnum => {
                         let entry = progress.kill_progress.entry(vnum.clone()).or_insert(0);
                         if *entry < *count {
                             *entry += 1;
-                            dirty = true;
-                            let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
-                            notify(connections, char_name, &line);
+                            lines.push(format!("[ {}: {}/{} ]", quest.name, *entry, count));
                         }
                     }
-                }
-                QuestObjective::KillAnyMob { vnums, count } => {
-                    if vnums.iter().any(|v| v == mob_proto_vnum) {
-                        let key = kill_any_key(vnums);
-                        let entry = progress.kill_any_progress.entry(key).or_insert(0);
+                    QuestObjective::KillAnyMob { vnums, count } if vnums.iter().any(|v| v == mob_proto_vnum) => {
+                        let entry = progress.kill_any_progress.entry(kill_any_key(vnums)).or_insert(0);
                         if *entry < *count {
                             *entry += 1;
-                            dirty = true;
-                            let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
-                            notify(connections, char_name, &line);
+                            lines.push(format!("[ {}: {}/{} ]", quest.name, *entry, count));
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
+            }
+            if has_only_kill_objectives(&quest) && is_completable_owned(db, ch, &quest) {
+                auto_complete.push(quest.vnum.clone());
             }
         }
-        if has_only_kill_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
-            auto_complete.push(quest.vnum.clone());
-        }
-    }
-    if dirty {
-        let _ = db.save_character_data(ch);
-    }
+        (!lines.is_empty(), (lines, auto_complete))
+    })
+    .unwrap_or_default();
+    notify_all(connections, char_name, &lines);
     for vnum in auto_complete {
         try_complete(db, connections, state, char_name, &vnum);
     }
@@ -757,73 +736,57 @@ pub fn handle_item_to_mob(
     if mob_vnum.is_empty() {
         return false;
     }
-    let mut ch = match db.get_character_data(&giver_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return false,
-    };
 
-    // Find the FIRST active quest with a matching BringItem objective for
-    // this (item_vnum, mob_vnum) pair that's still open.
-    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
-    let mut matched_quest: Option<QuestData> = None;
-    let mut matched_advance: Option<(String, i32, i32)> = None; // (item_vnum, new_count, target_qty)
-    for qvnum in &active_keys {
-        let quest = match db.get_quest_data(qvnum) {
-            Ok(Some(q)) => q,
-            _ => continue,
-        };
-        for obj in &quest.objectives {
-            if let QuestObjective::BringItem {
-                vnum,
-                qty,
-                return_to_mob_vnum,
-            } = obj
-            {
-                if vnum == item_vnum && return_to_mob_vnum.as_deref() == Some(mob_vnum.as_str()) {
-                    let progress = match ch.active_quests.get_mut(qvnum) {
-                        Some(p) => p,
-                        None => continue,
-                    };
-                    let entry = progress.item_progress.entry(vnum.clone()).or_insert(0);
-                    if *entry < *qty {
-                        *entry += 1;
-                        matched_advance = Some((vnum.clone(), *entry, *qty));
-                        matched_quest = Some(quest.clone());
-                    }
-                    break;
+    // Advance the FIRST active quest with an open BringItem objective for
+    // this (item_vnum, mob_vnum) pair.
+    let advanced = with_character(db, connections, giver_name, |ch| {
+        let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+        for qvnum in &active_keys {
+            let Ok(Some(quest)) = db.get_quest_data(qvnum) else {
+                continue;
+            };
+            for obj in &quest.objectives {
+                let QuestObjective::BringItem {
+                    vnum,
+                    qty,
+                    return_to_mob_vnum,
+                } = obj
+                else {
+                    continue;
+                };
+                if vnum != item_vnum || return_to_mob_vnum.as_deref() != Some(mob_vnum.as_str()) {
+                    continue;
                 }
+                let Some(progress) = ch.active_quests.get_mut(qvnum) else {
+                    break;
+                };
+                let entry = progress.item_progress.entry(vnum.clone()).or_insert(0);
+                if *entry < *qty {
+                    *entry += 1;
+                    let (count, target) = (*entry, *qty);
+                    let done = has_all_returnto_bringitem(&quest) && is_completable_owned(db, ch, &quest);
+                    return (true, Some((quest, count, target, done)));
+                }
+                break;
             }
         }
-        if matched_quest.is_some() {
-            break;
-        }
-    }
-
-    let Some(quest) = matched_quest else {
+        (false, None)
+    })
+    .flatten();
+    let Some((quest, new_count, target_qty, done)) = advanced else {
         return false;
     };
-    let (item_vnum_advanced, new_count, target_qty) = matched_advance.expect("set with quest");
 
     // Consume the item from the world (the give.rhai caller would otherwise
     // place it on the mob; we shortcut that).
     let _ = db.delete_item(&item.id);
-
-    let item_label = item.short_desc.clone();
-    let line = format!("[ {}: {} ({}/{}) ]", quest.name, item_label, new_count, target_qty);
+    let line = format!("[ {}: {} ({}/{}) ]", quest.name, item.short_desc, new_count, target_qty);
     notify(connections, giver_name, &line);
 
-    // Persist progress.
-    let _ = db.save_character_data(ch);
-
     // If this was the LAST item in a turn-in-only quest, auto-complete.
-    let _ = item_vnum_advanced; // tag-only; suppression for clarity
-    if let Ok(Some(ch_now)) = db.get_character_data(&giver_name.to_lowercase()) {
-        if has_all_returnto_bringitem(&quest) && is_completable_owned(db, &ch_now, &quest) {
-            try_complete(db, connections, state, giver_name, &quest.vnum);
-        }
+    if done {
+        try_complete(db, connections, state, giver_name, &quest.vnum);
     }
-
-    // Optionally: surface "(quest available)" hook here later.
     true
 }
 
@@ -840,41 +803,35 @@ pub fn handle_room_visit(
     if char_name.is_empty() || room_vnum.is_empty() {
         return false;
     }
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return false,
-    };
-    let mut dirty = false;
-    let mut auto_complete: Vec<String> = Vec::new();
-    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
-    for qvnum in &active_keys {
-        let quest = match db.get_quest_data(qvnum) {
-            Ok(Some(q)) => q,
-            _ => continue,
-        };
-        let progress = match ch.active_quests.get_mut(qvnum) {
-            Some(p) => p,
-            None => continue,
-        };
-        let mut matched = false;
-        for obj in &quest.objectives {
-            if let QuestObjective::VisitRoom { vnum } = obj {
-                if vnum == room_vnum && !progress.rooms_visited.contains(vnum) {
-                    progress.rooms_visited.insert(vnum.clone());
-                    matched = true;
-                    dirty = true;
-                    let line = format!("[ {}: visited {} ]", quest.name, vnum);
-                    notify(connections, char_name, &line);
+    let (lines, auto_complete) = with_character(db, connections, char_name, |ch| {
+        let mut lines = Vec::new();
+        let mut auto_complete = Vec::new();
+        let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+        for qvnum in &active_keys {
+            let Ok(Some(quest)) = db.get_quest_data(qvnum) else {
+                continue;
+            };
+            let Some(progress) = ch.active_quests.get_mut(qvnum) else {
+                continue;
+            };
+            let mut matched = false;
+            for obj in &quest.objectives {
+                if let QuestObjective::VisitRoom { vnum } = obj {
+                    if vnum == room_vnum && progress.rooms_visited.insert(vnum.clone()) {
+                        matched = true;
+                        lines.push(format!("[ {}: visited {} ]", quest.name, vnum));
+                    }
                 }
             }
+            if matched && has_only_visit_objectives(&quest) && is_completable_owned(db, ch, &quest) {
+                auto_complete.push(quest.vnum.clone());
+            }
         }
-        if matched && has_only_visit_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
-            auto_complete.push(quest.vnum.clone());
-        }
-    }
-    if dirty {
-        let _ = db.save_character_data(ch);
-    }
+        (!lines.is_empty(), (lines, auto_complete))
+    })
+    .unwrap_or_default();
+    notify_all(connections, char_name, &lines);
+    let dirty = !lines.is_empty();
     for vnum in auto_complete {
         try_complete(db, connections, state, char_name, &vnum);
     }
@@ -889,8 +846,9 @@ fn has_only_visit_objectives(quest: &QuestData) -> bool {
             .all(|o| matches!(o, QuestObjective::VisitRoom { .. }))
 }
 
-/// DG-var-set listener entry point. Called from `src/script/dg/eval.rs` after
-/// a character-scoped DG var write. Advances any `DgFlag` objective whose
+/// DG-var-set listener entry point. Called from `src/script/dg/eval.rs`
+/// (`set_entity_var`) after a character-scoped DG var write, and from the
+/// dialogue `SetDgVar` effect. Advances any `DgFlag` objective whose
 /// (var, value) matches; auto-completes flag-only quests.
 pub fn handle_dg_flag_set(
     db: &Db,
@@ -903,41 +861,35 @@ pub fn handle_dg_flag_set(
     if char_name.is_empty() || var.is_empty() {
         return false;
     }
-    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return false,
-    };
-    let mut dirty = false;
-    let mut auto_complete: Vec<String> = Vec::new();
-    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
-    for qvnum in &active_keys {
-        let quest = match db.get_quest_data(qvnum) {
-            Ok(Some(q)) => q,
-            _ => continue,
-        };
-        let progress = match ch.active_quests.get_mut(qvnum) {
-            Some(p) => p,
-            None => continue,
-        };
-        let mut matched = false;
-        for obj in &quest.objectives {
-            if let QuestObjective::DgFlag { var: ovar, value: oval } = obj {
-                if ovar == var && oval == value && !progress.flags_set.contains(ovar) {
-                    progress.flags_set.insert(ovar.clone());
-                    matched = true;
-                    dirty = true;
-                    let line = format!("[ {}: flag {}={} set ]", quest.name, ovar, oval);
-                    notify(connections, char_name, &line);
+    let (lines, auto_complete) = with_character(db, connections, char_name, |ch| {
+        let mut lines = Vec::new();
+        let mut auto_complete = Vec::new();
+        let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+        for qvnum in &active_keys {
+            let Ok(Some(quest)) = db.get_quest_data(qvnum) else {
+                continue;
+            };
+            let Some(progress) = ch.active_quests.get_mut(qvnum) else {
+                continue;
+            };
+            let mut matched = false;
+            for obj in &quest.objectives {
+                if let QuestObjective::DgFlag { var: ovar, value: oval } = obj {
+                    if ovar == var && oval == value && progress.flags_set.insert(ovar.clone()) {
+                        matched = true;
+                        lines.push(format!("[ {}: flag {}={} set ]", quest.name, ovar, oval));
+                    }
                 }
             }
+            if matched && has_only_flag_objectives(&quest) && is_completable_owned(db, ch, &quest) {
+                auto_complete.push(quest.vnum.clone());
+            }
         }
-        if matched && has_only_flag_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
-            auto_complete.push(quest.vnum.clone());
-        }
-    }
-    if dirty {
-        let _ = db.save_character_data(ch);
-    }
+        (!lines.is_empty(), (lines, auto_complete))
+    })
+    .unwrap_or_default();
+    notify_all(connections, char_name, &lines);
+    let dirty = !lines.is_empty();
     for vnum in auto_complete {
         try_complete(db, connections, state, char_name, &vnum);
     }

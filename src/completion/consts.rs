@@ -52,6 +52,7 @@ pub const MEDIT_SUBCOMMANDS: &[&str] = &[
     "simulation",
     "combat_spells",
     "spells",
+    "deity",
 ];
 
 /// Mobile transport route actions
@@ -704,8 +705,48 @@ pub const ADMIN_SUBCOMMANDS: &[&str] = &[
     "morality",
     "reputation",
     "loadout",
+    "codex",
+    "religion",
     "help",
 ];
+
+/// `admin codex <action>`
+pub const ADMIN_CODEX_ACTIONS: &[&str] = &["list", "show", "seed", "status", "veto", "rename"];
+
+/// `admin codex status <id> <status>`
+pub const CODEX_STATUSES: &[&str] = &["canon", "faded", "lost"];
+
+/// `medit <vnum> deity <action>`
+pub const DEITY_ACTIONS: &[&str] = &[
+    "setup",
+    "remove",
+    "epithet",
+    "lore",
+    "enemy",
+    "pact",
+    "tribute",
+    "bless",
+    "permanent_smite",
+    "spellcraft",
+];
+
+/// `medit <vnum> deity spellcraft <field>`
+pub const DEITY_SPELLCRAFT_FIELDS: &[&str] = &[
+    "enable", "disable", "types", "elements", "effects", "targets", "cap", "cooldown", "favor", "tier", "cost",
+    "unlock", "priest", "price", "trial", "mark", "help",
+];
+
+/// `medit <vnum> deity spellcraft types add|remove <type>`
+pub const SPELLCRAFT_SPELL_TYPES: &[&str] = &["damage", "debuff", "buff", "heal"];
+
+/// `medit <vnum> deity spellcraft targets add|remove <target>`
+pub const SPELLCRAFT_TARGETS: &[&str] = &["self", "self_or_friendly", "enemy"];
+
+/// `medit <vnum> deity spellcraft price <style>`
+pub const SPELLCRAFT_PRICE_STYLES: &[&str] = &["flesh", "mind", "essence", "fortune", "weariness", "fate"];
+
+/// List operations on spellcraft allow-lists.
+pub const SPELLCRAFT_LIST_OPS: &[&str] = &["add", "remove", "clear"];
 
 /// Admin loadout targets (`admin loadout <target>`)
 pub const ADMIN_LOADOUT_TARGETS: &[&str] = &["list", "class", "race", "help"];

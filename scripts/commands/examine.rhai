@@ -873,6 +873,12 @@ fn examine_player_tattoos(other_char) {
     return "\n" + examine_join_wound_texts(texts, other_char.name);
 }
 
+fn examine_player_marks(other_char) {
+    let marks = get_character_marks(other_char.name);
+    if marks.len() == 0 { return ""; }
+    return "\n" + examine_join_wound_texts(marks, other_char.name);
+}
+
 fn examine_player_cyberware(other_char) {
     // Externally visible chrome only — neuralware/cyberaudio/internal body
     // ware stays hidden under the skin.
@@ -939,6 +945,7 @@ fn examine_show_player(other_char, connection_id) {
     output += examine_player_wounds(other_char);
     output += examine_player_scars(other_char);
     output += examine_player_tattoos(other_char);
+    output += examine_player_marks(other_char);
     output += examine_player_cyberware(other_char);
     output += examine_player_equipment(other_char);
 

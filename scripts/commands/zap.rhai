@@ -190,20 +190,28 @@ fn fire_wand_spell(connection_id, char, spell, target_arg) {
 
 fn find_mob_target_local(char, target_arg) {
     let mobs = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
+
+    // If no target arg and in combat, use the first mobile target.
     if target_arg == "" {
         if is_in_combat(char.name) {
-            let targets = get_combat_targets(char.name);
-            if targets.len() > 0 { return targets[0]; }
+            for t in get_combat_targets(char.name) {
+                if t.target_type == "mobile" {
+                    return t.target_id;
+                }
+            }
         }
         return "";
     }
+
+    // `mobs` holds MobileData; callers want the id.
     let lower = target_arg.to_lower();
-    for mob_id in mobs {
-        let mob = get_mobile_data(mob_id);
-        if type_of(mob) != "()" {
-            if mob.name.to_lower().contains(lower) { return mob_id; }
-            for kw in mob.keywords {
-                if kw.to_lower().starts_with(lower) { return mob_id; }
+    for mob in mobs {
+        if mob.name.to_lower().contains(lower) {
+            return mob.id;
+        }
+        for kw in mob.keywords {
+            if kw.to_lower().starts_with(lower) {
+                return mob.id;
             }
         }
     }

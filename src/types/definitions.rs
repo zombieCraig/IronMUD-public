@@ -370,4 +370,9 @@ pub struct SpellDefinition {
     /// level 1).
     #[serde(default)]
     pub evolves_to: Option<SpellEvolution>,
+    /// True for spells overlaid from the `codex` sled tree (divine
+    /// spellcraft); their history lives in `CodexMeta`. Set by the loader,
+    /// never by JSON.
+    #[serde(default)]
+    pub codex: bool,
 }

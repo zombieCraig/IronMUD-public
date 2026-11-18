@@ -876,6 +876,8 @@ fn summarize_condition(c: &DialogueCondition) -> String {
         DialogueCondition::ReputationAtLeast { faction, value } => {
             format!("reputation_at_least {} {}", faction, value)
         }
+        DialogueCondition::WorshipsGod { vnum } => format!("worships_god {}", vnum),
+        DialogueCondition::FavorAtLeast { value } => format!("favor_at_least {}", value),
     }
 }
 
@@ -906,6 +908,20 @@ fn summarize_effect(e: &DialogueEffect) -> String {
         }
         DialogueEffect::InstallCyberware { vnum } => format!("install_cyberware {}", vnum),
         DialogueEffect::CyberwareTherapy { points } => format!("cyberware_therapy {}", points),
+        DialogueEffect::TeachCanonSpell {
+            god_vnum,
+            spell,
+            gold_cost,
+            favor_cost,
+        } => format!(
+            "teach_canon_spell {} {} {} {}",
+            god_vnum.as_deref().unwrap_or("-"),
+            gold_cost,
+            favor_cost,
+            spell.as_deref().unwrap_or("")
+        )
+        .trim_end()
+        .to_string(),
         DialogueEffect::Morality { delta } => format!("morality {}{}", if *delta > 0 { "+" } else { "" }, delta),
         DialogueEffect::Reputation { faction, delta } => {
             format!("reputation {} {}{}", faction, if *delta > 0 { "+" } else { "" }, delta)
@@ -983,6 +999,19 @@ fn parse_choice_condition(kind: &str, args: &str) -> Result<DialogueCondition, S
                 faction: parts[0].to_lowercase(),
                 value: crate::reputation::clamp(value),
             })
+        }
+        "worships_god" | "worshipsgod" | "worships" => {
+            need(1, "<god_vnum>")?;
+            Ok(DialogueCondition::WorshipsGod {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "favor_at_least" | "favoratleast" | "favor" => {
+            need(1, "<value>")?;
+            let value = parts[0]
+                .parse::<i32>()
+                .map_err(|_| "value must be an integer".to_string())?;
+            Ok(DialogueCondition::FavorAtLeast { value })
         }
         "counter_at_least" | "counteratleast" | "counter" => {
             need(2, "<counter_key> <value>")?;
@@ -1120,6 +1149,32 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
                 vnum: parts[0].to_string(),
             })
         }
+        "teach_canon_spell" | "teachcanonspell" | "teach_canon" => {
+            // teach_canon_spell [god_vnum|-] [gold] [favor] [spell name...]
+            let god_vnum = parts.first().filter(|g| **g != "-").map(|g| g.to_string());
+            let num = |i: usize, what: &str| -> Result<i32, String> {
+                match parts.get(i) {
+                    None => Ok(0),
+                    Some(v) => match v.parse::<i32>() {
+                        Ok(n) if n >= 0 => Ok(n),
+                        _ => Err(format!("{what} must be a non-negative integer")),
+                    },
+                }
+            };
+            let gold_cost = num(1, "gold")?;
+            let favor_cost = num(2, "favor")?;
+            let spell = if parts.len() > 3 {
+                Some(parts[3..].join(" "))
+            } else {
+                None
+            };
+            Ok(DialogueEffect::TeachCanonSpell {
+                god_vnum,
+                spell,
+                gold_cost,
+                favor_cost,
+            })
+        }
         "cyberware_therapy" | "cyberwaretherapy" => {
             need(1, "<points>")?;
             let points = parts[0]
@@ -1178,7 +1233,7 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
             })
         }
         other => Err(format!(
-            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest|install_cyberware|cyberware_therapy|teach_skill|morality; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
+            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest|install_cyberware|cyberware_therapy|teach_skill|teach_canon_spell|morality; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
             other
         )),
     }
@@ -1625,6 +1680,33 @@ fn save_character_and_sync(
     // After the save, for the standing reason: these hooks write the character
     // out-of-band and the save above would clobber them.
     crate::progress::notify_skill_level_gains(db, connections, state, &char_name, skills_before, &ch);
+}
+
+/// Before calling code that changes the character on its own (the quest
+/// engine, which writes session-first): make the walk's `ch` the session and
+/// DB copy, so that code builds on this walk's edits rather than the
+/// pre-walk view.
+fn publish_for_out_of_band(db: &Db, connections: &SharedConnections, ch: &CharacterData) {
+    {
+        let mut conns = connections.lock();
+        for session in conns.values_mut() {
+            if let Some(sc) = session.character.as_mut() {
+                if sc.name.eq_ignore_ascii_case(&ch.name) {
+                    *sc = ch.clone();
+                    break;
+                }
+            }
+        }
+    }
+    let _ = db.save_character_data(ch.clone());
+}
+
+/// After it: take its result back into `ch` (session first, so the walk's
+/// final save doesn't overwrite what it did).
+fn reload_after_out_of_band(db: &Db, connections: &SharedConnections, ch: &mut CharacterData) {
+    if let Some(now) = crate::script::achievements::apply_to_character(db, connections, &ch.name, |_| false) {
+        *ch = now;
+    }
 }
 
 fn find_mob_in_room_with_tree(db: &Db, room_id: Uuid, keyword: &str) -> Option<MobileData> {
@@ -2086,6 +2168,8 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
         DialogueCondition::ReputationAtLeast { faction, value } => {
             crate::reputation::standing(&ch.reputation, faction) >= *value
         }
+        DialogueCondition::WorshipsGod { vnum } => ch.worship.as_ref().is_some_and(|w| w.god_vnum == *vnum),
+        DialogueCondition::FavorAtLeast { value } => ch.worship.as_ref().is_some_and(|w| w.favor >= *value),
         DialogueCondition::DgVarEquals { scope, key, value } => match scope {
             DgScope::Player => ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
             DgScope::Mob => mob.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
@@ -2275,13 +2359,11 @@ fn apply_effect(
                     ch.dg_vars.insert(key.clone(), value.clone());
                     // Slice 2b: surface the write to the quest listener so a
                     // DgFlag objective tracking (key, value) can advance.
-                    // Persist ch first (handle_dg_flag_set loads its own copy)
-                    // and reload after so reward grants land back on `ch`.
-                    let _ = db.save_character_data(ch.clone());
+                    // The quest engine writes session-first, so hand it `ch`
+                    // (session and DB) and take its result back.
+                    publish_for_out_of_band(db, connections, ch);
                     crate::quest::handle_dg_flag_set(db, connections, state, &ch.name, key, value);
-                    if let Ok(Some(reloaded)) = db.get_character_data(&ch.name.to_lowercase()) {
-                        *ch = reloaded;
-                    }
+                    reload_after_out_of_band(db, connections, ch);
                 }
                 DgScope::Mob => {
                     if let Some(mut mob_mut) = db.get_mobile_data(&mob.id).ok().flatten() {
@@ -2344,11 +2426,9 @@ fn apply_effect(
             // (which loads its own copy) sees a consistent state. Then call the
             // canonical reward grantor and reload `ch` so the outer caller's
             // save doesn't overwrite the rewards.
-            let _ = db.save_character_data(ch.clone());
+            publish_for_out_of_band(db, connections, ch);
             let completed = crate::quest::try_complete(db, connections, state, &ch.name, vnum);
-            if let Ok(Some(reloaded)) = db.get_character_data(&ch.name.to_lowercase()) {
-                *ch = reloaded;
-            }
+            reload_after_out_of_band(db, connections, ch);
             if completed {
                 None
             } else {
@@ -2415,6 +2495,34 @@ fn apply_effect(
                 }
                 Err(e) => Some(format!("[ Can't install {}: {}. ]", item.short_desc, e)),
             }
+        }
+        DialogueEffect::TeachCanonSpell {
+            god_vnum,
+            spell,
+            gold_cost,
+            favor_cost,
+        } => {
+            // Pure on `ch`: the framework saves it after the effects run.
+            let god = god_vnum
+                .clone()
+                .or_else(|| mob.deity.as_ref().map(|_| mob.vnum.clone()))
+                .or_else(|| ch.worship.as_ref().map(|w| w.god_vnum.clone()));
+            let Some(god) = god else {
+                return Some("[ I teach only the faithful. ]".to_string());
+            };
+            let line =
+                match crate::spellcraft::canon::teach_canon(db, ch, &god, spell.as_deref(), *gold_cost, *favor_cost) {
+                    Ok(s) => {
+                        // Same in-memory counter bump as TeachSkill's tuition.
+                        if *gold_cost > 0 {
+                            let spent = ch.achievement_counters.entry("gold.spent".to_string()).or_insert(0);
+                            *spent = spent.saturating_add(*gold_cost as u32);
+                        }
+                        s
+                    }
+                    Err(s) => s,
+                };
+            Some(format!("[ {line} ]"))
         }
         DialogueEffect::CyberwareTherapy { points } => {
             if ch.cyberware_state.is_none() {
@@ -2831,6 +2939,55 @@ mod tests {
         let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
         let state = crate::World::minimal_shared(db.clone(), conns.clone());
         (conns, state)
+    }
+
+    /// An online player's walk: an earlier effect's edit to `ch` and the
+    /// quest engine's (session-first) completion must both survive.
+    #[test]
+    fn complete_quest_keeps_earlier_effects_for_an_online_player() {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let ch0 = make_character("hero");
+        db.save_character_data(ch0.clone()).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_in, rx_in) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
+        let mut session = crate::PlayerSession::new_for_test(tx, tx_in);
+        session.character = Some(ch0.clone());
+        conns.lock().insert(Uuid::new_v4(), session);
+        std::mem::forget((rx, rx_in));
+
+        let mut q = crate::types::QuestData::new("qst:talk".into(), "Talk".into());
+        q.rewards = vec![crate::types::QuestReward::Gold { amount: 7 }];
+        db.save_quest_data(&q).unwrap();
+        crate::quest::offer(&db, &conns, "hero", "qst:talk");
+
+        let mut ch = conns.lock().values().find_map(|s| s.character.clone()).unwrap();
+        let mob = MobileData::new("sage".into());
+        let _ = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::IncrementCounter {
+                key: "talks".into(),
+                by: 1,
+            },
+        );
+        let _ = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::CompleteQuest {
+                vnum: "qst:talk".into(),
+            },
+        );
+        assert!(ch.completed_quests.contains("qst:talk"));
+        assert_eq!(ch.achievement_counters.get("talks"), Some(&1), "earlier effect kept");
+        assert_eq!(ch.gold, ch0.gold + 7, "reward landed on the walk's copy");
     }
 
     #[test]
@@ -4163,6 +4320,21 @@ mod tests {
     }
 
     #[test]
+    fn worship_conditions_parse_and_summarize() {
+        let c = parse_choice_condition("worships_god", "god:sol").expect("parse");
+        assert!(matches!(&c, DialogueCondition::WorshipsGod { vnum } if vnum == "god:sol"));
+        assert_eq!(summarize_condition(&c), "worships_god god:sol");
+        let f = parse_choice_condition("favor_at_least", "500").expect("parse");
+        assert!(matches!(f, DialogueCondition::FavorAtLeast { value: 500 }));
+        assert_eq!(summarize_condition(&f), "favor_at_least 500");
+        assert!(parse_choice_condition("favor_at_least", "lots").is_err());
+        assert!(parse_choice_condition("worships_god", "").is_err());
+        let json: DialogueCondition =
+            serde_json::from_value(serde_json::json!({"kind": "favor_at_least", "value": 25})).unwrap();
+        assert!(matches!(json, DialogueCondition::FavorAtLeast { value: 25 }));
+    }
+
+    #[test]
     fn reputation_effect_and_condition_round_trip_through_the_text_form() {
         let parsed = parse_choice_effect("reputation", "Iron_Guard -25").expect("parse");
         assert!(matches!(
@@ -4228,6 +4400,29 @@ mod tests {
             "a no-op reward is a typo"
         );
         assert!(parse_choice_effect("morality", "").is_err());
+    }
+
+    #[test]
+    fn teach_canon_spell_round_trips_through_the_text_form() {
+        let parsed = parse_choice_effect("teach_canon_spell", "god:sol 50 10 Sun Lance").expect("parse");
+        assert!(matches!(
+            &parsed,
+            DialogueEffect::TeachCanonSpell { god_vnum: Some(g), spell: Some(sp), gold_cost: 50, favor_cost: 10 }
+                if g == "god:sol" && sp == "Sun Lance"
+        ));
+        assert_eq!(summarize_effect(&parsed), "teach_canon_spell god:sol 50 10 Sun Lance");
+        let bare = parse_choice_effect("teach_canon_spell", "-").expect("parse bare");
+        assert!(matches!(
+            bare,
+            DialogueEffect::TeachCanonSpell {
+                god_vnum: None,
+                spell: None,
+                gold_cost: 0,
+                favor_cost: 0
+            }
+        ));
+        assert_eq!(summarize_effect(&bare), "teach_canon_spell - 0 0");
+        assert!(parse_choice_effect("teach_canon_spell", "- -5").is_err());
     }
 
     #[test]

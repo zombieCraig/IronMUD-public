@@ -52,6 +52,7 @@ pub const GROUP_ORDER: &[&str] = &[
     "Craft",
     "Wealth",
     "Social",
+    "Faith",
     "Skills",
     "Factions",
     "Quarry",
@@ -106,6 +107,14 @@ const COUNTER_META: &[(&str, &str, &str)] = &[
     ("fish.landed", "Fish Landed", "Craft"),
     ("plants.harvested", "Plants Harvested", "Craft"),
     ("spells.cast", "Spells Cast", "Combat"),
+    ("spells.mastered", "Spells Mastered", "Combat"),
+    // Divine spellcraft (src/spellcraft/fame.rs reconciles the first three
+    // from the codex).
+    ("spells.authored", "Spells Authored", "Faith"),
+    ("spells.restored", "Spells Restored", "Faith"),
+    ("spells.canon_casts", "Most Venerated Authors", "Faith"),
+    ("spells.aided", "Rites Aided", "Faith"),
+    ("spells.scribed", "Scrolls Inscribed", "Faith"),
     ("gold.spent", "Gold Spent", "Wealth"),
     ("gold.earned", "Gold Earned", "Wealth"),
     ("leases.bought", "Properties Leased", "Wealth"),
@@ -688,12 +697,17 @@ pub fn compute(
 /// Lives lib-side so integration tests can drive it without a runtime; the
 /// tokio wrapper is `src/ticks/leaderboard.rs`.
 pub fn process_leaderboard_tick(db: &crate::db::Db, state: &crate::SharedState) -> anyhow::Result<()> {
-    let factions = {
+    let (factions, connections) = {
         let world = state.lock();
-        world.faction_definitions.clone()
+        (world.faction_definitions.clone(), world.connections.clone())
     };
 
     let chars = db.list_all_characters()?;
+    // Codex devotion rides this scan: it needs the same character list
+    // (known-by floors) and the same off-lock cadence.
+    crate::spellcraft::canon::drain_devotion(db, &connections, state, &chars);
+    // Then author fame and the daily Lost scan, which read what it wrote.
+    crate::spellcraft::fame::process(db, &connections, state, &chars);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

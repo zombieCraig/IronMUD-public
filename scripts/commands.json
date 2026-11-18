@@ -538,7 +538,7 @@
   },
   "spells": {
     "access": "user",
-    "description": "View available spells"
+    "description": "View available spells; 'spells codex' lists the spells of the gods, 'spells info <spell>' where a spell comes from"
   },
   "recipes": {
     "access": "user",
